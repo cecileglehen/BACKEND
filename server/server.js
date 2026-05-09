@@ -330,10 +330,12 @@ app.post("/api/chat", requireAuth, async (req, res) => {
       manual
     });
 
-    // Tokens approximatifs (OpenRouter renvoie usage si disponible)
-    const tokensIn  = result.raw?.usage?.prompt_tokens     ?? Math.ceil(JSON.stringify(compressed).length / 4);
-    const tokensOut = result.raw?.usage?.completion_tokens ?? Math.ceil(result.content.length / 4);
-    const costEur   = estimateCostEur(tier, tokensIn, tokensOut);
+    // Tokens — on inclut les reasoning tokens (thinking) dans tokensOut
+    const usage = result.raw?.usage ?? {};
+    const tokensIn       = usage.prompt_tokens                                ?? Math.ceil(JSON.stringify(compressed).length / 4);
+    const thinkingTokens = usage.completion_tokens_details?.reasoning_tokens  ?? 0;
+    const tokensOut      = (usage.completion_tokens ?? Math.ceil(result.content.length / 4)) + thinkingTokens;
+    const costEur        = estimateCostEur(tier, tokensIn, tokensOut);
 
     // Déduction crédits réels + enregistrement usage
     const creditCost = computeCreditCost(tier, tokensIn, tokensOut);
@@ -350,6 +352,7 @@ app.post("/api/chat", requireAuth, async (req, res) => {
       model:      modelInfo,
       tokensIn,
       tokensOut,
+      thinkingTokens,
       costEur,
       creditCost,
       creditsLeft
