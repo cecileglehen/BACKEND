@@ -1,0 +1,150 @@
+# ⚡ DELT AI
+
+> Plateforme de chat multi-modèles avec **routage intelligent** (Groq → Llama 4 Scout) et **exécution OpenRouter** + système de **crédits Delta**, fallbacks automatiques et **Studio Artiste** (image / vidéo).
+
+Concurrent direct de Mammoth AI / Poe — un seul endroit pour parler à GPT-5, Claude 4, Gemini 2.5, Mistral, Llama 4, DeepSeek… DELT choisit le bon moteur en fonction de la complexité de ta question.
+
+---
+
+## Stack
+
+| Couche | Tech |
+|---|---|
+| Frontend | React 18 + Vite + Tailwind CSS (design sombre / futuriste) |
+| Backend | Node.js + Express (ESM) |
+| Routeur (Triage) | **Groq** · `meta-llama/llama-4-scout-17b-16e-instruct` |
+| Exécution LLM | **OpenRouter** (toutes marques) |
+| Crédits | Fichier JSON local (`server/data/credits.json`) |
+
+---
+
+## Arborescence
+
+```
+DeltaAI/
+├── package.json            # Scripts globaux (dev / build / start)
+├── .env.example            # Variables d'environnement (à copier en .env)
+├── server/
+│   ├── server.js           # Express : /api/route, /api/chat, /api/credits, /api/image, /api/video
+│   ├── config/models.js    # Catalogue ECO / MINI / NORMAL / EXPERT + fallbacks
+│   └── lib/
+│       ├── router.js       # Pré-flight Groq (Llama 4 Scout)
+│       ├── openrouter.js   # Appel OpenRouter + chaîne de fallback
+│       └── credits.js      # Persistance + déduction crédits
+└── client/
+    ├── src/
+    │   ├── App.jsx         # Orchestration UI
+    │   ├── components/     # Logo, CreditBar, AutoToggle, ModelPicker, ExpertModal, ChatMessage, Composer, ArtistStudio
+    │   └── lib/api.js      # Wrapper fetch
+    └── tailwind.config.js  # Thème "delt" (couleurs, glow, animations)
+```
+
+---
+
+## Installation
+
+```bash
+# 1. Installer toutes les dépendances (root + server + client)
+npm run install:all
+
+# 2. Configurer les clés API
+cp server/.env.example server/.env
+# Édite server/.env et renseigne :
+#   GROQ_API_KEY=...
+#   OPENROUTER_API_KEY=...
+
+# 3. Lancer en développement (server + client en parallèle)
+npm run dev
+```
+
+- Frontend : http://localhost:5173
+- Backend : http://localhost:3001
+
+Le client Vite proxie automatiquement `/api/*` vers le backend.
+
+---
+
+## Système de routage intelligent (Mode Auto)
+
+Avant chaque message, DELT exécute un **pré-flight** sur Groq :
+
+```text
+System: You are an AI router. JUST RESPOND WITH A SINGLE FORMAT JSON: {"level": integer} (échelle 1 à 10).
+User:   <message de l'utilisateur>
+```
+
+Le niveau retourné détermine la catégorie :
+
+| Niveau | Catégorie | Modèle principal | Coût |
+|---|---|---|---|
+| 1–3 | **ECO** | `google/gemini-2.5-flash` | 2 |
+| 4–6 | **MINI** | `openai/gpt-5-mini` | 5 |
+| 7–8 | **NORMAL** | `anthropic/claude-4-sonnet` | 20 |
+| 9–10 | **EXPERT** | Pop-up : Claude 4 Opus (100) ou GPT-5 (20) | — |
+
+> Pour le niveau 9–10, le serveur renvoie `requiresConfirmation: true` ; le client affiche une modale dorée avant de mobiliser Claude 4 Opus.
+
+---
+
+## Fallbacks (Résilience)
+
+Chaque catégorie possède **3 modèles** ordonnés. Si OpenRouter renvoie une erreur récupérable (`408/425/429/500/502/503/504`) ou un modèle indisponible, le serveur tente automatiquement le suivant **dans la même catégorie**, sans interrompre l'utilisateur. La trace de fallback est renvoyée dans la réponse pour debug.
+
+| Catégorie | Fallback chain |
+|---|---|
+| ECO | Gemini 2.5 Flash → Llama 4 Scout → Mistral 7B → GPT-5 Nano |
+| MINI | GPT-5 Mini → Claude 4 Haiku → Gemini Flash |
+| NORMAL | Claude 4 Sonnet → GPT-5 → Mistral Large |
+| EXPERT | Claude 4 Opus → O3 Preview → DeepSeek R2 |
+
+---
+
+## API HTTP
+
+| Route | Méthode | Description |
+|---|---|---|
+| `/api/health` | GET | État serveur (clés détectées) |
+| `/api/catalog` | GET | Liste publique des modèles + coûts |
+| `/api/credits` | GET | Solde + historique (50 derniers) |
+| `/api/credits/topup` | POST `{amount}` | Recharge |
+| `/api/route` | POST `{message}` | Pré-flight Groq → `{level, category, defaultModel, requiresConfirmation}` |
+| `/api/chat` | POST `{messages, modelId, override}` | Exécute via OpenRouter avec fallback, déduit les crédits |
+| `/api/image` | POST `{prompt}` | Section Artiste (Recraft V4 Pro · 50 crédits) |
+| `/api/video` | POST `{prompt}` | Section Artiste (Veo 3.1 · 250 crédits) |
+
+> Les endpoints `/api/image` et `/api/video` sont structurés mais renvoient un placeholder. Branche tes clés Recraft / Google et remplace l'implémentation dans `server/server.js`.
+
+---
+
+## Interface (UX)
+
+- **Toggle brillant** Mode Manuel / Mode Auto (`AutoToggle.jsx`)
+- **Sidebar** : Crédits Delta + barre de consommation animée + filtres par marque (`CreditBar.jsx`, `ModelPicker.jsx`)
+- **Pop-up Expert** : confirmation Opus vs GPT-5 (`ExpertModal.jsx`)
+- **Studio Artiste** : génération Image (Recraft) / Vidéo (Veo) (`ArtistStudio.jsx`)
+- **Thème** : palette `delt` (violet `#7c5cff` + cyan `#22d3ee` + or `#f5c451`), glassmorphism, animations `pulseGlow` / `shimmer`
+
+---
+
+## Sécurité
+
+- Les clés API ne quittent **jamais le serveur** (jamais exposées au navigateur).
+- Le client communique uniquement avec `/api/*`.
+- `data/credits.json` est ignoré par git.
+
+---
+
+## Scripts
+
+| Commande | Action |
+|---|---|
+| `npm run install:all` | Install racine + server + client |
+| `npm run dev` | Démarre server (3001) + client (5173) en parallèle |
+| `npm run build` | Build production du client |
+| `npm start` | Lance le server (en prod, sert depuis `client/dist` à toi de wirer si besoin) |
+
+---
+
+## Notes sur les modèles
+
+Les identifiants exacts (`anthropic/claude-4-sonnet`, `openai/gpt-5`, etc.) suivent la nomenclature OpenRouter. Vérifie sur [openrouter.ai/models](https://openrouter.ai/models) que les slugs sont d'actualité — la **chaîne de fallback** est précisément là pour absorber un slug invalide en basculant sur le suivant.
