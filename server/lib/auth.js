@@ -67,6 +67,6 @@ export async function refreshUser(userId, fallback = null) {
     return rows[0] ?? null;
   } catch {
     // DB non disponible : retourne les infos du JWT (plan peut être décalé)
-    return fallback ?? { id: userId, email: "", plan: "LITE", status: "active" };
+    return fallback ?? { id: userId, email: "", plan: "FREE", status: "active" };
   }
 }
