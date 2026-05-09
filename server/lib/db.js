@@ -38,7 +38,8 @@ export async function initSchema() {
       email           TEXT UNIQUE NOT NULL,
       password        TEXT NOT NULL DEFAULT '',
       auth_provider   TEXT NOT NULL DEFAULT 'email',
-      plan            TEXT NOT NULL DEFAULT 'LITE',
+      plan            TEXT NOT NULL DEFAULT 'FREE',
+      credits         NUMERIC(10,2) NOT NULL DEFAULT 0,
       status          TEXT NOT NULL DEFAULT 'active',
       sub_id          TEXT,
       sub_start       TIMESTAMPTZ,
@@ -50,6 +51,7 @@ export async function initSchema() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider TEXT NOT NULL DEFAULT 'email';
     ALTER TABLE users ADD COLUMN IF NOT EXISTS age_verified BOOLEAN DEFAULT FALSE;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS credits NUMERIC(10,2) NOT NULL DEFAULT 0;
 
     CREATE TABLE IF NOT EXISTS gdpr_consents (
       id            SERIAL PRIMARY KEY,

@@ -1,5 +1,6 @@
 // PayPal Subscriptions API
 import { getDb } from "./db.js";
+import { grantPlanCredits, resetMonthlyCredits } from "./credits.js";
 
 const BASE = "https://api-m.paypal.com"; // prod
 // const BASE = "https://api-m.sandbox.paypal.com"; // sandbox → décommente pour tester
@@ -85,10 +86,17 @@ export async function handleWebhook(body, headers) {
       if (subId) {
         const end = new Date();
         end.setMonth(end.getMonth() + 1);
-        await db.query(
-          `UPDATE users SET status='active', sub_end=$1 WHERE sub_id=$2`,
+        const { rows } = await db.query(
+          `UPDATE users SET status='active', sub_end=$1 WHERE sub_id=$2 RETURNING id, plan`,
           [end, subId]
         );
+        if (rows[0]) {
+          if (eventType === "BILLING.SUBSCRIPTION.RENEWED") {
+            await resetMonthlyCredits(rows[0].id, rows[0].plan);
+          } else {
+            await grantPlanCredits(rows[0].id, rows[0].plan);
+          }
+        }
       }
       break;
     }
@@ -97,7 +105,7 @@ export async function handleWebhook(body, headers) {
     case "BILLING.SUBSCRIPTION.SUSPENDED": {
       if (subId) {
         await db.query(
-          `UPDATE users SET plan='LITE', status='active', sub_id=NULL WHERE sub_id=$1`,
+          `UPDATE users SET plan='BASIC', status='active', sub_id=NULL WHERE sub_id=$1`,
           [subId]
         );
       }
@@ -122,6 +130,8 @@ export async function handleWebhook(body, headers) {
 // Proxy → lecture lazy de process.env (sinon undefined au moment de l'import ES module)
 export const PAYPAL_PLAN_IDS = new Proxy({}, {
   get(_t, key) {
-    return process.env[`PAYPAL_PLAN_${key}`];
+    // LITE est un alias de BASIC pour rétrocompatibilité
+    const k = key === "LITE" ? "BASIC" : key;
+    return process.env[`PAYPAL_PLAN_${k}`];
   }
 });

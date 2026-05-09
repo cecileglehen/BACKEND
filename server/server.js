@@ -13,7 +13,9 @@ import { initSchema } from "./lib/db.js";
 import { register, login, signToken, requireAuth, refreshUser, verifyToken } from "./lib/auth.js";
 import { routeMessage } from "./lib/router.js";
 import { chatWithFallback } from "./lib/openrouter.js";
-import { resolveTier, recordUsage, quotaSnapshot } from "./lib/windows.js";
+import { recordUsage, quotaSnapshot } from "./lib/windows.js";
+import { getCredits, deductCredits, hasEnoughCredits, grantPlanCredits, resetMonthlyCredits } from "./lib/credits.js";
+import { computeCreditCost, FREE_TIER_ONLY_PLANS } from "./config/plans.js";
 import { checkThrottle } from "./lib/throttle.js";
 import { compressIfNeeded } from "./lib/context.js";
 import { createCodeSession, editCodeSession, getCodePreviewFile, getCodeZip } from "./lib/codegen.js";
@@ -157,8 +159,8 @@ app.get("/api/auth/me", requireAuth, async (req, res) => {
 app.get("/api/quota", requireAuth, async (req, res) => {
   try {
     const user = await refreshUser(req.user.id, req.user);
-    const snap = await quotaSnapshot(user.id, user.plan);
-    res.json({ plan: user.plan, quota: snap });
+    const credits = await getCredits(user.id);
+    res.json({ plan: user.plan, credits });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -291,15 +293,26 @@ app.post("/api/chat", requireAuth, async (req, res) => {
       return res.status(429).json({ error: `Trop de messages. Attends ${Math.ceil(waitMs / 1000)}s.`, waitMs });
     }
 
-    // Résout le tier (avec fallback automatique selon quota)
-    // UNCENSORED et FREE ignorent la cascade — pas de quota à suivre
-    let tier, fellBack, from;
-    if (inTier === "UNCENSORED" || inTier === "FREE") {
-      tier = inTier; fellBack = false; from = null;
-    } else {
-      ({ tier, fellBack, from } = await resolveTier(user.id, user.plan, inTier));
+    // Plan FREE → forcé sur le tier FREE uniquement
+    const isFreePlan = FREE_TIER_ONLY_PLANS.has(user.plan);
+    if (isFreePlan && inTier !== "FREE" && inTier !== "UNCENSORED") {
+      return res.status(403).json({ error: "Ton plan gratuit donne uniquement accès aux modèles FREE. Passe à BASIC pour débloquer tous les modèles." });
     }
-    const modelInfo = selectedModel && tier === inTier ? selectedModel.model : TIER_MODELS[tier];
+
+    const tier = inTier;
+    const fellBack = false;
+    const from = null;
+    const modelInfo = selectedModel?.model || TIER_MODELS[tier];
+
+    // Vérification crédits (FREE et UNCENSORED ne coûtent rien)
+    const estimatedCost = computeCreditCost(tier, 1000, 500); // estimation avant appel
+    if (estimatedCost > 0) {
+      const ok = await hasEnoughCredits(user.id, estimatedCost);
+      if (!ok) {
+        const credits = await getCredits(user.id);
+        return res.status(402).json({ error: `Crédits insuffisants (${credits.toFixed(1)} Cr restants). Passe à un plan supérieur.` });
+      }
+    }
 
     // Limite tokens input (50K)
     const lastMsg = messages[messages.length - 1];
@@ -322,18 +335,24 @@ app.post("/api/chat", requireAuth, async (req, res) => {
     const tokensOut = result.raw?.usage?.completion_tokens ?? Math.ceil(result.content.length / 4);
     const costEur   = estimateCostEur(tier, tokensIn, tokensOut);
 
-    // Enregistre la consommation
+    // Déduction crédits réels + enregistrement usage
+    const creditCost = computeCreditCost(tier, tokensIn, tokensOut);
+    await deductCredits(user.id, creditCost);
     await recordUsage(user.id, tier, tokensIn, tokensOut);
 
+    const creditsLeft = await getCredits(user.id);
+
     res.json({
-      content:   result.content,
+      content:    result.content,
       tier,
       fellBack,
       from,
-      model:     modelInfo,
+      model:      modelInfo,
       tokensIn,
       tokensOut,
-      costEur
+      costEur,
+      creditCost,
+      creditsLeft
     });
   } catch (e) {
     console.error("[chat]", e);
