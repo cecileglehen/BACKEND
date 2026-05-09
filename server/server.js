@@ -12,7 +12,7 @@ dotenv.config({ path: path.join(__dirname, "..", ".env") });
 import { initSchema } from "./lib/db.js";
 import { register, login, signToken, requireAuth, refreshUser, verifyToken } from "./lib/auth.js";
 import { routeMessage } from "./lib/router.js";
-import { chatWithFallback } from "./lib/openrouter.js";
+import { chatWithFallback, streamChat } from "./lib/openrouter.js";
 import { recordUsage, quotaSnapshot, resolveTier } from "./lib/windows.js";
 import { getCredits, deductCredits, hasEnoughCredits, grantPlanCredits, resetMonthlyCredits } from "./lib/credits.js";
 import { computeCreditCost, FREE_TIER_ONLY_PLANS } from "./config/plans.js";
@@ -360,6 +360,72 @@ app.post("/api/chat", requireAuth, async (req, res) => {
   } catch (e) {
     console.error("[chat]", e);
     res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── Chat streaming SSE ──────────────────────────────────────────────────────
+
+app.post("/api/chat/stream", requireAuth, async (req, res) => {
+  try {
+    const { messages, tier: reqTier, modelId, manual = false } = req.body ?? {};
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: "messages requis" });
+    }
+
+    const selectedModel = modelId ? findModelInCatalog(modelId) : null;
+    const inTier = normalizeTier(selectedModel?.tier || reqTier || "NANO");
+    const modelInfo = selectedModel?.model || TIER_MODELS[inTier];
+    if (!modelInfo) return res.status(400).json({ error: `Tier invalide: ${reqTier}` });
+
+    const user = await refreshUser(req.user.id, req.user);
+
+    const isFreePlan = FREE_TIER_ONLY_PLANS.has(user.plan);
+    if (isFreePlan && inTier !== "FREE" && inTier !== "UNCENSORED") {
+      return res.status(403).json({ error: "Plan gratuit : accès aux modèles FREE uniquement." });
+    }
+
+    const { throttled, waitMs } = checkThrottle(user.id);
+    if (throttled) return res.status(429).json({ error: `Attends ${Math.ceil(waitMs / 1000)}s.`, waitMs });
+
+    const estimatedCost = computeCreditCost(inTier, 1000, 500);
+    if (estimatedCost > 0) {
+      const ok = await hasEnoughCredits(user.id, estimatedCost);
+      if (!ok) {
+        const credits = await getCredits(user.id);
+        return res.status(402).json({ error: `Crédits insuffisants (${credits.toFixed(1)} Cr).` });
+      }
+    }
+
+    const compressed = await compressIfNeeded(messages);
+
+    // SSE headers
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    // Envoie les métadonnées initiales
+    res.write(`data: ${JSON.stringify({ type: "meta", tier: inTier, model: modelInfo })}\n\n`);
+
+    await streamChat({
+      modelId: modelInfo.id,
+      messages: compressed,
+      res,
+      onDone: async ({ content, tokensIn, tokensOut, thinkingTokens }) => {
+        const creditCost = computeCreditCost(inTier, tokensIn, tokensOut);
+        await deductCredits(user.id, creditCost);
+        await recordUsage(user.id, inTier, tokensIn, tokensOut);
+        const creditsLeft = await getCredits(user.id);
+        const costEur = estimateCostEur(inTier, tokensIn, tokensOut);
+        res.write(`data: ${JSON.stringify({ type: "done", tokensIn, tokensOut, thinkingTokens, creditCost, creditsLeft, costEur })}\n\n`);
+        res.end();
+      }
+    });
+  } catch (e) {
+    console.error("[chat/stream]", e);
+    if (!res.headersSent) return res.status(500).json({ error: e.message });
+    res.write(`data: ${JSON.stringify({ type: "error", error: e.message })}\n\n`);
+    res.end();
   }
 });
 

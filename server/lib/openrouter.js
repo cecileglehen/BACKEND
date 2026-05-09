@@ -5,6 +5,13 @@ const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 const RETRYABLE = new Set([408, 425, 429, 500, 502, 503, 504]);
 
+const headers = (key) => ({
+  "Content-Type": "application/json",
+  Authorization: `Bearer ${key}`,
+  "HTTP-Referer": "https://delt.ai",
+  "X-Title": "DELT AI"
+});
+
 async function callModel(modelId, messages, signal) {
   const key = (process.env.OPENROUTER_API_KEY || "").trim();
   if (!key) throw new Error("OPENROUTER_API_KEY manquante");
@@ -12,16 +19,8 @@ async function callModel(modelId, messages, signal) {
   const res = await fetch(OR_URL, {
     method: "POST",
     signal,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${key}`,
-      "HTTP-Referer": "https://delt.ai",
-      "X-Title": "DELT AI"
-    },
-    body: JSON.stringify({
-      model: modelId,
-      messages
-    })
+    headers: headers(key),
+    body: JSON.stringify({ model: modelId, messages })
   });
 
   if (!res.ok) {
@@ -34,7 +33,6 @@ async function callModel(modelId, messages, signal) {
   return res.json();
 }
 
-// manual=true → aucun fallback, on échoue immédiatement si le modèle ne répond pas
 export async function chatWithFallback({ modelId, messages, signal, manual = false }) {
   const chain = manual ? [modelId] : fallbackChain(modelId);
   const errors = [];
@@ -51,16 +49,64 @@ export async function chatWithFallback({ modelId, messages, signal, manual = fal
     } catch (e) {
       errors.push({ model: id, status: e.status, message: e.message });
       if (!e.retryable) {
-        // Tentative de fallback même sur 4xx non-429 (ex: modèle indisponible)
         if (e.status && e.status !== 401 && e.status !== 403) continue;
-        throw Object.assign(new Error("Erreur non-récupérable"), {
-          fallbackTrace: errors
-        });
+        throw Object.assign(new Error("Erreur non-récupérable"), { fallbackTrace: errors });
       }
-      // sinon on enchaîne sur le suivant
     }
   }
   const err = new Error("Tous les modèles de cette catégorie ont échoué");
   err.fallbackTrace = errors;
   throw err;
+}
+
+// Streaming SSE — pipe OpenRouter → Express response
+export async function streamChat({ modelId, messages, res, onDone }) {
+  const key = (process.env.OPENROUTER_API_KEY || "").trim();
+  if (!key) throw new Error("OPENROUTER_API_KEY manquante");
+
+  const orRes = await fetch(OR_URL, {
+    method: "POST",
+    headers: headers(key),
+    body: JSON.stringify({ model: modelId, messages, stream: true })
+  });
+
+  if (!orRes.ok) {
+    const txt = await orRes.text().catch(() => "");
+    throw new Error(`OpenRouter ${orRes.status}: ${txt.slice(0, 200)}`);
+  }
+
+  const reader = orRes.body.getReader();
+  const decoder = new TextDecoder();
+  let fullContent = "";
+  let usage = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    const chunk = decoder.decode(value, { stream: true });
+    const lines = chunk.split("\n");
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const data = line.slice(6).trim();
+      if (data === "[DONE]") continue;
+
+      try {
+        const json = JSON.parse(data);
+        const delta = json.choices?.[0]?.delta?.content ?? "";
+        if (delta) {
+          fullContent += delta;
+          res.write(`data: ${JSON.stringify({ delta })}\n\n`);
+        }
+        if (json.usage) usage = json.usage;
+      } catch { /* ignore malformed chunks */ }
+    }
+  }
+
+  const thinkingTokens = usage?.completion_tokens_details?.reasoning_tokens ?? 0;
+  const tokensIn  = usage?.prompt_tokens ?? Math.ceil(JSON.stringify(messages).length / 4);
+  const tokensOut = (usage?.completion_tokens ?? Math.ceil(fullContent.length / 4)) + thinkingTokens;
+
+  onDone({ content: fullContent, tokensIn, tokensOut, thinkingTokens });
 }
