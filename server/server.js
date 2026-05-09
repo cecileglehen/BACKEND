@@ -13,7 +13,7 @@ import { initSchema } from "./lib/db.js";
 import { register, login, signToken, requireAuth, refreshUser, verifyToken } from "./lib/auth.js";
 import { routeMessage } from "./lib/router.js";
 import { chatWithFallback } from "./lib/openrouter.js";
-import { recordUsage, quotaSnapshot } from "./lib/windows.js";
+import { recordUsage, quotaSnapshot, resolveTier } from "./lib/windows.js";
 import { getCredits, deductCredits, hasEnoughCredits, grantPlanCredits, resetMonthlyCredits } from "./lib/credits.js";
 import { computeCreditCost, FREE_TIER_ONLY_PLANS } from "./config/plans.js";
 import { checkThrottle } from "./lib/throttle.js";
