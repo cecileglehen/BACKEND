@@ -433,20 +433,18 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
 
 // ─── PayPal ──────────────────────────────────────────────────────────────────
 
-app.post("/api/subscribe/:plan", requireAuth, async (req, res) => {
+// IMPORTANT : routes spécifiques AVANT la route paramétrée /:plan
+// Activate via JS SDK (popup) — pas de redirect
+app.post("/api/subscribe/activate", requireAuth, async (req, res) => {
   try {
-    const plan = req.params.plan.toUpperCase();
-    const paypalPlanId = PAYPAL_PLAN_IDS[plan];
-    if (!paypalPlanId) return res.status(400).json({ error: `Plan invalide ou PAYPAL_PLAN_${plan} non configuré` });
-
-    const origin = req.headers.origin || `https://${req.headers.host}`;
-    const { subscriptionId, approveUrl } = await createSubscriptionLink(
-      paypalPlanId,
-      `${origin}/subscribe/success?plan=${plan}`,
-      `${origin}/billing`
-    );
-    res.json({ subscriptionId, approveUrl });
+    const { plan, subscriptionId } = req.body ?? {};
+    if (!plan || !subscriptionId) return res.status(400).json({ error: "plan + subscriptionId requis" });
+    await activateSubscription(req.user.id, subscriptionId, plan.toUpperCase());
+    const { grantPlanCredits } = await import("./lib/credits.js");
+    await grantPlanCredits(req.user.id, plan.toUpperCase());
+    res.json({ ok: true, plan: plan.toUpperCase() });
   } catch (e) {
+    console.error("[subscribe/activate]", e);
     res.status(500).json({ error: e.message });
   }
 });
@@ -466,17 +464,21 @@ app.get("/api/subscribe/confirm", requireAuth, async (req, res) => {
   }
 });
 
-// Activate via JS SDK (popup) — pas de redirect
-app.post("/api/subscribe/activate", requireAuth, async (req, res) => {
+// Création de subscription via redirect (legacy fallback)
+app.post("/api/subscribe/:plan", requireAuth, async (req, res) => {
   try {
-    const { plan, subscriptionId } = req.body ?? {};
-    if (!plan || !subscriptionId) return res.status(400).json({ error: "plan + subscriptionId requis" });
-    await activateSubscription(req.user.id, subscriptionId, plan.toUpperCase());
-    const { grantPlanCredits } = await import("./lib/credits.js");
-    await grantPlanCredits(req.user.id, plan.toUpperCase());
-    res.json({ ok: true, plan: plan.toUpperCase() });
+    const plan = req.params.plan.toUpperCase();
+    const paypalPlanId = PAYPAL_PLAN_IDS[plan];
+    if (!paypalPlanId) return res.status(400).json({ error: `Plan invalide ou PAYPAL_PLAN_${plan} non configuré` });
+
+    const origin = req.headers.origin || `https://${req.headers.host}`;
+    const { subscriptionId, approveUrl } = await createSubscriptionLink(
+      paypalPlanId,
+      `${origin}/subscribe/success?plan=${plan}`,
+      `${origin}/billing`
+    );
+    res.json({ subscriptionId, approveUrl });
   } catch (e) {
-    console.error("[subscribe/activate]", e);
     res.status(500).json({ error: e.message });
   }
 });
