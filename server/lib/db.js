@@ -56,6 +56,8 @@ export async function initSchema() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS anonymized_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS credits NUMERIC(10,2) NOT NULL DEFAULT 0;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS api_credits NUMERIC(10,2) NOT NULL DEFAULT 0;
+    ALTER TABLE users ALTER COLUMN plan SET DEFAULT 'FREE';
+    UPDATE users SET plan = 'FREE' WHERE plan = 'LITE';
 
     CREATE TABLE IF NOT EXISTS gdpr_consents (
       id            SERIAL PRIMARY KEY,
