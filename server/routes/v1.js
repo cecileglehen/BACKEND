@@ -4,7 +4,7 @@
 import express from "express";
 import { requireApiKey } from "../lib/auth.js";
 import { chatWithFallback, streamChat } from "../lib/openrouter.js";
-import { getApiCredits, deductApiCredits, hasEnoughApiCredits } from "../lib/credits.js";
+import { getApiCredits, deductApiCredits } from "../lib/credits.js";
 import { computeCreditCost, FREE_TIER_ONLY_PLANS } from "../config/plans.js";
 import { CATEGORIES, findModelInCatalog, normalizeTier } from "../config/models.js";
 import { recordUsage } from "../lib/windows.js";
@@ -53,16 +53,19 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
       });
     }
 
+    const apiCredits = await getApiCredits(req.user.id);
+    if (apiCredits <= 0) {
+      return res.status(402).json({
+        error: { message: "No API credits available. Transfer credits from your plan in the API tab before using the API.", type: "insufficient_quota" }
+      });
+    }
+
     // Vérification crédits (estimation)
     const estimatedCost = computeCreditCost(modelId, 1000, 500);
-    if (estimatedCost > 0) {
-      const ok = await hasEnoughApiCredits(req.user.id, estimatedCost);
-      if (!ok) {
-        const credits = await getApiCredits(req.user.id);
-        return res.status(402).json({
-          error: { message: `Insufficient API credits (${credits.toFixed(1)} Cr). Transfer credits from your plan in the API tab.`, type: "insufficient_quota" }
-        });
-      }
+    if (estimatedCost > 0 && apiCredits < estimatedCost) {
+      return res.status(402).json({
+        error: { message: `Insufficient API credits (${apiCredits.toFixed(1)} Cr). Transfer credits from your plan in the API tab.`, type: "insufficient_quota" }
+      });
     }
 
     // ─── Streaming ─────────────────────────────────────────────────────────
