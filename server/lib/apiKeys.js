@@ -57,12 +57,12 @@ export async function verifyApiKey(rawKey) {
     `SELECT k.id, k.user_id, k.revoked_at, u.email, u.plan, u.status
      FROM api_keys k
      JOIN users u ON u.id = k.user_id
-     WHERE k.key_hash = $1`,
+     WHERE k.key_hash = $1 AND u.deleted_at IS NULL`,
     [keyHash]
   );
   const row = rows[0];
   if (!row || row.revoked_at) return null;
-  if (row.status === "suspended") return null;
+  if (row.status === "suspended" || row.status === "deleted") return null;
 
   db.query(`UPDATE api_keys SET last_used_at = NOW() WHERE id = $1`, [row.id]).catch(() => {});
 

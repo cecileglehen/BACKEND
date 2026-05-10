@@ -33,6 +33,8 @@ function normalizeConnectionString(connectionString) {
 export async function initSchema() {
   const db = getDb();
   await db.query(`
+    CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
     CREATE TABLE IF NOT EXISTS users (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       email           TEXT UNIQUE NOT NULL,
@@ -51,6 +53,7 @@ export async function initSchema() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider TEXT NOT NULL DEFAULT 'email';
     ALTER TABLE users ADD COLUMN IF NOT EXISTS age_verified BOOLEAN DEFAULT FALSE;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS anonymized_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS credits NUMERIC(10,2) NOT NULL DEFAULT 0;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS api_credits NUMERIC(10,2) NOT NULL DEFAULT 0;
 
@@ -60,9 +63,22 @@ export async function initSchema() {
       consent_type  TEXT NOT NULL,
       granted       BOOLEAN DEFAULT TRUE,
       ip_hash       TEXT,
+      user_agent    TEXT,
       granted_at    TIMESTAMPTZ DEFAULT NOW(),
       revoked_at    TIMESTAMPTZ,
       UNIQUE (user_id, consent_type)
+    );
+    ALTER TABLE gdpr_consents ADD COLUMN IF NOT EXISTS user_agent TEXT;
+
+    CREATE TABLE IF NOT EXISTS gdpr_requests (
+      id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id       UUID REFERENCES users(id) ON DELETE SET NULL,
+      email         TEXT NOT NULL,
+      request_type  TEXT NOT NULL,
+      status        TEXT NOT NULL DEFAULT 'pending',
+      notes         TEXT,
+      created_at    TIMESTAMPTZ DEFAULT NOW(),
+      resolved_at   TIMESTAMPTZ
     );
 
     CREATE TABLE IF NOT EXISTS usage_windows (
@@ -101,11 +117,13 @@ export async function initSchema() {
       role        TEXT NOT NULL,
       content     TEXT NOT NULL,
       tier_used   TEXT,
+      model_id    TEXT,
       tokens_in   INT,
       tokens_out  INT,
       cost_eur    NUMERIC(10,6),
       created_at  TIMESTAMPTZ DEFAULT NOW()
     );
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS model_id TEXT;
     CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conv_id, created_at);
 
     CREATE TABLE IF NOT EXISTS paypal_events (
@@ -114,6 +132,16 @@ export async function initSchema() {
       data        JSONB,
       created_at  TIMESTAMPTZ DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id          SERIAL PRIMARY KEY,
+      user_id     UUID REFERENCES users(id) ON DELETE SET NULL,
+      action      TEXT NOT NULL,
+      ip_hash     TEXT,
+      metadata    JSONB,
+      created_at  TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_logs(user_id, created_at DESC);
 
     CREATE TABLE IF NOT EXISTS api_keys (
       id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -127,6 +155,32 @@ export async function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
     CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash) WHERE revoked_at IS NULL;
+
+    CREATE OR REPLACE FUNCTION anonymize_user(p_user_id UUID)
+    RETURNS void LANGUAGE plpgsql AS $$
+    BEGIN
+      UPDATE users SET
+        email = 'deleted_' || p_user_id || '@anon.delt',
+        password = '',
+        auth_provider = 'deleted',
+        status = 'deleted',
+        sub_id = NULL,
+        credits = 0,
+        api_credits = 0,
+        deleted_at = NOW(),
+        anonymized_at = NOW()
+      WHERE id = p_user_id;
+
+      UPDATE messages SET content = '[contenu supprimé]'
+      WHERE user_id = p_user_id;
+
+      UPDATE gdpr_consents SET revoked_at = NOW()
+      WHERE user_id = p_user_id AND revoked_at IS NULL;
+
+      UPDATE api_keys SET revoked_at = NOW()
+      WHERE user_id = p_user_id AND revoked_at IS NULL;
+    END;
+    $$;
   `);
   console.log("✓ DB schema ready");
 }

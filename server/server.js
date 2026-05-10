@@ -25,9 +25,11 @@ import { createSubscriptionLink, activateSubscription, handleWebhook, PAYPAL_PLA
 import { createClient } from "@supabase/supabase-js";
 import { routeMessage as groqRoute } from "./lib/router.js";
 import { createApiKey, listApiKeys, revokeApiKey } from "./lib/apiKeys.js";
+import { deleteUserData, exportUserData, recordConsent } from "./lib/privacy.js";
 import v1Router from "./routes/v1.js";
 
 const app = express();
+app.set("trust proxy", 1);
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: "2mb" }));
 
@@ -88,7 +90,7 @@ const supabase = createClient(
 // Google OAuth — échange le token Supabase contre un JWT DELT
 app.post("/api/auth/google", async (req, res) => {
   try {
-    const { accessToken } = req.body ?? {};
+    const { accessToken, termsAccepted = false, privacyAccepted = false } = req.body ?? {};
     if (!accessToken) return res.status(400).json({ error: "accessToken requis" });
 
     // Vérifie le token via Supabase Auth (appel HTTP, pas pg)
@@ -99,21 +101,30 @@ app.post("/api/auth/google", async (req, res) => {
     const user = {
       id:    sbUser.id,
       email: sbUser.email,
-      plan:  "LITE"
+      plan:  "FREE"
     };
 
     // Si DB disponible, upsert pour persister le plan/quota
     if (process.env.DATABASE_URL) {
       try {
         const db = (await import("./lib/db.js")).getDb();
+        const existing = await db.query(`SELECT id FROM users WHERE email=$1 AND deleted_at IS NULL`, [sbUser.email]);
+        if (!existing.rows[0] && (!termsAccepted || !privacyAccepted)) {
+          return res.status(400).json({ error: "Tu dois accepter les CGU et la politique de confidentialité." });
+        }
         const r = await db.query(
           `INSERT INTO users (id, email, password, plan, status, auth_provider)
-           VALUES ($1, $2, '', 'LITE', 'active', 'google')
+           VALUES ($1, $2, '', 'FREE', 'active', 'google')
            ON CONFLICT (email) DO UPDATE SET auth_provider = 'google'
            RETURNING *`,
           [sbUser.id, sbUser.email]
         );
         Object.assign(user, { plan: r.rows[0].plan });
+        if (!existing.rows[0]) {
+          await recordConsent(r.rows[0].id, "terms", req);
+          await recordConsent(r.rows[0].id, "privacy", req);
+          await recordConsent(r.rows[0].id, "google_oauth_signup", req);
+        }
       } catch { /* DB non dispo, continue sans */ }
     }
 
@@ -127,13 +138,14 @@ app.post("/api/auth/google", async (req, res) => {
 
 app.post("/api/auth/register", async (req, res) => {
   try {
-    const { email, password } = req.body ?? {};
+    const { email, password, termsAccepted = false, privacyAccepted = false } = req.body ?? {};
     if (!email || !password) return res.status(400).json({ error: "email + password requis" });
     if (password.length < 8) return res.status(400).json({ error: "Mot de passe trop court (8 car. min)" });
-    const user = await register(email, password);
+    const user = await register(email, password, { termsAccepted, privacyAccepted, req });
     const token = signToken(user);
     res.json({ token, user: { id: user.id, email: user.email, plan: user.plan } });
   } catch (e) {
+    if (e.code === "CONSENT_REQUIRED") return res.status(400).json({ error: e.message });
     if (e.code === "23505") return res.status(409).json({ error: "Email déjà utilisé" });
     res.status(500).json({ error: e.message });
   }
@@ -154,6 +166,28 @@ app.get("/api/auth/me", requireAuth, async (req, res) => {
   const user = await refreshUser(req.user.id, req.user);
   if (!user) return res.status(404).json({ error: "Utilisateur introuvable" });
   res.json({ id: user.id, email: user.email, plan: user.plan, status: user.status, sub_end: user.sub_end });
+});
+
+// ─── RGPD : droits utilisateur ───────────────────────────────────────────────
+
+app.get("/api/privacy/export", requireAuth, async (req, res) => {
+  try {
+    const data = await exportUserData(req.user.id, req);
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="delt-data-export-${req.user.id}.json"`);
+    res.json(data);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.delete("/api/privacy/account", requireAuth, async (req, res) => {
+  try {
+    const result = await deleteUserData(req.user.id, req);
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 // ─── Quota snapshot ──────────────────────────────────────────────────────────

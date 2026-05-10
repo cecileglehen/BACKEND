@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { getDb } from "./db.js";
+import { recordConsent } from "./privacy.js";
 
 const JWT_SECRET = () => {
   const s = process.env.JWT_SECRET;
@@ -9,20 +10,27 @@ const JWT_SECRET = () => {
 };
 const JWT_EXPIRES = "30d";
 
-export async function register(email, password) {
+export async function register(email, password, { termsAccepted = false, privacyAccepted = false, req = null } = {}) {
+  if (!termsAccepted || !privacyAccepted) {
+    throw Object.assign(new Error("Tu dois accepter les CGU et la politique de confidentialité."), { code: "CONSENT_REQUIRED" });
+  }
   const db = getDb();
   const hashed = await bcrypt.hash(password, 12);
   const { rows } = await db.query(
     `INSERT INTO users (email, password) VALUES ($1, $2) RETURNING id, email, plan, status`,
     [email.toLowerCase().trim(), hashed]
   );
+  if (req) {
+    await recordConsent(rows[0].id, "terms", req);
+    await recordConsent(rows[0].id, "privacy", req);
+  }
   return rows[0];
 }
 
 export async function login(email, password) {
   const db = getDb();
   const { rows } = await db.query(
-    `SELECT * FROM users WHERE email=$1`,
+    `SELECT * FROM users WHERE email=$1 AND deleted_at IS NULL`,
     [email.toLowerCase().trim()]
   );
   const user = rows[0];
@@ -30,6 +38,7 @@ export async function login(email, password) {
   const ok = await bcrypt.compare(password, user.password);
   if (!ok) throw new Error("Email ou mot de passe incorrect");
   if (user.status === "suspended") throw new Error("Compte suspendu");
+  if (user.status === "deleted") throw new Error("Compte supprimé");
   return user;
 }
 
@@ -43,13 +52,27 @@ export function verifyToken(token) {
   return jwt.verify(token, JWT_SECRET());
 }
 
-export function requireAuth(req, res, next) {
+export async function requireAuth(req, res, next) {
   const header = req.headers.authorization;
-  if (!header?.startsWith("Bearer ")) {
+  const token = header?.startsWith("Bearer ") ? header.slice(7) : req.cookies?.delt_token;
+  if (!token) {
     return res.status(401).json({ error: "Non authentifié" });
   }
   try {
-    req.user = verifyToken(header.slice(7));
+    const payload = verifyToken(token);
+    try {
+      const db = getDb();
+      const { rows } = await db.query(
+        `SELECT id, email, plan, status FROM users WHERE id=$1 AND deleted_at IS NULL`,
+        [payload.id]
+      );
+      if (!rows[0] || rows[0].status === "deleted" || rows[0].status === "suspended") {
+        return res.status(401).json({ error: "Compte indisponible" });
+      }
+      req.user = rows[0];
+    } catch {
+      req.user = payload;
+    }
     next();
   } catch {
     res.status(401).json({ error: "Token invalide ou expiré" });
@@ -85,7 +108,7 @@ export async function refreshUser(userId, fallback = null) {
   try {
     const db = getDb();
     const { rows } = await db.query(
-      `SELECT id, email, plan, status, sub_id, sub_end FROM users WHERE id=$1`,
+      `SELECT id, email, plan, status, sub_id, sub_end FROM users WHERE id=$1 AND deleted_at IS NULL`,
       [userId]
     );
     return rows[0] ?? null;
