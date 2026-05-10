@@ -2,15 +2,22 @@
 import { getDb } from "./db.js";
 import { grantPlanCredits, resetMonthlyCredits } from "./credits.js";
 
-const BASE = "https://api-m.paypal.com"; // prod
-// const BASE = "https://api-m.sandbox.paypal.com"; // sandbox → décommente pour tester
+// PAYPAL_MODE=sandbox → utilise SAND_PAYPAL_* (cohabite avec la prod)
+// Sinon → utilise PAYPAL_* (live)
+const isSandbox = () => process.env.PAYPAL_MODE === "sandbox";
+const envPrefix = () => (isSandbox() ? "SAND_PAYPAL_" : "PAYPAL_");
+
+const baseUrl = () => isSandbox()
+  ? "https://api-m.sandbox.paypal.com"
+  : "https://api-m.paypal.com";
 
 async function getAccessToken() {
-  const id  = process.env.PAYPAL_CLIENT_ID;
-  const sec = process.env.PAYPAL_CLIENT_SECRET;
-  if (!id || !sec) throw new Error("PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET manquants");
+  const prefix = envPrefix();
+  const id  = process.env[`${prefix}CLIENT_ID`];
+  const sec = process.env[`${prefix}CLIENT_SECRET`];
+  if (!id || !sec) throw new Error(`${prefix}CLIENT_ID / ${prefix}CLIENT_SECRET manquants`);
 
-  const res = await fetch(`${BASE}/v1/oauth2/token`, {
+  const res = await fetch(`${baseUrl()}/v1/oauth2/token`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -27,7 +34,7 @@ async function getAccessToken() {
 // planId = ID du PayPal Billing Plan (créé manuellement dans le dashboard PayPal)
 export async function createSubscriptionLink(paypalPlanId, returnUrl, cancelUrl) {
   const token = await getAccessToken();
-  const res = await fetch(`${BASE}/v1/billing/subscriptions`, {
+  const res = await fetch(`${baseUrl()}/v1/billing/subscriptions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -126,12 +133,12 @@ export async function handleWebhook(body, headers) {
   return { ok: true, handled: eventType };
 }
 
-// IDs des Billing Plans PayPal (à créer dans ton dashboard PayPal)
+// IDs des Billing Plans PayPal — lit SAND_PAYPAL_PLAN_* si PAYPAL_MODE=sandbox
 // Proxy → lecture lazy de process.env (sinon undefined au moment de l'import ES module)
 export const PAYPAL_PLAN_IDS = new Proxy({}, {
   get(_t, key) {
     // LITE est un alias de BASIC pour rétrocompatibilité
     const k = key === "LITE" ? "BASIC" : key;
-    return process.env[`PAYPAL_PLAN_${k}`];
+    return process.env[`${envPrefix()}PLAN_${k}`];
   }
 });
