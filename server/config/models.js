@@ -4,9 +4,9 @@
 // Conversion crédits :
 //   1 Cr = 0.01€ ≈ $0.0091 (taux 1.10 USD/EUR)
 //   Marge DELT vs OpenRouter ≈ 55%
-//   → 1 USD/1M tokens ≈ 140 Cr/1M tokens (170 Cr × 0.55 marge incluse)
+//   → 1 USD/1M tokens ≈ 176 Cr/1M tokens (marge 55% incluse sur ULTRA)
 
-export const CR_PER_USD = 140; // crédits DELT par dollar OpenRouter (marge 55% incluse)
+export const CR_PER_USD = 176; // crédits DELT par dollar OpenRouter (marge 55% incluse)
 
 // Calcule le prix d'un modèle en Cr par 1M tokens (input + output)
 export function modelCreditPrice(model) {
