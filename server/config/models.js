@@ -46,10 +46,9 @@ export const CATEGORIES = {
     cost: 0.2,
     levelRange: [1, 3],
     models: [
-      { id: "mistralai/mistral-small-2603", brand: "Mistral", display: "Mistral Small 2603", price: { in: 0.165, out: 0.66 }, ctx: 262144, featuredLabel: "Coup de coeur · 10K tokens offerts" },
+      { id: "mistralai/mistral-small-2603", brand: "Mistral", display: "Mistral Small 4", price: { in: 0.15, out: 0.60 }, ctx: 262144, featuredLabel: "Coup de coeur · 10K tokens offerts" },
       { id: "openai/gpt-5.4-nano", brand: "OpenAI", display: "GPT-5.4 Nano", price: { in: 0.20, out: 1.25 }, ctx: 400000 },
       { id: "openai/gpt-4o-mini", brand: "OpenAI", display: "GPT-4o Mini", price: { in: 0.15, out: 0.60 }, ctx: 128000 },
-      { id: "mistralai/mistral-small-4", brand: "Mistral", display: "Mistral Small 4", price: { in: 0.15, out: 0.60 }, ctx: 262144 },
       { id: "google/gemini-2.5-flash", brand: "Google", display: "Gemini 2.5 Flash", price: { in: 0.30, out: 2.50 }, ctx: 1048576 }
     ]
   },
