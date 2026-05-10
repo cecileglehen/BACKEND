@@ -330,8 +330,7 @@ app.post("/api/route", requireAuth, async (req, res) => {
     const level = await groqRoute(message);
     // Mapping level → tier
     let tier = "NANO";
-    if (level >= 10) tier = "EXPERT";
-    else if (level >= 9) tier = "PRICE";
+    if (level >= 9) tier = "EXPERT";
     else if (level >= 7) tier = "NORMAL";
     else if (level >= 4) tier = "MINI";
 
@@ -409,7 +408,7 @@ app.post("/api/chat", requireAuth, async (req, res) => {
       const ok = await hasEnoughCredits(user.id, estimatedCost);
       if (!ok) {
         const credits = await getCredits(user.id);
-        return res.status(402).json({ error: `Crédits insuffisants (${credits.toFixed(1)} Cr restants). Passe à un plan supérieur.` });
+        return res.status(402).json({ error: `Crédits insuffisants (${Number(credits).toFixed(2)} Cr restants). Passe à un plan supérieur.` });
       }
     }
 
@@ -438,10 +437,8 @@ app.post("/api/chat", requireAuth, async (req, res) => {
 
     // Déduction crédits réels + enregistrement usage (prix par modèle)
     const creditCost = computeCreditCost(result.modelUsed || modelInfo.id, tokensIn, tokensOut);
-    await deductCredits(user.id, creditCost);
+    const creditsLeft = await deductCredits(user.id, creditCost);
     await recordUsage(user.id, tier, tokensIn, tokensOut);
-
-    const creditsLeft = await getCredits(user.id);
 
     res.json({
       content:    result.content,
@@ -491,7 +488,7 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
       const ok = await hasEnoughCredits(user.id, estimatedCost);
       if (!ok) {
         const credits = await getCredits(user.id);
-        return res.status(402).json({ error: `Crédits insuffisants (${credits.toFixed(1)} Cr).` });
+        return res.status(402).json({ error: `Crédits insuffisants (${Number(credits).toFixed(2)} Cr).` });
       }
     }
 
@@ -512,9 +509,8 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
       res,
       onDone: async ({ content, tokensIn, tokensOut, thinkingTokens }) => {
         const creditCost = computeCreditCost(modelInfo.id, tokensIn, tokensOut);
-        await deductCredits(user.id, creditCost);
+        const creditsLeft = await deductCredits(user.id, creditCost);
         await recordUsage(user.id, inTier, tokensIn, tokensOut);
-        const creditsLeft = await getCredits(user.id);
         const costEur = estimateCostEur(inTier, tokensIn, tokensOut);
         res.write(`data: ${JSON.stringify({ type: "done", tokensIn, tokensOut, thinkingTokens, creditCost, creditsLeft, costEur })}\n\n`);
         res.end();

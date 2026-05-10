@@ -75,6 +75,7 @@ export async function resolveTier(userId, plan, requestedTier) {
 
     if (tier === "EXPERT") {
       const cap = WEEKLY_EXPERT_CAP[plan] ?? 0;
+      if (cap <= 0) return { tier, fellBack: false, from: null };
       try {
         const db = getDb();
         const monday = getMonday();
@@ -110,7 +111,7 @@ export async function quotaSnapshot(userId, plan) {
       [userId, monday]
     );
     const result = {};
-    for (const tier of ["EXPERT", "PRICE", "NORMAL", "MINI", "NANO"]) {
+    for (const tier of ["PRO", "EXPERT", "NORMAL", "MINI", "NANO", "UNCENSORED"]) {
       const win  = windows.find((w) => w.tier === tier);
       const wk   = weekly.find((w) => w.tier === tier);
       const quota = QUOTAS_5H[plan]?.[tier] ?? 0;
@@ -126,7 +127,7 @@ export async function quotaSnapshot(userId, plan) {
   } catch {
     // Fallback : quotas mémoire
     const result = {};
-    for (const tier of ["EXPERT", "PRICE", "NORMAL", "MINI", "NANO"]) {
+    for (const tier of ["PRO", "EXPERT", "NORMAL", "MINI", "NANO", "UNCENSORED"]) {
       result[tier] = {
         used5h:   memGet(userId, tier),
         quota5h:  QUOTAS_5H[plan]?.[tier] ?? 0,

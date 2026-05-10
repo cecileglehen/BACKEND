@@ -188,6 +188,21 @@ export async function initSchema() {
       WHERE user_id = p_user_id AND revoked_at IS NULL;
     END;
     $$;
+
+    CREATE OR REPLACE FUNCTION hard_delete_user(p_user_id UUID)
+    RETURNS void LANGUAGE plpgsql AS $$
+    BEGIN
+      DELETE FROM messages WHERE user_id = p_user_id;
+      DELETE FROM conversations WHERE user_id = p_user_id;
+      DELETE FROM api_keys WHERE user_id = p_user_id;
+      DELETE FROM usage_windows WHERE user_id = p_user_id;
+      DELETE FROM weekly_usage WHERE user_id = p_user_id;
+      DELETE FROM gdpr_consents WHERE user_id = p_user_id;
+      DELETE FROM audit_logs WHERE user_id = p_user_id;
+      DELETE FROM gdpr_requests WHERE user_id = p_user_id;
+      DELETE FROM users WHERE id = p_user_id;
+    END;
+    $$;
   `);
   console.log("✓ DB schema ready");
 }

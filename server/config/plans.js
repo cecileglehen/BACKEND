@@ -1,4 +1,4 @@
-import { findModelInCatalog, modelCreditPrice } from "./models.js";
+import { findModelInCatalog, normalizeTier } from "./models.js";
 
 // Crédits inclus par plan mensuel
 export const PLANS = {
@@ -15,29 +15,22 @@ export const FREE_TIER_ONLY_PLANS = new Set(["FREE"]);
 // Fallback tier-based si modelId inconnu (Cr / 1k tokens, in+out combinés)
 export const CREDITS_PER_1K = {
   FREE:       0,
-  NANO:       0.10,
-  MINI:       0.30,
-  NORMAL:     1.20,
-  PRICE:      0.60,
-  EXPERT:     6.00,
-  UNCENSORED: 0,
-  VENICE:     0
+  UNCENSORED: 0.10,
+  NANO:       0.20,
+  MINI:       0.80,
+  NORMAL:     4.00,
+  EXPERT:     17.00,
+  PRO:        50.00,
+  VENICE:     0.10,
+  PRICE:      17.00
 };
 
-// Calcule le coût en crédits selon le modèle (input/output séparés) ou fallback tier
+// Calcule le coût en crédits selon le tier DELT. La facturation ne dépend pas
+// du prix fournisseur : elle suit strictement CREDITS_PER_1K.
 export function computeCreditCost(tierOrModelId, tokensIn, tokensOut) {
-  // Tente match modèle exact (prix input/output précis)
   const found = findModelInCatalog(tierOrModelId);
-  if (found?.model) {
-    if (found.model.free) return 0;
-    const cr = modelCreditPrice(found.model);
-    if (cr) {
-      const cost = (tokensIn * cr.input + tokensOut * cr.output) / 1_000_000;
-      return Math.ceil(cost * 100) / 100;
-    }
-  }
-  // Fallback : tier (in+out combinés)
-  const rate = CREDITS_PER_1K[tierOrModelId] ?? 0.10;
+  const tier = normalizeTier(found?.tier || tierOrModelId);
+  const rate = CREDITS_PER_1K[tier] ?? CREDITS_PER_1K.NANO;
   return Math.ceil(((tokensIn + tokensOut) / 1000) * rate * 100) / 100;
 }
 
@@ -48,14 +41,10 @@ export { TIER_PRIMARY_MODELS as TIER_MODELS } from "./models.js";
 export const QUOTAS_5H = {};
 export const WEEKLY_EXPERT_CAP = {};
 export const FALLBACK_CHAIN = {
-  EXPERT: "NORMAL", NORMAL: "MINI", MINI: "NANO", NANO: "FREE", FREE: null
+  PRO: "EXPERT", EXPERT: "NORMAL", NORMAL: "MINI", MINI: "NANO", NANO: "FREE", FREE: null
 };
 
 export function estimateCostEur(tier, tokensIn, tokensOut) {
-  const API_COST_EUR_PER_1K = {
-    FREE: 0, NANO: 0.0004, MINI: 0.0012, NORMAL: 0.005,
-    PRICE: 0.003, EXPERT: 0.025, UNCENSORED: 0.0003, VENICE: 0.0003
-  };
-  const rate = API_COST_EUR_PER_1K[tier] ?? 0;
-  return ((tokensIn + tokensOut) / 1000) * rate;
+  const cr = computeCreditCost(tier, tokensIn, tokensOut);
+  return cr / 100;
 }

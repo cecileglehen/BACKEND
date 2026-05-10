@@ -135,8 +135,38 @@ export async function deleteUserData(userId, req) {
   const user = rows[0];
   if (!user) throw new Error("Utilisateur introuvable");
 
-  await createGdprRequest(userId, user.email, "delete", req, "Compte anonymisé depuis l'espace utilisateur");
-  await db.query(`SELECT anonymize_user($1)`, [userId]);
+  const ipHash = hashIp(req);
+  const client2 = await db.connect();
+  try {
+    await client2.query("BEGIN");
+    await client2.query(
+      `INSERT INTO gdpr_requests (user_id, email, request_type, status, notes, resolved_at)
+       VALUES ($1, $2, 'delete', 'done', 'Compte supprimé depuis l''espace utilisateur', NOW())`,
+      [userId, user.email]
+    );
+    await client2.query(
+      `INSERT INTO audit_logs (user_id, action, ip_hash, metadata)
+       VALUES ($1, 'gdpr_delete', $2, $3)`,
+      [userId, ipHash, { mode: "hard_delete" }]
+    );
+
+    await client2.query(`DELETE FROM messages WHERE user_id = $1`, [userId]);
+    await client2.query(`DELETE FROM conversations WHERE user_id = $1`, [userId]);
+    await client2.query(`DELETE FROM api_keys WHERE user_id = $1`, [userId]);
+    await client2.query(`DELETE FROM usage_windows WHERE user_id = $1`, [userId]);
+    await client2.query(`DELETE FROM weekly_usage WHERE user_id = $1`, [userId]);
+    await client2.query(`DELETE FROM gdpr_consents WHERE user_id = $1`, [userId]);
+    await client2.query(`DELETE FROM audit_logs WHERE user_id = $1`, [userId]);
+    await client2.query(`DELETE FROM gdpr_requests WHERE user_id = $1`, [userId]);
+    await client2.query(`DELETE FROM users WHERE id = $1`, [userId]);
+    await client2.query("COMMIT");
+  } catch (e) {
+    await client2.query("ROLLBACK");
+    throw e;
+  } finally {
+    client2.release();
+  }
+
   await fs.rm(path.join(CODE_SESSIONS_ROOT, userId), { recursive: true, force: true }).catch(() => {});
   return { ok: true };
 }

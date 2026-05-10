@@ -21,7 +21,8 @@ router.get("/models", requireApiKey, (_req, res) => {
         object: "model",
         owned_by: m.brand?.toLowerCase() || "delt",
         tier,
-        display: m.display
+        display: m.display,
+        ...(m.featuredLabel && { featured: m.featuredLabel })
       });
     }
   }
@@ -64,7 +65,7 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
     const estimatedCost = computeCreditCost(modelId, 1000, 500);
     if (estimatedCost > 0 && apiCredits < estimatedCost) {
       return res.status(402).json({
-        error: { message: `Insufficient API credits (${apiCredits.toFixed(1)} Cr). Transfer credits from your plan in the API tab.`, type: "insufficient_quota" }
+        error: { message: `Insufficient API credits (${apiCredits.toFixed(2)} Cr). Transfer credits from your plan in the API tab.`, type: "insufficient_quota" }
       });
     }
 

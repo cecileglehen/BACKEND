@@ -15,17 +15,20 @@ export async function getCredits(userId) {
 }
 
 export async function deductCredits(userId, amount) {
-  if (amount <= 0) return;
-  try {
-    const db = getDb();
-    await db.query(
-      `UPDATE users SET credits = GREATEST(0, credits - $2) WHERE id=$1`,
-      [userId, amount]
-    );
-    memCredits.set(userId, Math.max(0, (memCredits.get(userId) ?? 0) - amount));
-  } catch {
-    memCredits.set(userId, Math.max(0, (memCredits.get(userId) ?? 0) - amount));
+  if (amount <= 0) return getCredits(userId);
+  if (!process.env.DATABASE_URL) {
+    const next = Math.max(0, (memCredits.get(userId) ?? 0) - amount);
+    memCredits.set(userId, next);
+    return next;
   }
+  const db = getDb();
+  const { rows } = await db.query(
+    `UPDATE users SET credits = GREATEST(0, credits - $2) WHERE id=$1 RETURNING credits`,
+    [userId, amount]
+  );
+  if (!rows[0]) throw new Error("Utilisateur introuvable pour débit crédits");
+  memCredits.set(userId, Number(rows[0].credits));
+  return Number(rows[0].credits);
 }
 
 export async function hasEnoughCredits(userId, cost) {
@@ -72,12 +75,14 @@ export async function getApiCredits(userId) {
 }
 
 export async function deductApiCredits(userId, amount) {
-  if (amount <= 0) return;
+  if (amount <= 0) return getApiCredits(userId);
   const db = getDb();
-  await db.query(
-    `UPDATE users SET api_credits = GREATEST(0, api_credits - $2) WHERE id=$1`,
+  const { rows } = await db.query(
+    `UPDATE users SET api_credits = GREATEST(0, api_credits - $2) WHERE id=$1 RETURNING api_credits`,
     [userId, amount]
   );
+  if (!rows[0]) throw new Error("Utilisateur introuvable pour débit crédits API");
+  return Number(rows[0].api_credits);
 }
 
 export async function hasEnoughApiCredits(userId, cost) {

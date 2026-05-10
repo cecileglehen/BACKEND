@@ -22,14 +22,13 @@ export const CATEGORIES = {
     cost: 0,
     levelRange: [1, 3],
     models: [
-      { id: "inclusionai/ring-2.6-1t:free", brand: "InclusionAI", display: "Ring 2.6 1T", free: true, ctx: 262144 },
       { id: "openai/gpt-oss-120b:free", brand: "OpenAI", display: "GPT OSS 120B", free: true, ctx: 131072 },
       { id: "google/gemma-4-31b-it:free", brand: "Google", display: "Gemma 4 31B", free: true, ctx: 262144 }
     ]
   },
   UNCENSORED: {
     label: "UNCENSORED",
-    cost: 0,
+    cost: 0.1,
     models: [
       {
         id: "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
@@ -44,9 +43,10 @@ export const CATEGORIES = {
   },
   NANO: {
     label: "NANO",
-    cost: 1,
+    cost: 0.2,
     levelRange: [1, 3],
     models: [
+      { id: "mistralai/mistral-small-2603", brand: "Mistral", display: "Mistral Small 2603", price: { in: 0.165, out: 0.66 }, ctx: 262144, featuredLabel: "Coup de coeur · 10K tokens offerts" },
       { id: "openai/gpt-5.4-nano", brand: "OpenAI", display: "GPT-5.4 Nano", price: { in: 0.20, out: 1.25 }, ctx: 400000 },
       { id: "openai/gpt-4o-mini", brand: "OpenAI", display: "GPT-4o Mini", price: { in: 0.15, out: 0.60 }, ctx: 128000 },
       { id: "mistralai/mistral-small-4", brand: "Mistral", display: "Mistral Small 4", price: { in: 0.15, out: 0.60 }, ctx: 262144 },
@@ -55,7 +55,7 @@ export const CATEGORIES = {
   },
   MINI: {
     label: "MINI",
-    cost: 5,
+    cost: 0.8,
     levelRange: [4, 6],
     models: [
       { id: "openai/gpt-5.4-mini", brand: "OpenAI", display: "GPT-5.4 Mini", price: { in: 0.75, out: 4.50 }, ctx: 400000 },
@@ -65,7 +65,7 @@ export const CATEGORIES = {
   },
   NORMAL: {
     label: "NORMAL",
-    cost: 20,
+    cost: 4,
     levelRange: [7, 8],
     models: [
       { id: "openai/gpt-5.4", brand: "OpenAI", display: "GPT-5.4", price: { in: 2.50, out: 15.00 }, ctx: 400000 },
@@ -77,24 +77,23 @@ export const CATEGORIES = {
       { id: "perplexity/sonar", brand: "Perplexity", display: "Sonar Web Search", price: { in: 1.00, out: 1.00 }, ctx: 127072 }
     ]
   },
-  PRICE: {
-    label: "PRICE",
-    cost: 50,
-    levelRange: [9, 9],
-    models: [
-      { id: "mistralai/mistral-medium-3-5", brand: "Mistral", display: "Mistral Medium 3.5", price: { in: 1.50, out: 7.50 }, ctx: 262144 }
-    ]
-  },
   EXPERT: {
     label: "EXPERT",
-    cost: 100,
-    levelRange: [10, 10],
+    cost: 17,
+    levelRange: [9, 10],
     models: [
-      { id: "openai/gpt-5.5-pro", brand: "OpenAI", display: "GPT-5.5 Pro", price: { in: 30.00, out: 180.00 }, ctx: 400000 },
-      { id: "openai/gpt-5.4-pro", brand: "OpenAI", display: "GPT-5.4 Pro", price: { in: 30.00, out: 180.00 }, ctx: 400000 },
       { id: "anthropic/claude-opus-4-5", brand: "Anthropic", display: "Claude Opus 4.5", price: { in: 5.00, out: 25.00 }, ctx: 1000000 },
       { id: "x-ai/grok-4.20-multi-agent", brand: "DeepSearch", display: "Grok 4.20 Multi-Agent", price: { in: 2.00, out: 6.00 }, ctx: 2000000 },
       { id: "perplexity/sonar-deep-research", brand: "DeepSearch", display: "Perplexity Sonar Deep Research", price: { in: 2.00, out: 8.00 }, ctx: 128000 }
+    ]
+  },
+  PRO: {
+    label: "PRO",
+    cost: 50,
+    levelRange: [10, 10],
+    models: [
+      { id: "openai/gpt-5.5-pro", brand: "OpenAI", display: "GPT-5.5 Pro", price: { in: 30.00, out: 180.00 }, ctx: 400000 },
+      { id: "openai/gpt-5.4-pro", brand: "OpenAI", display: "GPT-5.4 Pro", price: { in: 30.00, out: 180.00 }, ctx: 400000 }
     ]
   }
 };
@@ -126,14 +125,15 @@ TIER_PRIMARY_MODELS.VENICE = TIER_PRIMARY_MODELS.UNCENSORED;
 
 export function normalizeTier(tier) {
   const value = String(tier || "NANO").toUpperCase();
-  return value === "VENICE" ? "UNCENSORED" : value;
+  if (value === "VENICE") return "UNCENSORED";
+  if (value === "PRICE") return "EXPERT";
+  return value;
 }
 
 export function categoryFromLevel(level) {
   if (level <= 3) return "NANO";
   if (level <= 6) return "MINI";
   if (level <= 8) return "NORMAL";
-  if (level <= 9) return "PRICE";
   return "EXPERT";
 }
 
@@ -168,8 +168,9 @@ export function publicCatalog() {
         {
           label: value.label,
           cost: value.cost,
+          creditPer1k: value.cost,
           levelRange: value.levelRange,
-          models: value.models.map(({ price, ...m }) => ({ ...m, cr: modelCreditPrice({ ...m, price }) }))
+          models: value.models.map(({ price, ...m }) => ({ ...m }))
         }
       ])
     ),
