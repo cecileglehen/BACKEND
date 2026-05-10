@@ -1,3 +1,5 @@
+import { findModelInCatalog, modelCreditPrice } from "./models.js";
+
 // Crédits inclus par plan mensuel
 export const PLANS = {
   FREE:  { price: 0,   credits: 0,     label: "FREE",  color: "#94a3b8", freeTierOnly: true },
@@ -10,7 +12,7 @@ export const PLANS = {
 // Plans limités aux modèles gratuits uniquement
 export const FREE_TIER_ONLY_PLANS = new Set(["FREE"]);
 
-// Coût en crédits par 1 000 tokens (in + out combinés)
+// Fallback tier-based si modelId inconnu (Cr / 1k tokens, in+out combinés)
 export const CREDITS_PER_1K = {
   FREE:       0,
   NANO:       0.10,
@@ -18,12 +20,24 @@ export const CREDITS_PER_1K = {
   NORMAL:     1.20,
   PRICE:      0.60,
   EXPERT:     6.00,
-  UNCENSORED: 0.50,
-  VENICE:     0.50
+  UNCENSORED: 0,
+  VENICE:     0
 };
 
-export function computeCreditCost(tier, tokensIn, tokensOut) {
-  const rate = CREDITS_PER_1K[tier] ?? 0.10;
+// Calcule le coût en crédits selon le modèle (input/output séparés) ou fallback tier
+export function computeCreditCost(tierOrModelId, tokensIn, tokensOut) {
+  // Tente match modèle exact (prix input/output précis)
+  const found = findModelInCatalog(tierOrModelId);
+  if (found?.model) {
+    if (found.model.free) return 0;
+    const cr = modelCreditPrice(found.model);
+    if (cr) {
+      const cost = (tokensIn * cr.input + tokensOut * cr.output) / 1_000_000;
+      return Math.ceil(cost * 100) / 100;
+    }
+  }
+  // Fallback : tier (in+out combinés)
+  const rate = CREDITS_PER_1K[tierOrModelId] ?? 0.10;
   return Math.ceil(((tokensIn + tokensOut) / 1000) * rate * 100) / 100;
 }
 

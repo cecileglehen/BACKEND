@@ -54,7 +54,7 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
     }
 
     // Vérification crédits (estimation)
-    const estimatedCost = computeCreditCost(tier, 1000, 500);
+    const estimatedCost = computeCreditCost(modelId, 1000, 500);
     if (estimatedCost > 0) {
       const ok = await hasEnoughApiCredits(req.user.id, estimatedCost);
       if (!ok) {
@@ -143,7 +143,7 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
       const tokensIn  = usage?.prompt_tokens ?? Math.ceil(JSON.stringify(messages).length / 4);
       const tokensOut = (usage?.completion_tokens ?? Math.ceil(fullContent.length / 4)) + thinkingTokens;
 
-      const creditCost = computeCreditCost(tier, tokensIn, tokensOut);
+      const creditCost = computeCreditCost(modelId, tokensIn, tokensOut);
       await deductApiCredits(req.user.id, creditCost);
       await recordUsage(req.user.id, tier, tokensIn, tokensOut);
 
@@ -158,7 +158,7 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
     const tokensIn       = usage.prompt_tokens ?? Math.ceil(JSON.stringify(messages).length / 4);
     const tokensOut      = (usage.completion_tokens ?? Math.ceil(result.content.length / 4)) + thinkingTokens;
 
-    const creditCost = computeCreditCost(tier, tokensIn, tokensOut);
+    const creditCost = computeCreditCost(result.modelUsed || modelId, tokensIn, tokensOut);
     await deductApiCredits(req.user.id, creditCost);
     await recordUsage(req.user.id, tier, tokensIn, tokensOut);
 

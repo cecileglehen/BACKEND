@@ -327,7 +327,7 @@ app.post("/api/chat", requireAuth, async (req, res) => {
     const modelInfo = selectedModel?.model || TIER_MODELS[tier];
 
     // Vérification crédits (FREE et UNCENSORED ne coûtent rien)
-    const estimatedCost = computeCreditCost(tier, 1000, 500); // estimation avant appel
+    const estimatedCost = computeCreditCost(modelInfo.id, 1000, 500); // estimation avant appel
     if (estimatedCost > 0) {
       const ok = await hasEnoughCredits(user.id, estimatedCost);
       if (!ok) {
@@ -359,8 +359,8 @@ app.post("/api/chat", requireAuth, async (req, res) => {
     const tokensOut      = (usage.completion_tokens ?? Math.ceil(result.content.length / 4)) + thinkingTokens;
     const costEur        = estimateCostEur(tier, tokensIn, tokensOut);
 
-    // Déduction crédits réels + enregistrement usage
-    const creditCost = computeCreditCost(tier, tokensIn, tokensOut);
+    // Déduction crédits réels + enregistrement usage (prix par modèle)
+    const creditCost = computeCreditCost(result.modelUsed || modelInfo.id, tokensIn, tokensOut);
     await deductCredits(user.id, creditCost);
     await recordUsage(user.id, tier, tokensIn, tokensOut);
 
@@ -409,7 +409,7 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
     const { throttled, waitMs } = checkThrottle(user.id);
     if (throttled) return res.status(429).json({ error: `Attends ${Math.ceil(waitMs / 1000)}s.`, waitMs });
 
-    const estimatedCost = computeCreditCost(inTier, 1000, 500);
+    const estimatedCost = computeCreditCost(modelInfo.id, 1000, 500);
     if (estimatedCost > 0) {
       const ok = await hasEnoughCredits(user.id, estimatedCost);
       if (!ok) {
@@ -434,7 +434,7 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
       messages: compressed,
       res,
       onDone: async ({ content, tokensIn, tokensOut, thinkingTokens }) => {
-        const creditCost = computeCreditCost(inTier, tokensIn, tokensOut);
+        const creditCost = computeCreditCost(modelInfo.id, tokensIn, tokensOut);
         await deductCredits(user.id, creditCost);
         await recordUsage(user.id, inTier, tokensIn, tokensOut);
         const creditsLeft = await getCredits(user.id);
