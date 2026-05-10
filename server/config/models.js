@@ -22,6 +22,7 @@ export const CATEGORIES = {
     cost: 0,
     levelRange: [1, 3],
     models: [
+      { id: "inclusionai/ring-2.6-1t:free", brand: "InclusionAI", display: "Ring 2.6 1T", free: true, ctx: 262144 },
       { id: "openai/gpt-oss-120b:free", brand: "OpenAI", display: "GPT OSS 120B", free: true, ctx: 131072 },
       { id: "google/gemma-4-31b-it:free", brand: "Google", display: "Gemma 4 31B", free: true, ctx: 262144 }
     ]
@@ -49,7 +50,8 @@ export const CATEGORIES = {
       { id: "mistralai/mistral-small-2603", brand: "Mistral", display: "Mistral Small 4", price: { in: 0.15, out: 0.60 }, ctx: 262144, featuredLabel: "Coup de coeur · 10K tokens offerts" },
       { id: "openai/gpt-5.4-nano", brand: "OpenAI", display: "GPT-5.4 Nano", price: { in: 0.20, out: 1.25 }, ctx: 400000 },
       { id: "openai/gpt-4o-mini", brand: "OpenAI", display: "GPT-4o Mini", price: { in: 0.15, out: 0.60 }, ctx: 128000 },
-      { id: "google/gemini-2.5-flash", brand: "Google", display: "Gemini 2.5 Flash", price: { in: 0.30, out: 2.50 }, ctx: 1048576 }
+      { id: "google/gemini-2.5-flash", brand: "Google", display: "Gemini 2.5 Flash", price: { in: 0.30, out: 2.50 }, ctx: 1048576 },
+      { id: "google/gemini-2.5-flash-lite", brand: "Google", display: "Gemini 2.5 Flash Lite", price: { in: 0.10, out: 0.40 }, ctx: 1048576 }
     ]
   },
   MINI: {
@@ -59,7 +61,9 @@ export const CATEGORIES = {
     models: [
       { id: "openai/gpt-5.4-mini", brand: "OpenAI", display: "GPT-5.4 Mini", price: { in: 0.75, out: 4.50 }, ctx: 400000 },
       { id: "openai/gpt-5.1-codex-mini", brand: "OpenAI", display: "GPT-5.1 Codex Mini", price: { in: 0.25, out: 2.00 }, ctx: 400000 },
-      { id: "mistralai/mistral-large-2512", brand: "Mistral", display: "Mistral Large 3 2512", price: { in: 0.50, out: 1.50 }, ctx: 262144 }
+      { id: "mistralai/mistral-large-2512", brand: "Mistral", display: "Mistral Large 3 2512", price: { in: 0.50, out: 1.50 }, ctx: 262144 },
+      { id: "meta-llama/llama-4-maverick", brand: "Meta", display: "Llama 4 Maverick", price: { in: 0.15, out: 0.60 }, ctx: 1048576 },
+      { id: "google/gemini-3.1-flash-lite", brand: "Google", display: "Gemini 3.1 Flash Lite", price: { in: 0.15, out: 0.60 }, ctx: 1048576 }
     ]
   },
   NORMAL: {
@@ -82,8 +86,8 @@ export const CATEGORIES = {
     levelRange: [9, 10],
     models: [
       { id: "anthropic/claude-opus-4-5", brand: "Anthropic", display: "Claude Opus 4.5", price: { in: 5.00, out: 25.00 }, ctx: 1000000 },
-      { id: "x-ai/grok-4.20-multi-agent", brand: "DeepSearch", display: "Grok 4.20 Multi-Agent", price: { in: 2.00, out: 6.00 }, ctx: 2000000 },
-      { id: "perplexity/sonar-deep-research", brand: "DeepSearch", display: "Perplexity Sonar Deep Research", price: { in: 2.00, out: 8.00 }, ctx: 128000 }
+      { id: "x-ai/grok-4.20-multi-agent", brand: "xAI", display: "Grok 4.20 Multi-Agent", price: { in: 2.00, out: 6.00 }, ctx: 2000000 },
+      { id: "perplexity/sonar-deep-research", brand: "Perplexity", display: "Sonar Deep Research", price: { in: 2.00, out: 8.00 }, ctx: 128000 }
     ]
   },
   PRO: {
@@ -100,18 +104,32 @@ export const CATEGORIES = {
 export const CREATIVE = {
   IMAGE: {
     label: "Image",
-    cost: 50,
-    model: { id: "recraft/recraft-v4", brand: "Recraft", display: "Recraft V4" }
+    // Liste complète des modèles d'image (provider + cost en Cr + tagline)
+    models: [
+      { id: "fal-ai/flux-1/schnell",                 brand: "Flux",   display: "FLUX Schnell",    provider: "fal",        cost: 5,   tagline: "Rapide & quotidien — éco" },
+      { id: "google/gemini-2.5-flash-image",         brand: "Google", display: "Nano Banana",     provider: "openrouter", cost: 8,   tagline: "Bonne qualité — usage standard" },
+      { id: "openai/gpt-5-image-mini",               brand: "OpenAI", display: "GPT Image Mini",  provider: "openrouter", cost: 10,  tagline: "Compact OpenAI — bon ratio qualité/prix" },
+      { id: "google/gemini-3.1-flash-image-preview", brand: "Google", display: "Nano Banana 2",   provider: "openrouter", cost: 20,  tagline: "Rendu presque parfait" },
+      { id: "google/gemini-3-pro-image-preview",     brand: "Google", display: "Nano Banana Pro", provider: "openrouter", cost: 35,  tagline: "Rendu parfait" },
+      { id: "openai/gpt-5-image",                    brand: "OpenAI", display: "GPT Image",       provider: "openrouter", cost: 50,  tagline: "OpenAI haut de gamme" },
+      { id: "openai/gpt-5.4-image-2",                brand: "OpenAI", display: "GPT Image 2",     provider: "openrouter", cost: 120, tagline: "Texte parfait — rendu pro" }
+    ],
+    get model() { return this.models[0]; },
+    get cost() { return this.models[0].cost; }
   },
   VIDEO: {
     label: "Vidéo",
-    cost: 250,
-    model: {
-      id: "openai/sora-2-pro",
-      brand: "OpenAI",
-      display: "Sora 2 Pro",
-      warning: "Attention : une génération avec ce modèle vous coûte 12 euros."
-    }
+    models: [
+      {
+        id: "bytedance/seedance-2.0/text-to-video",
+        brand: "ByteDance",
+        display: "Seedance 2",
+        provider: "fal",
+        // Coût dynamique : ~$0.30/s en 720p → ~50 Cr/s avec marge
+        crPerSecond720p: 50
+      }
+    ],
+    get model() { return this.models[0]; }
   }
 };
 

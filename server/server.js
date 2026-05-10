@@ -25,6 +25,8 @@ import { createSubscriptionLink, activateSubscription, handleWebhook, PAYPAL_PLA
 import { createClient } from "@supabase/supabase-js";
 import { routeMessage as groqRoute } from "./lib/router.js";
 import { createApiKey, listApiKeys, revokeApiKey } from "./lib/apiKeys.js";
+import multer from "multer";
+import { canTranscribe, addTranscriptionUsage, transcribeAudio } from "./lib/transcribe.js";
 import { deleteUserData, exportUserData, recordConsent } from "./lib/privacy.js";
 import { deleteConversation, getConversation, listConversations, saveConversation } from "./lib/conversations.js";
 import { getUserDataKey } from "./lib/cryptoBox.js";
@@ -610,57 +612,148 @@ app.post("/api/image", requireAuth, async (req, res) => {
     const prompt = String(req.body?.prompt || "").trim().slice(0, 4000);
     if (!prompt) return res.status(400).json({ error: "prompt requis" });
 
-    const key = (process.env.OPENROUTER_API_KEY || "").trim();
-    if (!key) return res.status(500).json({ error: "OPENROUTER_API_KEY manquante" });
+    const requestedModelId = String(req.body?.modelId || "").trim();
+    const imageModels = CREATIVE.IMAGE.models;
+    const chosenModel = imageModels.find((m) => m.id === requestedModelId) || imageModels[0];
+    const cost = chosenModel.cost ?? 8;
 
-    const orRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
-        "HTTP-Referer": "https://delt.ai",
-        "X-Title": "DELT AI"
-      },
-      body: JSON.stringify({
-        model: CREATIVE.IMAGE.model.id,
-        messages: [{ role: "user", content: prompt }],
-        modalities: ["image"]
-      })
-    });
-
-    if (!orRes.ok) {
-      const txt = await orRes.text().catch(() => "");
-      return res.status(orRes.status).json({ error: `OpenRouter ${orRes.status}: ${txt.slice(0, 300)}` });
+    // Vérification crédits avant appel
+    const ok = await hasEnoughCredits(req.user.id, cost);
+    if (!ok) {
+      const credits = await getCredits(req.user.id);
+      return res.status(402).json({
+        error: `Crédits insuffisants (${Number(credits).toFixed(1)} Cr restants, requis : ${cost} Cr).`
+      });
     }
-    const data = await orRes.json();
-    const url = data?.choices?.[0]?.message?.images?.[0]?.image_url?.url ?? null;
-    if (!url) return res.status(502).json({ error: "Réponse OpenRouter invalide", raw: data });
+
+    let url = null;
+    if (chosenModel.provider === "fal") {
+      // fal.ai (FLUX, etc.)
+      const { falGenerateImage } = await import("./lib/fal.js");
+      const result = await falGenerateImage(chosenModel.id, prompt);
+      url = result.url;
+    } else {
+      // OpenRouter (Gemini, etc.)
+      const key = (process.env.OPENROUTER_API_KEY || "").trim();
+      if (!key) return res.status(500).json({ error: "OPENROUTER_API_KEY manquante" });
+      const orRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${key}`,
+          "HTTP-Referer": "https://delt.ai",
+          "X-Title": "DELT AI"
+        },
+        body: JSON.stringify({
+          model: chosenModel.id,
+          messages: [{ role: "user", content: prompt }],
+          modalities: ["image"]
+        })
+      });
+      if (!orRes.ok) {
+        const txt = await orRes.text().catch(() => "");
+        return res.status(orRes.status).json({ error: `OpenRouter ${orRes.status}: ${txt.slice(0, 300)}` });
+      }
+      const data = await orRes.json();
+      url = data?.choices?.[0]?.message?.images?.[0]?.image_url?.url ?? null;
+    }
+
+    if (!url) return res.status(502).json({ error: "Réponse provider invalide" });
+
+    // Déduit le coût en crédits sur le pool plan
+    try { await deductCredits(req.user.id, cost); } catch { /* ignore */ }
 
     res.json({
-      provider: CREATIVE.IMAGE.model.id,
-      model: CREATIVE.IMAGE.model,
+      provider: chosenModel.provider,
+      model: chosenModel,
       prompt,
-      cost: CREATIVE.IMAGE.cost,
+      cost,
       url
     });
   } catch (e) {
+    console.error("[image]", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── Transcription vocale (Groq Whisper) ─────────────────────────────────────
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 } // 25 Mo (limite Whisper)
+});
+
+app.post("/api/transcribe", requireAuth, upload.single("audio"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "Fichier audio requis" });
+
+    const user = await refreshUser(req.user.id, req.user);
+    const check = await canTranscribe(user.id, user.plan);
+    if (!check.allowed) {
+      return res.status(403).json({
+        error: "Limite mensuelle atteinte (10 min). Passe au plan BASIC ou plus pour la dictée illimitée.",
+        used: check.used,
+        limit: check.limit
+      });
+    }
+
+    const result = await transcribeAudio(req.file.buffer, req.file.mimetype, req.file.originalname);
+
+    if (user.plan === "FREE") {
+      await addTranscriptionUsage(user.id, result.duration || 0);
+    }
+
+    res.json({
+      text: result.text,
+      duration: result.duration,
+      language: result.language,
+      remaining: user.plan === "FREE" ? Math.max(0, (check.remaining || 0) - (result.duration || 0)) : null
+    });
+  } catch (e) {
+    console.error("[transcribe]", e);
     res.status(500).json({ error: e.message });
   }
 });
 
 app.post("/api/video", requireAuth, async (req, res) => {
-  const prompt = String(req.body?.prompt || "").trim().slice(0, 4000);
-  if (!prompt) return res.status(400).json({ error: "prompt requis" });
-  res.json({
-    provider: CREATIVE.VIDEO.model.id,
-    model: CREATIVE.VIDEO.model,
-    prompt,
-    cost: CREATIVE.VIDEO.cost,
-    estimatedEur: 12,
-    warning: CREATIVE.VIDEO.model.warning,
-    placeholder: true,
-    note: CREATIVE.VIDEO.model.warning
-  });
+  try {
+    const prompt = String(req.body?.prompt || "").trim().slice(0, 4000);
+    if (!prompt) return res.status(400).json({ error: "prompt requis" });
+
+    const requestedModelId = String(req.body?.modelId || "").trim();
+    const videoModels = CREATIVE.VIDEO.models;
+    const chosenModel = videoModels.find((m) => m.id === requestedModelId) || videoModels[0];
+    const duration = Math.max(1, Math.min(10, Number(req.body?.duration) || 5));
+    const cost = Math.ceil((chosenModel.crPerSecond720p ?? 50) * duration);
+
+    const ok = await hasEnoughCredits(req.user.id, cost);
+    if (!ok) {
+      const credits = await getCredits(req.user.id);
+      return res.status(402).json({
+        error: `Crédits insuffisants (${Number(credits).toFixed(1)} Cr restants, requis : ${cost} Cr).`
+      });
+    }
+
+    if (chosenModel.provider !== "fal") {
+      return res.status(400).json({ error: "Provider vidéo non supporté" });
+    }
+
+    const { falGenerateVideo } = await import("./lib/fal.js");
+    const result = await falGenerateVideo(chosenModel.id, prompt, { duration, resolution: "720p" });
+
+    try { await deductCredits(req.user.id, cost); } catch { /* ignore */ }
+
+    res.json({
+      provider: chosenModel.provider,
+      model: chosenModel,
+      prompt,
+      duration,
+      cost,
+      url: result.url
+    });
+  } catch (e) {
+    console.error("[video]", e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ─── API Keys (dashboard) ────────────────────────────────────────────────────

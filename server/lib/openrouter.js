@@ -67,7 +67,13 @@ export async function streamChat({ modelId, messages, res, onDone }) {
   const orRes = await fetch(OR_URL, {
     method: "POST",
     headers: headers(key),
-    body: JSON.stringify({ model: modelId, messages, stream: true })
+    body: JSON.stringify({
+      model: modelId,
+      messages,
+      stream: true,
+      include_reasoning: true,
+      reasoning: { effort: "medium" }
+    })
   });
 
   if (!orRes.ok) {
@@ -78,14 +84,17 @@ export async function streamChat({ modelId, messages, res, onDone }) {
   const reader = orRes.body.getReader();
   const decoder = new TextDecoder();
   let fullContent = "";
+  let fullReasoning = "";
   let usage = null;
+  let buf = "";
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
 
-    const chunk = decoder.decode(value, { stream: true });
-    const lines = chunk.split("\n");
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop() ?? "";
 
     for (const line of lines) {
       if (!line.startsWith("data: ")) continue;
@@ -94,7 +103,14 @@ export async function streamChat({ modelId, messages, res, onDone }) {
 
       try {
         const json = JSON.parse(data);
-        const delta = json.choices?.[0]?.delta?.content ?? "";
+        const choice = json.choices?.[0];
+        const reasoning = choice?.delta?.reasoning ?? choice?.delta?.reasoning_content ?? "";
+        const delta = choice?.delta?.content ?? "";
+
+        if (reasoning) {
+          fullReasoning += reasoning;
+          res.write(`data: ${JSON.stringify({ type: "thinking", delta: reasoning })}\n\n`);
+        }
         if (delta) {
           fullContent += delta;
           res.write(`data: ${JSON.stringify({ delta })}\n\n`);
@@ -108,5 +124,5 @@ export async function streamChat({ modelId, messages, res, onDone }) {
   const tokensIn  = usage?.prompt_tokens ?? Math.ceil(JSON.stringify(messages).length / 4);
   const tokensOut = (usage?.completion_tokens ?? Math.ceil(fullContent.length / 4)) + thinkingTokens;
 
-  onDone({ content: fullContent, tokensIn, tokensOut, thinkingTokens });
+  onDone({ content: fullContent, reasoning: fullReasoning, tokensIn, tokensOut, thinkingTokens });
 }
