@@ -43,6 +43,7 @@ export async function initSchema() {
       plan            TEXT NOT NULL DEFAULT 'FREE',
       credits         NUMERIC(10,2) NOT NULL DEFAULT 0,
       status          TEXT NOT NULL DEFAULT 'active',
+      secret_key      TEXT,
       sub_id          TEXT,
       sub_start       TIMESTAMPTZ,
       sub_end         TIMESTAMPTZ,
@@ -56,6 +57,7 @@ export async function initSchema() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS anonymized_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS credits NUMERIC(10,2) NOT NULL DEFAULT 0;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS api_credits NUMERIC(10,2) NOT NULL DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS secret_key TEXT;
     ALTER TABLE users ALTER COLUMN plan SET DEFAULT 'FREE';
     UPDATE users SET plan = 'FREE' WHERE plan = 'LITE';
 
@@ -106,6 +108,7 @@ export async function initSchema() {
     CREATE TABLE IF NOT EXISTS conversations (
       id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id     UUID REFERENCES users(id) ON DELETE CASCADE,
+      -- title/summary sont chiffrés applicativement par le backend (enc:v1)
       title       TEXT,
       summary     TEXT,
       created_at  TIMESTAMPTZ DEFAULT NOW(),
@@ -117,6 +120,7 @@ export async function initSchema() {
       user_id     UUID REFERENCES users(id) ON DELETE CASCADE,
       conv_id     UUID REFERENCES conversations(id) ON DELETE CASCADE,
       role        TEXT NOT NULL,
+      -- content est chiffré applicativement par le backend (enc:v1)
       content     TEXT NOT NULL,
       tier_used   TEXT,
       model_id    TEXT,
@@ -166,6 +170,7 @@ export async function initSchema() {
         password = '',
         auth_provider = 'deleted',
         status = 'deleted',
+        secret_key = NULL,
         sub_id = NULL,
         credits = 0,
         api_credits = 0,

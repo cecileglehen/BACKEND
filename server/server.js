@@ -26,6 +26,8 @@ import { createClient } from "@supabase/supabase-js";
 import { routeMessage as groqRoute } from "./lib/router.js";
 import { createApiKey, listApiKeys, revokeApiKey } from "./lib/apiKeys.js";
 import { deleteUserData, exportUserData, recordConsent } from "./lib/privacy.js";
+import { deleteConversation, getConversation, listConversations, saveConversation } from "./lib/conversations.js";
+import { getUserDataKey } from "./lib/cryptoBox.js";
 import v1Router from "./routes/v1.js";
 
 const app = express();
@@ -121,6 +123,7 @@ app.post("/api/auth/google", async (req, res) => {
         );
         Object.assign(user, { plan: r.rows[0].plan });
         if (!existing.rows[0]) {
+          await getUserDataKey(r.rows[0].id);
           await recordConsent(r.rows[0].id, "terms", req);
           await recordConsent(r.rows[0].id, "privacy", req);
           await recordConsent(r.rows[0].id, "google_oauth_signup", req);
@@ -224,6 +227,46 @@ app.post("/api/credits/transfer", requireAuth, async (req, res) => {
 
 app.get("/api/catalog", (_req, res) => {
   res.json(publicCatalog());
+});
+
+// ─── Conversations chiffrées ────────────────────────────────────────────────
+
+app.get("/api/conversations", requireAuth, async (req, res) => {
+  try {
+    const conversations = await listConversations(req.user.id);
+    res.json({ conversations });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/conversations/:id", requireAuth, async (req, res) => {
+  try {
+    const conversation = await getConversation(req.user.id, req.params.id);
+    if (!conversation) return res.status(404).json({ error: "Conversation introuvable" });
+    res.json(conversation);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put("/api/conversations/:id", requireAuth, async (req, res) => {
+  try {
+    const result = await saveConversation(req.user.id, req.params.id, req.body?.messages);
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.delete("/api/conversations/:id", requireAuth, async (req, res) => {
+  try {
+    const ok = await deleteConversation(req.user.id, req.params.id);
+    if (!ok) return res.status(404).json({ error: "Conversation introuvable" });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ─── Code Studio ─────────────────────────────────────────────────────────────

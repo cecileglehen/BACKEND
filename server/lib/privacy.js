@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getDb } from "./db.js";
+import { decryptForUser, getUserDataKey } from "./cryptoBox.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CODE_SESSIONS_ROOT = path.join(__dirname, "..", "data", "code-sessions");
@@ -69,6 +70,14 @@ export async function exportUserData(userId, req) {
   );
   const user = userRows[0];
   if (!user) throw new Error("Utilisateur introuvable");
+  const userKey = await getUserDataKey(userId);
+
+  const messages = await one(
+    `SELECT conv_id, role, content, tier_used, model_id, tokens_in, tokens_out, created_at
+     FROM messages
+     WHERE user_id = $1
+     ORDER BY created_at ASC`
+  );
 
   const data = {
     exportedAt: new Date().toISOString(),
@@ -103,12 +112,7 @@ export async function exportUserData(userId, req) {
        WHERE user_id = $1
        ORDER BY updated_at DESC`
     ),
-    messages: await one(
-      `SELECT conv_id, role, content, tier_used, model_id, tokens_in, tokens_out, created_at
-       FROM messages
-       WHERE user_id = $1
-       ORDER BY created_at ASC`
-    ),
+    messages: messages.map((message) => ({ ...message, content: decryptForUser(message.content, userKey) })),
     gdprRequests: await one(
       `SELECT id, request_type, status, notes, created_at, resolved_at
        FROM gdpr_requests

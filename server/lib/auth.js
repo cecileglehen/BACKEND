@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { getDb } from "./db.js";
 import { recordConsent } from "./privacy.js";
+import { getUserDataKey } from "./cryptoBox.js";
 
 const JWT_SECRET = () => {
   const s = process.env.JWT_SECRET;
@@ -24,6 +25,7 @@ export async function register(email, password, { termsAccepted = false, privacy
     await recordConsent(rows[0].id, "terms", req);
     await recordConsent(rows[0].id, "privacy", req);
   }
+  await getUserDataKey(rows[0].id);
   return rows[0];
 }
 
