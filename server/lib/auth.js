@@ -56,6 +56,30 @@ export function requireAuth(req, res, next) {
   }
 }
 
+// Auth via API key (sk-delt-xxx) — pour l'API publique /v1
+export async function requireApiKey(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header?.startsWith("Bearer ")) {
+    return res.status(401).json({
+      error: { message: "Missing API key. Pass it as 'Authorization: Bearer sk-delt-...'.", type: "authentication_error" }
+    });
+  }
+  const rawKey = header.slice(7).trim();
+  try {
+    const { verifyApiKey } = await import("./apiKeys.js");
+    const user = await verifyApiKey(rawKey);
+    if (!user) {
+      return res.status(401).json({
+        error: { message: "Invalid API key.", type: "authentication_error" }
+      });
+    }
+    req.user = user;
+    next();
+  } catch (e) {
+    res.status(500).json({ error: { message: e.message, type: "server_error" } });
+  }
+}
+
 // Recharge le user depuis la DB — fallback sur le JWT si DB indisponible
 export async function refreshUser(userId, fallback = null) {
   try {

@@ -24,6 +24,8 @@ import { CREATIVE, findModelInCatalog, normalizeTier, publicCatalog } from "./co
 import { createSubscriptionLink, activateSubscription, handleWebhook, PAYPAL_PLAN_IDS } from "./lib/paypal.js";
 import { createClient } from "@supabase/supabase-js";
 import { routeMessage as groqRoute } from "./lib/router.js";
+import { createApiKey, listApiKeys, revokeApiKey } from "./lib/apiKeys.js";
+import v1Router from "./routes/v1.js";
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
@@ -532,6 +534,40 @@ app.post("/api/video", requireAuth, async (req, res) => {
     note: CREATIVE.VIDEO.model.warning
   });
 });
+
+// ─── API Keys (dashboard) ────────────────────────────────────────────────────
+
+app.get("/api/keys", requireAuth, async (req, res) => {
+  try {
+    const keys = await listApiKeys(req.user.id);
+    res.json({ keys });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/keys", requireAuth, async (req, res) => {
+  try {
+    const name = String(req.body?.name || "").trim().slice(0, 100) || null;
+    const key = await createApiKey(req.user.id, name);
+    res.json(key);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/keys/:id", requireAuth, async (req, res) => {
+  try {
+    const ok = await revokeApiKey(req.user.id, req.params.id);
+    if (!ok) return res.status(404).json({ error: "Clé introuvable" });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── API publique /v1 (compatible OpenAI) ────────────────────────────────────
+app.use("/v1", v1Router);
 
 // ─── Health ──────────────────────────────────────────────────────────────────
 
