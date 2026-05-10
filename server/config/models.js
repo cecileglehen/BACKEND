@@ -3,10 +3,9 @@
 //
 // Conversion crédits :
 //   1 Cr = 0.01€ ≈ $0.0091 (taux 1.10 USD/EUR)
-//   Marge DELT vs OpenRouter ≈ 55%
-//   → 1 USD/1M tokens ≈ 176 Cr/1M tokens (marge 55% incluse sur ULTRA)
+//   → 1 USD/1M tokens ≈ 176 Cr/1M tokens
 
-export const CR_PER_USD = 176; // crédits DELT par dollar OpenRouter (marge 55% incluse)
+export const CR_PER_USD = 176; // crédits DELT par dollar fournisseur
 
 // Calcule le prix d'un modèle en Cr par 1M tokens (input + output)
 export function modelCreditPrice(model) {
@@ -170,13 +169,11 @@ export function publicCatalog() {
           label: value.label,
           cost: value.cost,
           levelRange: value.levelRange,
-          models: value.models.map((m) => ({ ...m, cr: modelCreditPrice(m) }))
+          models: value.models.map(({ price, ...m }) => ({ ...m, cr: modelCreditPrice({ ...m, price }) }))
         }
       ])
     ),
     creative: CREATIVE,
-    crPerUsd: CR_PER_USD,
-    crPerEur: 100,        // 1€ = 100 Cr (top-up rate)
-    marginPercent: 55      // marge DELT vs OpenRouter
+    crPerEur: 100        // 1€ = 100 Cr (top-up rate)
   };
 }
