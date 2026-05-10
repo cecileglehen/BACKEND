@@ -14,7 +14,7 @@ import { register, login, signToken, requireAuth, refreshUser, verifyToken } fro
 import { routeMessage } from "./lib/router.js";
 import { chatWithFallback, streamChat } from "./lib/openrouter.js";
 import { recordUsage, quotaSnapshot, resolveTier } from "./lib/windows.js";
-import { getCredits, deductCredits, hasEnoughCredits, grantPlanCredits, resetMonthlyCredits } from "./lib/credits.js";
+import { getCredits, deductCredits, hasEnoughCredits, grantPlanCredits, resetMonthlyCredits, getApiCredits, transferCredits } from "./lib/credits.js";
 import { computeCreditCost, FREE_TIER_ONLY_PLANS } from "./config/plans.js";
 import { checkThrottle } from "./lib/throttle.js";
 import { compressIfNeeded } from "./lib/context.js";
@@ -162,9 +162,29 @@ app.get("/api/quota", requireAuth, async (req, res) => {
   try {
     const user = await refreshUser(req.user.id, req.user);
     const credits = await getCredits(user.id);
-    res.json({ plan: user.plan, credits });
+    const apiCredits = await getApiCredits(user.id);
+    res.json({ plan: user.plan, credits, apiCredits });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// Transfert plan ↔ API
+app.post("/api/credits/transfer", requireAuth, async (req, res) => {
+  try {
+    const { amount, direction = "to_api" } = req.body ?? {};
+    const n = Number(amount);
+    if (!Number.isFinite(n) || n <= 0) {
+      return res.status(400).json({ error: "Montant invalide" });
+    }
+    const result = await transferCredits(req.user.id, n, direction === "to_api");
+    res.json({
+      ok: true,
+      credits: Number(result.credits),
+      apiCredits: Number(result.api_credits)
+    });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
   }
 });
 

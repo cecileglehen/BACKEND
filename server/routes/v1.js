@@ -4,7 +4,7 @@
 import express from "express";
 import { requireApiKey } from "../lib/auth.js";
 import { chatWithFallback, streamChat } from "../lib/openrouter.js";
-import { getCredits, deductCredits, hasEnoughCredits } from "../lib/credits.js";
+import { getApiCredits, deductApiCredits, hasEnoughApiCredits } from "../lib/credits.js";
 import { computeCreditCost, FREE_TIER_ONLY_PLANS } from "../config/plans.js";
 import { CATEGORIES, findModelInCatalog, normalizeTier } from "../config/models.js";
 import { recordUsage } from "../lib/windows.js";
@@ -56,11 +56,11 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
     // Vérification crédits (estimation)
     const estimatedCost = computeCreditCost(tier, 1000, 500);
     if (estimatedCost > 0) {
-      const ok = await hasEnoughCredits(req.user.id, estimatedCost);
+      const ok = await hasEnoughApiCredits(req.user.id, estimatedCost);
       if (!ok) {
-        const credits = await getCredits(req.user.id);
+        const credits = await getApiCredits(req.user.id);
         return res.status(402).json({
-          error: { message: `Insufficient credits (${credits.toFixed(1)} Cr remaining).`, type: "insufficient_quota" }
+          error: { message: `Insufficient API credits (${credits.toFixed(1)} Cr). Transfer credits from your plan in the API tab.`, type: "insufficient_quota" }
         });
       }
     }
@@ -144,7 +144,7 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
       const tokensOut = (usage?.completion_tokens ?? Math.ceil(fullContent.length / 4)) + thinkingTokens;
 
       const creditCost = computeCreditCost(tier, tokensIn, tokensOut);
-      await deductCredits(req.user.id, creditCost);
+      await deductApiCredits(req.user.id, creditCost);
       await recordUsage(req.user.id, tier, tokensIn, tokensOut);
 
       return res.end();
@@ -159,7 +159,7 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
     const tokensOut      = (usage.completion_tokens ?? Math.ceil(result.content.length / 4)) + thinkingTokens;
 
     const creditCost = computeCreditCost(tier, tokensIn, tokensOut);
-    await deductCredits(req.user.id, creditCost);
+    await deductApiCredits(req.user.id, creditCost);
     await recordUsage(req.user.id, tier, tokensIn, tokensOut);
 
     res.json({

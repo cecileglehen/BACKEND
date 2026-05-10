@@ -59,3 +59,72 @@ export async function resetMonthlyCredits(userId, plan) {
     );
   } catch { /* ignore */ }
 }
+
+// ─── Crédits API (pool séparé pour /v1) ──────────────────────────────────────
+export async function getApiCredits(userId) {
+  try {
+    const db = getDb();
+    const { rows } = await db.query(`SELECT api_credits FROM users WHERE id=$1`, [userId]);
+    return Number(rows[0]?.api_credits ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
+export async function deductApiCredits(userId, amount) {
+  if (amount <= 0) return;
+  const db = getDb();
+  await db.query(
+    `UPDATE users SET api_credits = GREATEST(0, api_credits - $2) WHERE id=$1`,
+    [userId, amount]
+  );
+}
+
+export async function hasEnoughApiCredits(userId, cost) {
+  if (cost <= 0) return true;
+  const credits = await getApiCredits(userId);
+  return credits >= cost;
+}
+
+// Transfère X Cr du pool plan vers le pool API (ou inverse si toApi=false)
+export async function transferCredits(userId, amount, toApi = true) {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Montant invalide");
+  }
+  const db = getDb();
+  // Transaction atomique
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    if (toApi) {
+      const { rows } = await client.query(
+        `UPDATE users
+           SET credits = credits - $2,
+               api_credits = api_credits + $2
+         WHERE id = $1 AND credits >= $2
+         RETURNING credits, api_credits`,
+        [userId, amount]
+      );
+      if (!rows[0]) throw new Error("Crédits plan insuffisants");
+      await client.query("COMMIT");
+      return rows[0];
+    } else {
+      const { rows } = await client.query(
+        `UPDATE users
+           SET api_credits = api_credits - $2,
+               credits = credits + $2
+         WHERE id = $1 AND api_credits >= $2
+         RETURNING credits, api_credits`,
+        [userId, amount]
+      );
+      if (!rows[0]) throw new Error("Crédits API insuffisants");
+      await client.query("COMMIT");
+      return rows[0];
+    }
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+}
