@@ -458,10 +458,43 @@ app.get("/api/subscribe/confirm", requireAuth, async (req, res) => {
     const sub = req.query.sub || req.query.subscription_id;
     if (!plan || !sub) return res.status(400).json({ error: "plan + sub requis" });
     await activateSubscription(req.user.id, sub, plan.toUpperCase());
+    const { grantPlanCredits } = await import("./lib/credits.js");
+    await grantPlanCredits(req.user.id, plan.toUpperCase());
     res.json({ ok: true, plan: plan.toUpperCase() });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// Activate via JS SDK (popup) — pas de redirect
+app.post("/api/subscribe/activate", requireAuth, async (req, res) => {
+  try {
+    const { plan, subscriptionId } = req.body ?? {};
+    if (!plan || !subscriptionId) return res.status(400).json({ error: "plan + subscriptionId requis" });
+    await activateSubscription(req.user.id, subscriptionId, plan.toUpperCase());
+    const { grantPlanCredits } = await import("./lib/credits.js");
+    await grantPlanCredits(req.user.id, plan.toUpperCase());
+    res.json({ ok: true, plan: plan.toUpperCase() });
+  } catch (e) {
+    console.error("[subscribe/activate]", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Config publique PayPal pour le frontend (clientId + plan IDs selon le mode)
+app.get("/api/paypal/config", (_req, res) => {
+  const isSandbox = process.env.PAYPAL_MODE === "sandbox";
+  const prefix = isSandbox ? "SAND_PAYPAL_" : "PAYPAL_";
+  res.json({
+    clientId: process.env[`${prefix}CLIENT_ID`] || null,
+    mode: isSandbox ? "sandbox" : "live",
+    plans: {
+      BASIC: process.env[`${prefix}PLAN_BASIC`] || null,
+      PLUS:  process.env[`${prefix}PLAN_PLUS`]  || null,
+      PRO:   process.env[`${prefix}PLAN_PRO`]   || null,
+      ULTRA: process.env[`${prefix}PLAN_ULTRA`] || null
+    }
+  });
 });
 
 // Webhook PayPal (configurer l'URL dans le dashboard PayPal)
