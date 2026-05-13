@@ -12,6 +12,22 @@ export const PLANS = {
 // Plans limités aux modèles gratuits uniquement
 export const FREE_TIER_ONLY_PLANS = new Set(["FREE"]);
 
+// Limites des pièces jointes par plan
+//  - attachmentsPerConv  : nombre max de fichiers par conversation
+//  - pdfMaxPages         : nombre max de pages PDF lues (le reste est ignoré)
+//  - maxFileSizeMB       : taille max d'un fichier en MB
+export const PLAN_LIMITS = {
+  FREE:  { attachmentsPerConv: 2,   pdfMaxPages: 1,   maxFileSizeMB: 5  },
+  BASIC: { attachmentsPerConv: 10,  pdfMaxPages: 3,   maxFileSizeMB: 10 },
+  PLUS:  { attachmentsPerConv: 25,  pdfMaxPages: 10,  maxFileSizeMB: 20 },
+  PRO:   { attachmentsPerConv: 60,  pdfMaxPages: 30,  maxFileSizeMB: 40 },
+  ULTRA: { attachmentsPerConv: 200, pdfMaxPages: 100, maxFileSizeMB: 80 }
+};
+
+export function getPlanLimits(plan) {
+  return PLAN_LIMITS[plan] || PLAN_LIMITS.FREE;
+}
+
 // Fallback tier-based si modelId inconnu (Cr / 1k tokens, in+out combinés)
 export const CREDITS_PER_1K = {
   FREE:       0,

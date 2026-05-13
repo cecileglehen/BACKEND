@@ -479,6 +479,26 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
 
     const user = await refreshUser(req.user.id, req.user);
 
+    // ─── Traitement des pièces jointes ──────────────────────────────────────
+    // Vérifie la limite par conversation et convertit chaque message qui en a
+    const { getPlanLimits } = await import("./config/plans.js");
+    const { buildMessageContent } = await import("./lib/attachments.js");
+    const planLimits = getPlanLimits(user.plan);
+    const totalAttachments = messages.reduce((sum, m) => sum + (Array.isArray(m.attachments) ? m.attachments.length : 0), 0);
+    if (totalAttachments > planLimits.attachmentsPerConv) {
+      return res.status(403).json({
+        error: `Limite de pièces jointes dépassée (${totalAttachments}/${planLimits.attachmentsPerConv} pour le plan ${user.plan}). Passe à un plan supérieur pour plus.`
+      });
+    }
+
+    // Reconstruit les messages avec le format multimodal si attachments présents
+    for (const m of messages) {
+      if (Array.isArray(m.attachments) && m.attachments.length > 0) {
+        m.content = buildMessageContent(m.content || "", m.attachments);
+        delete m.attachments;
+      }
+    }
+
     const isFreePlan = FREE_TIER_ONLY_PLANS.has(user.plan);
     const isFreeNanoModel = modelInfo.id === FREE_NANO_MODEL_ID;
     if (isFreePlan && inTier !== "FREE" && inTier !== "UNCENSORED" && !isFreeNanoModel) {
@@ -736,6 +756,25 @@ app.post("/api/image", requireAuth, async (req, res) => {
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024 } // 25 Mo (limite Whisper)
+});
+
+// Upload pour pièces jointes (max 100 MB, on filtre par plan ensuite)
+const uploadAttachment = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 }
+});
+
+app.post("/api/upload", requireAuth, uploadAttachment.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "Fichier requis" });
+    const user = await refreshUser(req.user.id, req.user);
+    const { parseAttachment } = await import("./lib/attachments.js");
+    const parsed = await parseAttachment(req.file.buffer, req.file, user.plan);
+    res.json(parsed);
+  } catch (e) {
+    console.error("[upload]", e);
+    res.status(400).json({ error: e.message });
+  }
 });
 
 app.post("/api/transcribe", requireAuth, upload.single("audio"), async (req, res) => {

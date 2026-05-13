@@ -64,7 +64,8 @@ export const CATEGORIES = {
       { id: "openai/gpt-5.1-codex-mini", brand: "OpenAI", display: "GPT-5.1 Codex Mini", price: { in: 0.25, out: 2.00 }, ctx: 400000 },
       { id: "mistralai/mistral-large-2512", brand: "Mistral", display: "Mistral Large 3 2512", price: { in: 0.50, out: 1.50 }, ctx: 262144 },
       { id: "meta-llama/llama-4-maverick", brand: "Meta", display: "Llama 4 Maverick", price: { in: 0.15, out: 0.60 }, ctx: 1048576 },
-      { id: "google/gemini-3.1-flash-lite", brand: "Google", display: "Gemini 3.1 Flash Lite", price: { in: 0.15, out: 0.60 }, ctx: 1048576 }
+      { id: "google/gemini-3.1-flash-lite", brand: "Google", display: "Gemini 3.1 Flash Lite", price: { in: 0.15, out: 0.60 }, ctx: 1048576 },
+      { id: "anthropic/claude-haiku-4.5", brand: "Anthropic", display: "Claude Haiku 4.5", price: { in: 1.00, out: 5.00 }, ctx: 200000 }
     ]
   },
   NORMAL: {
