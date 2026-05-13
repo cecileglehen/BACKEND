@@ -64,6 +64,8 @@ export async function streamChat({ modelId, messages, res, onDone }) {
   const key = (process.env.OPENROUTER_API_KEY || "").trim();
   if (!key) throw new Error("OPENROUTER_API_KEY manquante");
 
+  const isPerplexity = /perplexity\/sonar/i.test(modelId);
+
   const orRes = await fetch(OR_URL, {
     method: "POST",
     headers: headers(key),
@@ -81,11 +83,18 @@ export async function streamChat({ modelId, messages, res, onDone }) {
     throw new Error(`OpenRouter ${orRes.status}: ${txt.slice(0, 200)}`);
   }
 
+  // Notification : Sonar lance une recherche web
+  if (isPerplexity) {
+    res.write(`data: ${JSON.stringify({ type: "websearch", status: "searching" })}\n\n`);
+  }
+
   const reader = orRes.body.getReader();
   const decoder = new TextDecoder();
   let fullContent = "";
   let fullReasoning = "";
   let usage = null;
+  let citations = [];
+  let searchResults = [];
   let buf = "";
 
   while (true) {
@@ -107,6 +116,18 @@ export async function streamChat({ modelId, messages, res, onDone }) {
         const reasoning = choice?.delta?.reasoning ?? choice?.delta?.reasoning_content ?? "";
         const delta = choice?.delta?.content ?? "";
 
+        // Capture citations (Perplexity Sonar) — peut être top-level ou dans message
+        const chunkCitations = json.citations ?? choice?.message?.citations ?? choice?.delta?.citations;
+        if (Array.isArray(chunkCitations) && chunkCitations.length > 0) {
+          citations = chunkCitations;
+        }
+        const chunkSearchResults = json.search_results ?? choice?.message?.search_results;
+        if (Array.isArray(chunkSearchResults) && chunkSearchResults.length > 0) {
+          searchResults = chunkSearchResults;
+          // Notifie le frontend des sources trouvées (les premières)
+          res.write(`data: ${JSON.stringify({ type: "websearch", status: "found", count: searchResults.length, results: searchResults.slice(0, 5) })}\n\n`);
+        }
+
         if (reasoning) {
           fullReasoning += reasoning;
           res.write(`data: ${JSON.stringify({ type: "thinking", delta: reasoning })}\n\n`);
@@ -120,9 +141,15 @@ export async function streamChat({ modelId, messages, res, onDone }) {
     }
   }
 
+  // Envoie les citations finales si Sonar a renvoyé des URLs sans search_results
+  if (isPerplexity && citations.length > 0 && searchResults.length === 0) {
+    const fallback = citations.map((url) => ({ url, title: url }));
+    res.write(`data: ${JSON.stringify({ type: "websearch", status: "found", count: fallback.length, results: fallback })}\n\n`);
+  }
+
   const thinkingTokens = usage?.completion_tokens_details?.reasoning_tokens ?? 0;
   const tokensIn  = usage?.prompt_tokens ?? Math.ceil(JSON.stringify(messages).length / 4);
   const tokensOut = (usage?.completion_tokens ?? Math.ceil(fullContent.length / 4)) + thinkingTokens;
 
-  onDone({ content: fullContent, reasoning: fullReasoning, tokensIn, tokensOut, thinkingTokens });
+  onDone({ content: fullContent, reasoning: fullReasoning, tokensIn, tokensOut, thinkingTokens, citations, searchResults });
 }

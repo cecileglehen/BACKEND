@@ -277,7 +277,8 @@ app.post("/api/code/session", requireAuth, async (req, res) => {
   try {
     const prompt = String(req.body?.prompt || "").trim();
     if (!prompt) return res.status(400).json({ error: "prompt requis" });
-    const session = await createCodeSession(req.user.id, prompt);
+    const modelId = String(req.body?.modelId || "").trim() || undefined;
+    const session = await createCodeSession(req.user.id, prompt, modelId);
     res.json(session);
   } catch (e) {
     console.error("[code/session]", e);
@@ -289,7 +290,8 @@ app.post("/api/code/session/:id/edit", requireAuth, async (req, res) => {
   try {
     const prompt = String(req.body?.prompt || "").trim();
     if (!prompt) return res.status(400).json({ error: "prompt requis" });
-    const session = await editCodeSession(req.user.id, req.params.id, prompt);
+    const modelId = String(req.body?.modelId || "").trim() || undefined;
+    const session = await editCodeSession(req.user.id, req.params.id, prompt, modelId);
     res.json(session);
   } catch (e) {
     console.error("[code/edit]", e);
@@ -765,6 +767,55 @@ app.post("/api/video", requireAuth, async (req, res) => {
     });
   } catch (e) {
     console.error("[video]", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── Musique (Suno) ──────────────────────────────────────────────────────────
+app.post("/api/music", requireAuth, async (req, res) => {
+  try {
+    const prompt = String(req.body?.prompt || "").trim().slice(0, 3000);
+    if (!prompt) return res.status(400).json({ error: "prompt requis" });
+
+    const musicModel = CREATIVE.MUSIC.models[0];
+    const cost = musicModel.cost;
+
+    const ok = await hasEnoughCredits(req.user.id, cost);
+    if (!ok) {
+      const credits = await getCredits(req.user.id);
+      return res.status(402).json({
+        error: `Crédits insuffisants (${Number(credits).toFixed(1)} Cr restants, requis : ${cost} Cr).`
+      });
+    }
+
+    const { sunoGenerate } = await import("./lib/suno.js");
+    const result = await sunoGenerate({
+      customMode:         req.body?.customMode ?? true,
+      instrumental:       Boolean(req.body?.instrumental),
+      model:              req.body?.model || "V5_5",
+      prompt,
+      style:              req.body?.style || "Pop",
+      title:              req.body?.title || prompt.slice(0, 60),
+      personaId:          req.body?.personaId,
+      personaModel:       req.body?.personaModel,
+      negativeTags:       req.body?.negativeTags,
+      vocalGender:        req.body?.vocalGender,
+      styleWeight:        req.body?.styleWeight,
+      weirdnessConstraint:req.body?.weirdnessConstraint,
+      audioWeight:        req.body?.audioWeight
+    });
+
+    try { await deductCredits(req.user.id, cost); } catch { /* ignore */ }
+
+    res.json({
+      provider: "suno",
+      model: musicModel,
+      taskId: result.taskId,
+      tracks: result.tracks,
+      cost
+    });
+  } catch (e) {
+    console.error("[music]", e);
     res.status(500).json({ error: e.message });
   }
 });

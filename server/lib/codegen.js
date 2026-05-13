@@ -7,7 +7,9 @@ import { zipDirectory } from "./zip.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SESSIONS_ROOT = path.join(__dirname, "..", "data", "code-sessions");
 const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
-const RING_MODEL = "inclusionai/ring-2.6-1t:free";
+const RING_MODEL    = "inclusionai/ring-2.6-1t:free";
+const MISTRAL_MODEL = "mistralai/mistral-small-2603";
+const ALLOWED_CODE_MODELS = new Set([RING_MODEL, MISTRAL_MODEL]);
 const MAX_FILE_BYTES = 500_000;
 const MAX_TOTAL_BYTES = 2_000_000;
 const MAX_ACTIONS = 80;
@@ -54,12 +56,13 @@ function parseJsonObject(raw) {
   }
 }
 
-async function requestRing(prompt, jsonMode = true) {
+async function requestRing(prompt, jsonMode = true, modelId = RING_MODEL) {
   const key = (process.env.OPENROUTER_API_KEY || "").trim();
   if (!key) throw new Error("OPENROUTER_API_KEY manquante");
+  const model = ALLOWED_CODE_MODELS.has(modelId) ? modelId : RING_MODEL;
 
   const body = {
-    model: RING_MODEL,
+    model,
     temperature: 0.2,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
@@ -89,13 +92,13 @@ async function requestRing(prompt, jsonMode = true) {
   return res.json();
 }
 
-async function callRing(prompt) {
+async function callRing(prompt, modelId = RING_MODEL) {
   let data;
   try {
-    data = await requestRing(prompt, true);
+    data = await requestRing(prompt, true, modelId);
   } catch (e) {
     if (![400, 422].includes(e.status)) throw e;
-    data = await requestRing(prompt, false);
+    data = await requestRing(prompt, false, modelId);
   }
 
   const content = data?.choices?.[0]?.message?.content ?? "";
@@ -191,19 +194,19 @@ async function readProjectContext(root) {
   return snippets.join("\n\n");
 }
 
-export async function createCodeSession(userId, prompt) {
+export async function createCodeSession(userId, prompt, modelId = RING_MODEL) {
   const id = crypto.randomUUID();
   const root = path.join(SESSIONS_ROOT, String(userId), id);
   await fs.mkdir(root, { recursive: true });
 
-  const { plan, raw } = await callRing(prompt);
+  const { plan, raw } = await callRing(prompt, modelId);
   await applyActions(root, plan.actions);
   const files = await listProjectFiles(root);
   const tokensOut = raw?.usage?.completion_tokens ?? Math.ceil(JSON.stringify(plan).length / 4);
 
   return {
     id,
-    model: RING_MODEL,
+    model: modelId,
     summary: String(plan.summary || "Projet généré par Ring"),
     run: plan.run ?? null,
     files,
@@ -211,7 +214,7 @@ export async function createCodeSession(userId, prompt) {
   };
 }
 
-export async function editCodeSession(userId, sessionId, prompt) {
+export async function editCodeSession(userId, sessionId, prompt, modelId = RING_MODEL) {
   const id = String(sessionId || "");
   if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Session invalide");
   const root = path.join(SESSIONS_ROOT, String(userId), id);
@@ -219,14 +222,14 @@ export async function editCodeSession(userId, sessionId, prompt) {
 
   const currentProject = await readProjectContext(root);
   const editPrompt = `Projet actuel:\n${currentProject}\n\nModification demandée:\n${String(prompt || "").slice(0, 12000)}\n\nRéponds avec le même JSON d'actions. Modifie uniquement ce qui est nécessaire.`;
-  const { plan, raw } = await callRing(editPrompt);
+  const { plan, raw } = await callRing(editPrompt, modelId);
   await applyActions(root, plan.actions);
   const files = await listProjectFiles(root);
   const tokensOut = raw?.usage?.completion_tokens ?? Math.ceil(JSON.stringify(plan).length / 4);
 
   return {
     id,
-    model: RING_MODEL,
+    model: modelId,
     summary: String(plan.summary || "Projet modifié par Ring"),
     run: plan.run ?? null,
     files,

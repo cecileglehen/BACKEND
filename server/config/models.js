@@ -131,6 +131,21 @@ export const CREATIVE = {
       }
     ],
     get model() { return this.models[0]; }
+  },
+  MUSIC: {
+    label: "Musique",
+    models: [
+      {
+        id: "suno/v5.5",
+        brand: "Suno",
+        display: "Suno V5.5",
+        provider: "suno",
+        cost: 50,
+        tagline: "Génération musicale ~1-3 min · 2 pistes"
+      }
+    ],
+    get model() { return this.models[0]; },
+    get cost() { return this.models[0].cost; }
   }
 };
 

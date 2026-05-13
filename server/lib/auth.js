@@ -9,7 +9,7 @@ const JWT_SECRET = () => {
   if (!s) throw new Error("JWT_SECRET manquant dans .env");
   return s;
 };
-const JWT_EXPIRES = "30d";
+const JWT_EXPIRES = "365d";
 
 export async function register(email, password, { termsAccepted = false, privacyAccepted = false, req = null } = {}) {
   if (!termsAccepted || !privacyAccepted) {
