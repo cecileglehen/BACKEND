@@ -503,7 +503,7 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
       }
     }
 
-    const compressed = await compressIfNeeded(messages);
+    let compressed = await compressIfNeeded(messages);
 
     // SSE headers
     res.setHeader("Content-Type", "text/event-stream");
@@ -513,6 +513,36 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
 
     // Envoie les métadonnées initiales
     res.write(`data: ${JSON.stringify({ type: "meta", tier: inTier, model: modelInfo })}\n\n`);
+
+    // ─── Détection auto de recherche web ───────────────────────────────────
+    // Skip si déjà un modèle Sonar (gère son propre web search)
+    const isSonar = /perplexity\/sonar/i.test(modelInfo.id);
+    const userLastMsg = [...compressed].reverse().find((m) => m.role === "user")?.content || "";
+    const { shouldSearchHeuristic, performWebSearch, buildSearchSystemPrompt } = await import("./lib/websearch.js");
+    const decision = shouldSearchHeuristic(userLastMsg);
+
+    if (!isSonar && decision.needsSearch && (process.env.SERPER_API_KEY || "").trim()) {
+      // Notifie le frontend : recherche en cours
+      res.write(`data: ${JSON.stringify({ type: "websearch", status: "searching" })}\n\n`);
+
+      const searchData = await performWebSearch(userLastMsg);
+      if (searchData?.results?.length > 0) {
+        // Notifie le frontend : sources trouvées
+        res.write(`data: ${JSON.stringify({
+          type: "websearch",
+          status: "found",
+          count: searchData.results.length,
+          results: searchData.results.slice(0, 8).map((r) => ({ title: r.title, url: r.url, snippet: r.snippet }))
+        })}\n\n`);
+
+        // Injecte un system message avec le contexte de recherche
+        const systemPrompt = buildSearchSystemPrompt(searchData.contextText);
+        compressed = [
+          { role: "system", content: systemPrompt },
+          ...compressed
+        ];
+      }
+    }
 
     await streamChat({
       modelId: modelInfo.id,

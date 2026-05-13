@@ -140,7 +140,7 @@ export const CREATIVE = {
         brand: "Suno",
         display: "Suno V5.5",
         provider: "suno",
-        cost: 50,
+        cost: 25,
         tagline: "Génération musicale ~1-3 min · 2 pistes"
       }
     ],
