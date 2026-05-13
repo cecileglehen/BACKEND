@@ -515,19 +515,28 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
     res.write(`data: ${JSON.stringify({ type: "meta", tier: inTier, model: modelInfo })}\n\n`);
 
     // ─── Détection auto de recherche web ───────────────────────────────────
-    // Skip si déjà un modèle Sonar (gère son propre web search)
     const isSonar = /perplexity\/sonar/i.test(modelInfo.id);
     const userLastMsg = [...compressed].reverse().find((m) => m.role === "user")?.content || "";
+    const hasSerperKey = Boolean((process.env.SERPER_API_KEY || "").trim());
+
     const { shouldSearchHeuristic, performWebSearch, buildSearchSystemPrompt } = await import("./lib/websearch.js");
     const decision = shouldSearchHeuristic(userLastMsg);
 
-    if (!isSonar && decision.needsSearch && (process.env.SERPER_API_KEY || "").trim()) {
-      // Notifie le frontend : recherche en cours
+    console.log("[websearch] decision:", {
+      isSonar,
+      hasSerperKey,
+      userMsgPreview: userLastMsg.slice(0, 80),
+      decision
+    });
+
+    if (!isSonar && decision.needsSearch && hasSerperKey) {
+      console.log("[websearch] → lancement Serper pour:", userLastMsg.slice(0, 100));
       res.write(`data: ${JSON.stringify({ type: "websearch", status: "searching" })}\n\n`);
 
       const searchData = await performWebSearch(userLastMsg);
+      console.log("[websearch] résultats:", searchData?.results?.length ?? 0);
+
       if (searchData?.results?.length > 0) {
-        // Notifie le frontend : sources trouvées
         res.write(`data: ${JSON.stringify({
           type: "websearch",
           status: "found",
@@ -535,13 +544,15 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
           results: searchData.results.slice(0, 8).map((r) => ({ title: r.title, url: r.url, snippet: r.snippet }))
         })}\n\n`);
 
-        // Injecte un system message avec le contexte de recherche
         const systemPrompt = buildSearchSystemPrompt(searchData.contextText);
         compressed = [
           { role: "system", content: systemPrompt },
           ...compressed
         ];
+        console.log("[websearch] system prompt injecté (longueur:", systemPrompt.length, "chars)");
       }
+    } else if (decision.needsSearch && !hasSerperKey) {
+      console.warn("[websearch] ⚠ Détection positive mais SERPER_API_KEY absente — search skippée");
     }
 
     await streamChat({
