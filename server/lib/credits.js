@@ -91,6 +91,36 @@ export async function hasEnoughApiCredits(userId, cost) {
   return credits >= cost;
 }
 
+// ─── Free Nano tokens (Mistral Small 4 pour plan FREE) ───────────────────────
+export const FREE_NANO_MODEL_ID = "mistralai/mistral-small-2603";
+const FREE_NANO_LIMIT = 10000;
+
+export async function getFreeNanoTokens(userId) {
+  const db = getDb();
+  const month = new Date().toISOString().slice(0, 7);
+  const { rows } = await db.query(
+    `SELECT free_nano_tokens, free_nano_month FROM users WHERE id=$1`, [userId]
+  );
+  const row = rows[0];
+  if (!row) return 0;
+  if (row.free_nano_month !== month) {
+    await db.query(
+      `UPDATE users SET free_nano_tokens=$2, free_nano_month=$3 WHERE id=$1`,
+      [userId, FREE_NANO_LIMIT, month]
+    );
+    return FREE_NANO_LIMIT;
+  }
+  return row.free_nano_tokens ?? 0;
+}
+
+export async function deductFreeNanoTokens(userId, tokens) {
+  const db = getDb();
+  await db.query(
+    `UPDATE users SET free_nano_tokens = GREATEST(0, free_nano_tokens - $2) WHERE id=$1`,
+    [userId, Math.ceil(tokens)]
+  );
+}
+
 // Transfère X Cr du pool plan vers le pool API (ou inverse si toApi=false)
 export async function transferCredits(userId, amount, toApi = true) {
   if (!Number.isFinite(amount) || amount <= 0) {

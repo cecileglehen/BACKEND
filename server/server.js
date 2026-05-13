@@ -14,7 +14,7 @@ import { register, login, signToken, requireAuth, refreshUser, verifyToken } fro
 import { routeMessage } from "./lib/router.js";
 import { chatWithFallback, streamChat } from "./lib/openrouter.js";
 import { recordUsage, quotaSnapshot, resolveTier } from "./lib/windows.js";
-import { getCredits, deductCredits, hasEnoughCredits, grantPlanCredits, resetMonthlyCredits, getApiCredits, transferCredits } from "./lib/credits.js";
+import { getCredits, deductCredits, hasEnoughCredits, grantPlanCredits, resetMonthlyCredits, getApiCredits, transferCredits, getFreeNanoTokens, deductFreeNanoTokens, FREE_NANO_MODEL_ID } from "./lib/credits.js";
 import { computeCreditCost, FREE_TIER_ONLY_PLANS } from "./config/plans.js";
 import { checkThrottle } from "./lib/throttle.js";
 import { compressIfNeeded } from "./lib/context.js";
@@ -478,14 +478,21 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
     const user = await refreshUser(req.user.id, req.user);
 
     const isFreePlan = FREE_TIER_ONLY_PLANS.has(user.plan);
-    if (isFreePlan && inTier !== "FREE" && inTier !== "UNCENSORED") {
-      return res.status(403).json({ error: "Plan gratuit : accès aux modèles FREE uniquement." });
+    const isFreeNanoModel = modelInfo.id === FREE_NANO_MODEL_ID;
+    if (isFreePlan && inTier !== "FREE" && inTier !== "UNCENSORED" && !isFreeNanoModel) {
+      return res.status(403).json({ error: "Plan gratuit : accès aux modèles FREE uniquement. Mistral Small 4 est offert (10K tokens/mois)." });
+    }
+    if (isFreePlan && isFreeNanoModel) {
+      const remaining = await getFreeNanoTokens(user.id);
+      if (remaining <= 0) {
+        return res.status(403).json({ error: "Tes 10 000 tokens gratuits Mistral Small 4 sont épuisés ce mois-ci. Passe à BASIC pour continuer." });
+      }
     }
 
     const { throttled, waitMs } = checkThrottle(user.id);
     if (throttled) return res.status(429).json({ error: `Attends ${Math.ceil(waitMs / 1000)}s.`, waitMs });
 
-    const estimatedCost = computeCreditCost(modelInfo.id, 1000, 500);
+    const estimatedCost = isFreeNanoModel && isFreePlan ? 0 : computeCreditCost(modelInfo.id, 1000, 500);
     if (estimatedCost > 0) {
       const ok = await hasEnoughCredits(user.id, estimatedCost);
       if (!ok) {
@@ -510,8 +517,14 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
       messages: compressed,
       res,
       onDone: async ({ content, tokensIn, tokensOut, thinkingTokens }) => {
-        const creditCost = computeCreditCost(modelInfo.id, tokensIn, tokensOut);
-        const creditsLeft = await deductCredits(user.id, creditCost);
+        let creditCost = 0;
+        let creditsLeft = await getCredits(user.id);
+        if (isFreePlan && isFreeNanoModel) {
+          await deductFreeNanoTokens(user.id, tokensIn + tokensOut);
+        } else {
+          creditCost = computeCreditCost(modelInfo.id, tokensIn, tokensOut);
+          creditsLeft = await deductCredits(user.id, creditCost);
+        }
         await recordUsage(user.id, inTier, tokensIn, tokensOut);
         const costEur = estimateCostEur(inTier, tokensIn, tokensOut);
         res.write(`data: ${JSON.stringify({ type: "done", tokensIn, tokensOut, thinkingTokens, creditCost, creditsLeft, costEur })}\n\n`);
