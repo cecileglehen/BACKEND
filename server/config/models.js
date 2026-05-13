@@ -24,7 +24,8 @@ export const CATEGORIES = {
     models: [
       { id: "inclusionai/ring-2.6-1t:free", brand: "InclusionAI", display: "Ring 2.6 1T", free: true, ctx: 262144 },
       { id: "openai/gpt-oss-120b:free", brand: "OpenAI", display: "GPT OSS 120B", free: true, ctx: 131072 },
-      { id: "google/gemma-4-31b-it:free", brand: "Google", display: "Gemma 4 31B", free: true, ctx: 262144 }
+      { id: "google/gemma-4-31b-it:free", brand: "Google", display: "Gemma 4 31B", free: true, ctx: 262144 },
+      { id: "arcee-ai/trinity-large-thinking:free", brand: "Arcee", display: "Trinity Large Thinking", free: true, ctx: 131072 }
     ]
   },
   UNCENSORED: {
