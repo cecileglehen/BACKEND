@@ -5,7 +5,7 @@ import express from "express";
 import { requireApiKey } from "../lib/auth.js";
 import { chatWithFallback, streamChat } from "../lib/openrouter.js";
 import { getApiCredits, deductApiCredits } from "../lib/credits.js";
-import { computeCreditCost, FREE_TIER_ONLY_PLANS } from "../config/plans.js";
+import { computeCreditCost, computeCreditFromCost, FREE_TIER_ONLY_PLANS } from "../config/plans.js";
 import { CATEGORIES, findModelInCatalog, normalizeTier } from "../config/models.js";
 import { recordUsage, logUsage } from "../lib/windows.js";
 
@@ -100,6 +100,7 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
           stream: true,
           // Force l'envoi de l'objet "usage" dans le dernier chunk pour la facturation
           stream_options: { include_usage: true, ...(req.body?.stream_options || {}) },
+          usage: { include: true },
           ...(temperature !== undefined && { temperature }),
           ...(max_tokens !== undefined && { max_tokens })
         })
@@ -165,8 +166,9 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
       const thinkingTokens = usage?.completion_tokens_details?.reasoning_tokens ?? 0;
       const tokensIn  = usage?.prompt_tokens ?? Math.ceil(JSON.stringify(messages).length / 4);
       const tokensOut = (usage?.completion_tokens ?? Math.ceil(fullContent.length / 4)) + thinkingTokens;
+      const costUsd   = Number(usage?.cost) || 0;
 
-      const creditCost = computeCreditCost(modelId, tokensIn, tokensOut);
+      const creditCost = computeCreditFromCost({ costUsd, modelId, tokensIn, tokensOut });
       await deductApiCredits(req.user.id, creditCost);
       await recordUsage(req.user.id, tier, tokensIn, tokensOut);
       logUsage({ userId: req.user.id, modelId, tier, tokensIn, tokensOut, costCr: creditCost, source: "api" });
@@ -181,8 +183,13 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
     const thinkingTokens = usage.completion_tokens_details?.reasoning_tokens ?? 0;
     const tokensIn       = usage.prompt_tokens ?? Math.ceil(JSON.stringify(messages).length / 4);
     const tokensOut      = (usage.completion_tokens ?? Math.ceil(result.content.length / 4)) + thinkingTokens;
+    const costUsd        = Number(usage.cost) || 0;
 
-    const creditCost = computeCreditCost(result.modelUsed || modelId, tokensIn, tokensOut);
+    const creditCost = computeCreditFromCost({
+      costUsd,
+      modelId: result.modelUsed || modelId,
+      tokensIn, tokensOut
+    });
     await deductApiCredits(req.user.id, creditCost);
     await recordUsage(req.user.id, tier, tokensIn, tokensOut);
     logUsage({ userId: req.user.id, modelId: result.modelUsed || modelId, tier, tokensIn, tokensOut, costCr: creditCost, source: "api" });

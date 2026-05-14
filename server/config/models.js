@@ -75,6 +75,7 @@ export const CATEGORIES = {
       { id: "meta-llama/llama-4-maverick", brand: "Meta", display: "Llama 4 Maverick", price: { in: 0.15, out: 0.60 }, ctx: 1048576 },
       { id: "google/gemini-3.1-flash-lite", brand: "Google", display: "Gemini 3.1 Flash Lite", price: { in: 0.15, out: 0.60 }, ctx: 1048576 },
       { id: "anthropic/claude-haiku-4.5", brand: "Anthropic", display: "Claude Haiku 4.5", price: { in: 1.00, out: 5.00 }, ctx: 200000 },
+      { id: "anthropic/claude-haiku-latest", brand: "Anthropic", display: "Claude Haiku (latest)", price: { in: 1.00, out: 5.00 }, ctx: 200000 },
       { id: "x-ai/grok-4.20", brand: "xAI", display: "Grok 4.20", price: { in: 1.25, out: 2.50 }, ctx: 2000000 },
       { id: "x-ai/grok-4.3", brand: "xAI", display: "Grok 4.3", price: { in: 0.50, out: 2.00 }, ctx: 2000000 }
     ]

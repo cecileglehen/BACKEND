@@ -20,7 +20,7 @@ async function callModel(modelId, messages, signal) {
     method: "POST",
     signal,
     headers: headers(key),
-    body: JSON.stringify({ model: modelId, messages })
+    body: JSON.stringify({ model: modelId, messages, usage: { include: true } })
   });
 
   if (!res.ok) {
@@ -76,6 +76,8 @@ export async function streamChat({ modelId, messages, res, onDone }) {
       // Force le provider à émettre l'objet "usage" dans le dernier chunk
       // (sinon il est absent en mode streaming et tokensOut est sous-estimé)
       stream_options: { include_usage: true },
+      // Demande à OpenRouter d'inclure usage.cost dans la réponse (prix réel en $)
+      usage: { include: true },
       include_reasoning: true,
       reasoning: { effort: "medium" }
     })
@@ -93,6 +95,7 @@ export async function streamChat({ modelId, messages, res, onDone }) {
 
   const reader = orRes.body.getReader();
   const decoder = new TextDecoder();
+  let rawContent = "";
   let fullContent = "";
   let fullReasoning = "";
   let usage = null;
@@ -136,8 +139,15 @@ export async function streamChat({ modelId, messages, res, onDone }) {
           res.write(`data: ${JSON.stringify({ type: "thinking", delta: reasoning })}\n\n`);
         }
         if (delta) {
-          fullContent += delta;
-          res.write(`data: ${JSON.stringify({ delta })}\n\n`);
+          rawContent += delta;
+          const nextContent = stripReasoningEcho(rawContent, fullReasoning);
+          const visibleDelta = nextContent.startsWith(fullContent)
+            ? nextContent.slice(fullContent.length)
+            : stripReasoningEcho(delta, fullReasoning);
+          fullContent = nextContent;
+          if (visibleDelta) {
+            res.write(`data: ${JSON.stringify({ delta: visibleDelta })}\n\n`);
+          }
         }
         if (json.usage) usage = json.usage;
       } catch { /* ignore malformed chunks */ }
@@ -153,6 +163,57 @@ export async function streamChat({ modelId, messages, res, onDone }) {
   const thinkingTokens = usage?.completion_tokens_details?.reasoning_tokens ?? 0;
   const tokensIn  = usage?.prompt_tokens ?? Math.ceil(JSON.stringify(messages).length / 4);
   const tokensOut = (usage?.completion_tokens ?? Math.ceil(fullContent.length / 4)) + thinkingTokens;
+  // OpenRouter renvoie aussi le coût réel en USD dans usage.cost
+  const costUsd = Number(usage?.cost) || 0;
 
-  onDone({ content: fullContent, reasoning: fullReasoning, tokensIn, tokensOut, thinkingTokens, citations, searchResults });
+  onDone({ content: fullContent, reasoning: fullReasoning, tokensIn, tokensOut, thinkingTokens, costUsd, citations, searchResults });
+}
+
+function stripReasoningEcho(content, reasoning) {
+  let clean = String(content || "")
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+    .replace(/<think>[\s\S]*$/gi, "")
+    .replace(/<thinking>[\s\S]*$/gi, "")
+    .replace(/<\/think>|<\/thinking>/gi, "");
+
+  const thought = String(reasoning || "").trim();
+  if (thought.length < 24) return stripAnswerPrefix(clean);
+
+  const left = clean.trimStart();
+  if (left.startsWith(thought)) {
+    clean = clean.slice(0, clean.length - left.length) + left.slice(thought.length).trimStart();
+    return stripAnswerPrefix(clean);
+  }
+
+  return stripAnswerPrefix(stripCommonReasoningPrefix(clean, thought));
+}
+
+function stripCommonReasoningPrefix(content, reasoning) {
+  const leadingLength = content.length - content.trimStart().length;
+  const left = content.trimStart();
+  const contentWords = [...left.matchAll(/\S+/g)];
+  const reasoningWords = [...reasoning.matchAll(/\S+/g)];
+  const max = Math.min(contentWords.length, reasoningWords.length);
+  let common = 0;
+
+  for (; common < max; common += 1) {
+    const a = wordKey(contentWords[common][0]);
+    const b = wordKey(reasoningWords[common][0]);
+    if (!a || a !== b) break;
+  }
+
+  if (common < 8) return content;
+  const cut = contentWords[common - 1].index + contentWords[common - 1][0].length;
+  return content.slice(0, leadingLength) + left.slice(cut).trimStart();
+}
+
+function stripAnswerPrefix(content) {
+  return content.replace(/^\s*(Réponse|Answer)\s*:\s*/i, "");
+}
+
+function wordKey(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
 }

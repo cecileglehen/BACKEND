@@ -15,7 +15,7 @@ import { routeMessage } from "./lib/router.js";
 import { chatWithFallback, streamChat } from "./lib/openrouter.js";
 import { recordUsage, logUsage, quotaSnapshot, resolveTier } from "./lib/windows.js";
 import { getCredits, deductCredits, hasEnoughCredits, grantPlanCredits, resetMonthlyCredits, getApiCredits, transferCredits, getFreeNanoTokens, deductFreeNanoTokens, FREE_NANO_MODEL_ID } from "./lib/credits.js";
-import { computeCreditCost, FREE_TIER_ONLY_PLANS } from "./config/plans.js";
+import { computeCreditCost, computeCreditFromCost, FREE_TIER_ONLY_PLANS } from "./config/plans.js";
 import { checkThrottle } from "./lib/throttle.js";
 import { compressIfNeeded } from "./lib/context.js";
 import { createCodeSession, editCodeSession, getCodePreviewFile, getCodeZip } from "./lib/codegen.js";
@@ -348,6 +348,115 @@ function buildProjectSystemMessage(project) {
   }
   return { role: "system", content: lines.join("\n") };
 }
+
+// ─── Mode Débat — multi-agent séquentiel ───────────────────────────────────
+// Phases : propose → critique → optimize → synthesize
+// Chaque agent voit le contexte des précédents.
+app.post("/api/chat/debate", requireAuth, async (req, res) => {
+  try {
+    const { question, agents } = req.body ?? {};
+    if (!question || !Array.isArray(agents) || agents.length < 2) {
+      return res.status(400).json({ error: "question + agents (≥2) requis" });
+    }
+    const user = await refreshUser(req.user.id, req.user);
+    if (FREE_TIER_ONLY_PLANS.has(user.plan)) {
+      return res.status(403).json({ error: "Le mode débat nécessite un plan payant." });
+    }
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    // Description des rôles
+    const ROLE_PROMPTS = {
+      propose:    "Tu es chargé de PROPOSER une réponse complète et structurée à la question. Sois précis, donne des exemples concrets.",
+      critique:   "Tu es CRITIQUE. Lis attentivement la proposition ci-dessous et identifie : (1) ce qui est juste, (2) ce qui est faux/incomplet/approximatif, (3) ce qui manque. Sois constructif mais rigoureux. Format : courte évaluation puis liste structurée.",
+      optimize:   "Tu es OPTIMISEUR. À partir de la proposition initiale et de la critique, produis une VERSION AMÉLIORÉE de la réponse. Corrige les erreurs, complète les manques, garde le bon. Ne dis pas 'voici la version améliorée', réponds simplement comme si tu répondais à la question d'origine.",
+      synthesize: "Tu es SYNTHÉTISEUR. Tu vois la question d'origine et le travail des autres agents. Produis la RÉPONSE FINALE ultime — claire, complète, structurée, sans mentionner le processus. C'est ce que l'utilisateur va lire."
+    };
+
+    const transcripts = []; // [{role, model, content}]
+
+    for (let i = 0; i < agents.length; i++) {
+      const a = agents[i];
+      const role = a.role || (i === 0 ? "propose" : i === agents.length - 1 ? "synthesize" : i === 1 ? "critique" : "optimize");
+      const found = findModelInCatalog(a.modelId);
+      if (!found) continue;
+
+      // Construit le prompt pour cet agent
+      const sysPrompt = ROLE_PROMPTS[role] || ROLE_PROMPTS.propose;
+      const userPrompt = [
+        `QUESTION DE L'UTILISATEUR :\n${question}`,
+        ...transcripts.map((t, j) => `\n— Agent ${j + 1} (${t.role} · ${t.modelDisplay}) —\n${t.content}`),
+        ``,
+        `Maintenant, en tant que ${role.toUpperCase()}, réponds.`
+      ].join("\n");
+
+      // Notifie le client : démarrage de cette étape
+      res.write(`data: ${JSON.stringify({
+        type: "agent_start",
+        index: i,
+        role,
+        model: { id: found.model.id, display: found.model.display, brand: found.model.brand },
+        tier: found.tier
+      })}\n\n`);
+
+      let agentContent = "";
+      await new Promise((resolve) => {
+        streamChat({
+          modelId: found.model.id,
+          messages: [
+            { role: "system", content: sysPrompt },
+            { role: "user", content: userPrompt }
+          ],
+          // Adapte res.write pour préfixer chaque delta avec l'index agent
+          res: {
+            write: (chunk) => {
+              // Parse "data: {...}\n\n"
+              const m = chunk.match(/^data: (.+)\n\n$/);
+              if (!m) return res.write(chunk);
+              try {
+                const msg = JSON.parse(m[1]);
+                if (msg.delta !== undefined) {
+                  agentContent += msg.delta;
+                  res.write(`data: ${JSON.stringify({ type: "agent_delta", index: i, delta: msg.delta })}\n\n`);
+                }
+              } catch { /* */ }
+            },
+            setHeader: () => {}, flushHeaders: () => {}, end: () => {}
+          },
+          onDone: async ({ tokensIn, tokensOut }) => {
+            const creditCost = computeCreditFromCost({
+              costUsd: 0, modelId: found.model.id, tokensIn, tokensOut
+            });
+            deductCredits(user.id, creditCost).catch(() => {});
+            recordUsage(user.id, found.tier, tokensIn, tokensOut).catch(() => {});
+            logUsage({ userId: user.id, modelId: found.model.id, tier: found.tier, tokensIn, tokensOut, costCr: creditCost, source: "debate" });
+            transcripts.push({
+              role,
+              modelDisplay: found.model.display,
+              content: agentContent
+            });
+            res.write(`data: ${JSON.stringify({ type: "agent_done", index: i, tokensOut, creditCost })}\n\n`);
+            resolve();
+          }
+        }).catch((e) => {
+          res.write(`data: ${JSON.stringify({ type: "agent_error", index: i, error: e.message })}\n\n`);
+          resolve();
+        });
+      });
+    }
+
+    res.write(`data: ${JSON.stringify({ type: "debate_done" })}\n\n`);
+    res.end();
+  } catch (e) {
+    console.error("[debate]", e);
+    if (!res.headersSent) return res.status(500).json({ error: e.message });
+    res.write(`data: ${JSON.stringify({ type: "error", error: e.message })}\n\n`);
+    res.end();
+  }
+});
 
 // ─── Fusion intelligente de plusieurs réponses ──────────────────────────────
 app.post("/api/chat/merge", requireAuth, async (req, res) => {
@@ -759,10 +868,16 @@ app.post("/api/chat", requireAuth, async (req, res) => {
     const tokensIn       = usage.prompt_tokens                                ?? Math.ceil(JSON.stringify(compressed).length / 4);
     const thinkingTokens = usage.completion_tokens_details?.reasoning_tokens  ?? 0;
     const tokensOut      = (usage.completion_tokens ?? Math.ceil(result.content.length / 4)) + thinkingTokens;
+    const costUsd        = Number(usage.cost) || 0;
     const costEur        = estimateCostEur(tier, tokensIn, tokensOut);
 
-    // Déduction crédits réels + enregistrement usage (prix par modèle)
-    const creditCost = computeCreditCost(result.modelUsed || modelInfo.id, tokensIn, tokensOut);
+    // Déduction crédits : on utilise le coût réel OpenRouter avec marge si dispo,
+    // sinon fallback sur la grille tier
+    const creditCost = computeCreditFromCost({
+      costUsd,
+      modelId: result.modelUsed || modelInfo.id,
+      tokensIn, tokensOut
+    });
     const creditsLeft = await deductCredits(user.id, creditCost);
     await recordUsage(user.id, tier, tokensIn, tokensOut);
     logUsage({ userId: user.id, modelId: result.modelUsed || modelInfo.id, tier, tokensIn, tokensOut, costCr: creditCost, source: "chat" });
@@ -944,11 +1059,11 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
       modelId: modelInfo.id,
       messages: compressed,
       res,
-      onDone: async ({ content, tokensIn, tokensOut, thinkingTokens }) => {
-        // 1. Calcule le coût SANS appel DB (instantané)
+      onDone: async ({ content, tokensIn, tokensOut, thinkingTokens, costUsd }) => {
+        // 1. Calcule le coût SANS appel DB (instantané) — basé sur le coût réel OpenRouter
         const creditCost = (isFreePlan && isFreeNanoModel)
           ? 0
-          : computeCreditCost(modelInfo.id, tokensIn, tokensOut);
+          : computeCreditFromCost({ costUsd, modelId: modelInfo.id, tokensIn, tokensOut });
         const costEur = estimateCostEur(inTier, tokensIn, tokensOut);
 
         // 2. Envoie immédiatement les tokens à l'UI (creditsLeft suit après)

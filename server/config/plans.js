@@ -51,6 +51,27 @@ export function computeCreditCost(tierOrModelId, tokensIn, tokensOut) {
   return Math.ceil(((tokensIn + tokensOut) / 1000) * rate * 100) / 100;
 }
 
+// ─── Facturation par coût réel (OpenRouter usage.cost) ──────────────────────
+// 1 USD = COST_BASED_CR_PER_USD crédits côté DELT (≈ marge 80-100%).
+// Le coût réel facturé par OpenRouter est dans data.usage.cost (en $).
+// Conversion : 1€ = 100 Cr et $1 ≈ €0.92, donc CR_PER_USD = 100 / 1.10 ≈ 91 → on prend 200 pour la marge.
+const COST_BASED_CR_PER_USD = 200;
+// Plancher minimum (1 Cr ≈ 0.01€) : on facture au moins 0.1 Cr même pour requêtes minuscules
+const MIN_CREDIT_COST = 0.1;
+
+/**
+ * Calcule le coût en crédits à partir du coût réel fournisseur (USD).
+ * Fallback vers la grille tier si le coût n'est pas disponible.
+ */
+export function computeCreditFromCost({ costUsd, modelId, tokensIn = 0, tokensOut = 0 }) {
+  if (Number.isFinite(costUsd) && costUsd > 0) {
+    const cr = costUsd * COST_BASED_CR_PER_USD;
+    return Math.max(MIN_CREDIT_COST, Math.ceil(cr * 100) / 100);
+  }
+  // Fallback : grille tier
+  return computeCreditCost(modelId, tokensIn, tokensOut);
+}
+
 // Modèles principaux par tier (importé depuis models.js)
 export { TIER_PRIMARY_MODELS as TIER_MODELS } from "./models.js";
 
