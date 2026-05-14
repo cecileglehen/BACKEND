@@ -38,7 +38,7 @@ export async function listConversations(userId) {
   const db = getDb();
   const userKey = ENCRYPT ? await getUserDataKey(userId) : null;
   const { rows } = await db.query(
-    `SELECT c.id, c.title, c.created_at, c.updated_at, COUNT(m.id)::int AS message_count
+    `SELECT c.id, c.title, c.created_at, c.updated_at, c.project_id, COUNT(m.id)::int AS message_count
      FROM conversations c
      LEFT JOIN messages m ON m.conv_id = c.id
      WHERE c.user_id = $1
@@ -55,6 +55,7 @@ export async function listConversations(userId) {
     title: isEncrypted(row.title) ? decryptForUser(row.title, key) : row.title,
     createdAt: new Date(row.created_at).getTime(),
     updatedAt: new Date(row.updated_at).getTime(),
+    projectId: row.project_id || null,
     messageCount: row.message_count,
     messages: []
   }));

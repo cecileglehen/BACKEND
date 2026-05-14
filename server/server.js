@@ -177,6 +177,89 @@ app.get("/api/auth/me", requireAuth, async (req, res) => {
   });
 });
 
+// ─── Projets ─────────────────────────────────────────────────────────────────
+app.get("/api/projects", requireAuth, async (req, res) => {
+  try {
+    const { listProjects } = await import("./lib/projects.js");
+    const projects = await listProjects(req.user.id);
+    res.json({ projects });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/projects/:id", requireAuth, async (req, res) => {
+  try {
+    const { getProject } = await import("./lib/projects.js");
+    const p = await getProject(req.user.id, req.params.id);
+    if (!p) return res.status(404).json({ error: "Projet introuvable" });
+    res.json(p);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/projects", requireAuth, async (req, res) => {
+  try {
+    const { createProject } = await import("./lib/projects.js");
+    const project = await createProject(req.user.id, req.body || {});
+    res.json(project);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put("/api/projects/:id", requireAuth, async (req, res) => {
+  try {
+    const { updateProject } = await import("./lib/projects.js");
+    const project = await updateProject(req.user.id, req.params.id, req.body || {});
+    if (!project) return res.status(404).json({ error: "Projet introuvable" });
+    res.json(project);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete("/api/projects/:id", requireAuth, async (req, res) => {
+  try {
+    const { deleteProject } = await import("./lib/projects.js");
+    const ok = await deleteProject(req.user.id, req.params.id);
+    res.json({ deleted: ok });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put("/api/conversations/:id/project", requireAuth, async (req, res) => {
+  try {
+    const { attachConversationToProject } = await import("./lib/projects.js");
+    const ok = await attachConversationToProject(req.user.id, req.params.id, req.body?.projectId || null);
+    res.json({ ok });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Mémoire utilisateur (nom, intérêts, prefs IA) ───────────────────────────
+app.get("/api/memory", requireAuth, async (req, res) => {
+  try {
+    const { getDb } = await import("./lib/db.js");
+    const { rows } = await getDb().query(
+      `SELECT display_name, memory_profile FROM users WHERE id=$1`, [req.user.id]
+    );
+    res.json({
+      displayName: rows[0]?.display_name || null,
+      profile: rows[0]?.memory_profile || {}
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put("/api/memory", requireAuth, async (req, res) => {
+  try {
+    const { displayName, profile } = req.body ?? {};
+    const cleanName = displayName ? String(displayName).slice(0, 60).trim() : null;
+    const cleanProfile = profile && typeof profile === "object" && !Array.isArray(profile) ? profile : {};
+    const { getDb } = await import("./lib/db.js");
+    await getDb().query(
+      `UPDATE users SET display_name=$2, memory_profile=$3 WHERE id=$1`,
+      [req.user.id, cleanName, JSON.stringify(cleanProfile)]
+    );
+    res.json({ displayName: cleanName, profile: cleanProfile });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── Préférences modèles par tier (mode auto) ────────────────────────────────
 app.get("/api/preferences/models", requireAuth, async (req, res) => {
   try {
@@ -441,6 +524,11 @@ app.get("/api/conversations/:id", requireAuth, async (req, res) => {
 app.put("/api/conversations/:id", requireAuth, async (req, res) => {
   try {
     const result = await saveConversation(req.user.id, req.params.id, req.body?.messages);
+    // Attache au projet si fourni
+    if (req.body?.projectId !== undefined) {
+      const { attachConversationToProject } = await import("./lib/projects.js");
+      await attachConversationToProject(req.user.id, req.params.id, req.body.projectId || null);
+    }
     res.json(result);
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -663,12 +751,19 @@ app.post("/api/chat", requireAuth, async (req, res) => {
 
 app.post("/api/chat/stream", requireAuth, async (req, res) => {
   try {
-    const { messages, tier: reqTier, modelId, manual = false } = req.body ?? {};
+    const { messages, tier: reqTier, modelId, manual = false, projectId } = req.body ?? {};
+    let project = null;
+    if (projectId) {
+      const { getProject } = await import("./lib/projects.js");
+      project = await getProject(req.user.id, projectId);
+    }
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: "messages requis" });
     }
 
-    const selectedModel = modelId ? findModelInCatalog(modelId) : null;
+    // Si un projet a un défaut model et qu'aucun modèle n'est forcé, utilise-le
+    const effectiveModelId = modelId || project?.defaultModel || null;
+    const selectedModel = effectiveModelId ? findModelInCatalog(effectiveModelId) : null;
     const inTier = normalizeTier(selectedModel?.tier || reqTier || "NANO");
 
     const user = await refreshUser(req.user.id, req.user);
@@ -731,6 +826,45 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
     }
 
     let compressed = await compressIfNeeded(messages);
+
+    // ─── Injection system prompt projet (en premier) ────────────────────────
+    if (project) {
+      const lines = [];
+      if (project.systemPrompt) lines.push(project.systemPrompt);
+      const pm = project.memory || {};
+      const knowledge = [];
+      if (pm.keyFacts?.length) knowledge.push(`Faits clés : ${pm.keyFacts.join(" · ")}`);
+      if (pm.context) knowledge.push(`Contexte : ${pm.context}`);
+      if (knowledge.length > 0) {
+        lines.push("");
+        lines.push("Contexte du projet :");
+        lines.push(...knowledge);
+      }
+      if (lines.length > 0) {
+        compressed = [
+          { role: "system", content: `[Projet "${project.name}"]\n${lines.join("\n")}` },
+          ...compressed
+        ];
+      }
+    }
+
+    // ─── Injection mémoire utilisateur (system prompt) ──────────────────────
+    if (user.display_name || (user.memory_profile && Object.keys(user.memory_profile).length > 0)) {
+      const mem = user.memory_profile || {};
+      const memLines = [];
+      if (user.display_name) memLines.push(`L'utilisateur s'appelle ${user.display_name}.`);
+      if (mem.interests?.length) memLines.push(`Ses centres d'intérêt : ${mem.interests.join(", ")}.`);
+      if (mem.role) memLines.push(`Son rôle / métier : ${mem.role}.`);
+      if (mem.tone) memLines.push(`Préfère un ton ${mem.tone}.`);
+      if (mem.lang) memLines.push(`Langue préférée : ${mem.lang}.`);
+      if (mem.context) memLines.push(`Contexte personnel : ${mem.context}`);
+      if (memLines.length > 0) {
+        compressed = [
+          { role: "system", content: `À propos de l'utilisateur (à garder en tête) :\n${memLines.join("\n")}` },
+          ...compressed
+        ];
+      }
+    }
 
     // SSE headers
     res.setHeader("Content-Type", "text/event-stream");

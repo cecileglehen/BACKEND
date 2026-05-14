@@ -66,6 +66,23 @@ export async function initSchema() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS memory_profile JSONB NOT NULL DEFAULT '{}'::jsonb;
 
+    CREATE TABLE IF NOT EXISTS projects (
+      id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name          TEXT NOT NULL,
+      description   TEXT,
+      color         TEXT DEFAULT '#6366f1',
+      icon          TEXT DEFAULT '📁',
+      system_prompt TEXT,
+      default_model TEXT,
+      memory        JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id, updated_at DESC);
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES projects(id) ON DELETE SET NULL;
+    CREATE INDEX IF NOT EXISTS idx_conversations_project ON conversations(project_id);
+
     CREATE TABLE IF NOT EXISTS usage_log (
       id          BIGSERIAL PRIMARY KEY,
       user_id     UUID NOT NULL,
