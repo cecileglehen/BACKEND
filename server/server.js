@@ -16,6 +16,7 @@ import { chatWithFallback, streamChat } from "./lib/openrouter.js";
 import { recordUsage, logUsage, quotaSnapshot, resolveTier } from "./lib/windows.js";
 import { getCredits, deductCredits, hasEnoughCredits, grantPlanCredits, resetMonthlyCredits, getApiCredits, transferCredits, getFreeNanoTokens, deductFreeNanoTokens, FREE_NANO_MODEL_ID } from "./lib/credits.js";
 import { computeCreditCost, computeCreditFromCost, FREE_TIER_ONLY_PLANS } from "./config/plans.js";
+import { runDeepSearch } from "./lib/deepSearch.js";
 import { checkThrottle } from "./lib/throttle.js";
 import { compressIfNeeded } from "./lib/context.js";
 import { createCodeSession, editCodeSession, getCodePreviewFile, getCodeZip } from "./lib/codegen.js";
@@ -775,6 +776,54 @@ app.post("/api/route", requireAuth, async (req, res) => {
     const { tier: resolved, fellBack, from } = await resolveTier(user.id, user.plan, tier);
     res.json({ level, tier: resolved, fellBack, from, model: TIER_MODELS[resolved] });
   } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── Deep Search ─────────────────────────────────────────────────────────────
+
+app.post("/api/deep-search", requireAuth, async (req, res) => {
+  try {
+    const { prompt, maxSources = 10, language = "fr" } = req.body ?? {};
+    const question = String(prompt || "").trim();
+    if (!question) return res.status(400).json({ error: "prompt requis" });
+
+    const user = await refreshUser(req.user.id, req.user);
+    if (FREE_TIER_ONLY_PLANS.has(user.plan)) {
+      return res.status(403).json({ error: "Deep Search est réservé aux plans BASIC et supérieurs." });
+    }
+
+    const minStartCost = 1;
+    const ok = await hasEnoughCredits(user.id, minStartCost);
+    if (!ok) {
+      const credits = await getCredits(user.id);
+      return res.status(402).json({ error: `Crédits insuffisants (${Number(credits).toFixed(2)} Cr).` });
+    }
+
+    const report = await runDeepSearch({
+      userId: user.id,
+      prompt: question,
+      maxSources,
+      language
+    });
+
+    const creditsLeft = await deductCredits(user.id, report.creditCost);
+    await Promise.allSettled([
+      recordUsage(user.id, "NORMAL", report.tokensIn || 0, report.tokensOut || 0),
+      logUsage({
+        userId: user.id,
+        modelId: "deep-search",
+        tier: "NORMAL",
+        tokensIn: report.tokensIn || 0,
+        tokensOut: report.tokensOut || 0,
+        costCr: report.creditCost || 0,
+        source: "deep_search"
+      })
+    ]);
+
+    res.json({ ...report, creditsLeft });
+  } catch (e) {
+    console.error("[deep-search]", e);
     res.status(500).json({ error: e.message });
   }
 });

@@ -100,6 +100,18 @@ export async function initSchema() {
     ALTER TABLE users ALTER COLUMN plan SET DEFAULT 'FREE';
     UPDATE users SET plan = 'FREE' WHERE plan = 'LITE';
 
+    CREATE TABLE IF NOT EXISTS deep_search_reports (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id     UUID REFERENCES users(id) ON DELETE CASCADE,
+      prompt      TEXT NOT NULL,
+      answer      TEXT,
+      sources     JSONB,
+      steps       JSONB,
+      created_at  TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_deep_search_reports_user_date
+      ON deep_search_reports(user_id, created_at DESC);
+
     CREATE TABLE IF NOT EXISTS gdpr_consents (
       id            SERIAL PRIMARY KEY,
       user_id       UUID REFERENCES users(id) ON DELETE CASCADE,
