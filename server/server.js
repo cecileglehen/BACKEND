@@ -327,10 +327,32 @@ app.delete("/api/privacy/account", requireAuth, async (req, res) => {
 
 // ─── Quota snapshot ──────────────────────────────────────────────────────────
 
+function buildProjectSystemMessage(project) {
+  if (!project) return null;
+  const lines = [
+    `Tu es dans le projet "${project.name}".`,
+    "Utilise le contexte de ce projet pour répondre de façon cohérente dans ce chat."
+  ];
+  if (project.systemPrompt) {
+    lines.push("");
+    lines.push(project.systemPrompt);
+  }
+  const pm = project.memory || {};
+  const knowledge = [];
+  if (pm.keyFacts?.length) knowledge.push(`Faits clés : ${pm.keyFacts.join(" · ")}`);
+  if (pm.context) knowledge.push(`Contexte : ${pm.context}`);
+  if (knowledge.length > 0) {
+    lines.push("");
+    lines.push("Contexte du projet :");
+    lines.push(...knowledge);
+  }
+  return { role: "system", content: lines.join("\n") };
+}
+
 // ─── Fusion intelligente de plusieurs réponses ──────────────────────────────
 app.post("/api/chat/merge", requireAuth, async (req, res) => {
   try {
-    const { question, responses, modelId } = req.body ?? {};
+    const { question, responses, modelId, projectId } = req.body ?? {};
     if (!question || !Array.isArray(responses) || responses.length < 2) {
       return res.status(400).json({ error: "question + responses (≥2) requis" });
     }
@@ -345,6 +367,12 @@ app.post("/api/chat/merge", requireAuth, async (req, res) => {
     const fusionModel = modelId || "anthropic/claude-sonnet-4-5";
     const found = findModelInCatalog(fusionModel);
     if (!found) return res.status(400).json({ error: "Modèle de fusion invalide" });
+
+    let project = null;
+    if (projectId) {
+      const { getProject } = await import("./lib/projects.js");
+      project = await getProject(req.user.id, projectId);
+    }
 
     const systemPrompt = [
       "Tu es un synthétiseur expert. Tu reçois la question d'un utilisateur et plusieurs réponses générées par différents modèles d'IA.",
@@ -374,6 +402,7 @@ app.post("/api/chat/merge", requireAuth, async (req, res) => {
     await streamChat({
       modelId: found.model.id,
       messages: [
+        ...(project ? [buildProjectSystemMessage(project)] : []),
         { role: "system", content: systemPrompt },
         { role: "user",   content: userPrompt }
       ],
@@ -640,12 +669,18 @@ app.post("/api/age-verify", requireAuth, async (req, res) => {
 
 app.post("/api/chat", requireAuth, async (req, res) => {
   try {
-    const { messages, tier: reqTier, modelId, manual = false, ageVerified = false } = req.body ?? {};
+    const { messages, tier: reqTier, modelId, manual = false, ageVerified = false, projectId } = req.body ?? {};
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: "messages requis" });
     }
 
-    const selectedModel = modelId ? findModelInCatalog(modelId) : null;
+    let project = null;
+    if (projectId) {
+      const { getProject } = await import("./lib/projects.js");
+      project = await getProject(req.user.id, projectId);
+    }
+    const effectiveModelId = modelId || project?.defaultModel || null;
+    const selectedModel = effectiveModelId ? findModelInCatalog(effectiveModelId) : null;
     if (modelId && !selectedModel) return res.status(400).json({ error: `Modèle invalide: ${modelId}` });
 
     const inTier = normalizeTier(selectedModel?.tier || reqTier || "NANO");
@@ -706,7 +741,11 @@ app.post("/api/chat", requireAuth, async (req, res) => {
     }
 
     // Compression contexte si > 20 messages
-    const compressed = await compressIfNeeded(messages);
+    let compressed = await compressIfNeeded(messages);
+    if (project) {
+      const projectSystem = buildProjectSystemMessage(project);
+      if (projectSystem) compressed = [projectSystem, ...compressed];
+    }
 
     // Appel OpenRouter
     const result = await chatWithFallback({
@@ -829,23 +868,8 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
 
     // ─── Injection system prompt projet (en premier) ────────────────────────
     if (project) {
-      const lines = [];
-      if (project.systemPrompt) lines.push(project.systemPrompt);
-      const pm = project.memory || {};
-      const knowledge = [];
-      if (pm.keyFacts?.length) knowledge.push(`Faits clés : ${pm.keyFacts.join(" · ")}`);
-      if (pm.context) knowledge.push(`Contexte : ${pm.context}`);
-      if (knowledge.length > 0) {
-        lines.push("");
-        lines.push("Contexte du projet :");
-        lines.push(...knowledge);
-      }
-      if (lines.length > 0) {
-        compressed = [
-          { role: "system", content: `[Projet "${project.name}"]\n${lines.join("\n")}` },
-          ...compressed
-        ];
-      }
+      const projectSystem = buildProjectSystemMessage(project);
+      if (projectSystem) compressed = [projectSystem, ...compressed];
     }
 
     // ─── Injection mémoire utilisateur (system prompt) ──────────────────────
