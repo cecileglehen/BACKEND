@@ -13,7 +13,7 @@ import { initSchema } from "./lib/db.js";
 import { register, login, signToken, requireAuth, refreshUser, verifyToken } from "./lib/auth.js";
 import { routeMessage } from "./lib/router.js";
 import { chatWithFallback, streamChat } from "./lib/openrouter.js";
-import { recordUsage, quotaSnapshot, resolveTier } from "./lib/windows.js";
+import { recordUsage, logUsage, quotaSnapshot, resolveTier } from "./lib/windows.js";
 import { getCredits, deductCredits, hasEnoughCredits, grantPlanCredits, resetMonthlyCredits, getApiCredits, transferCredits, getFreeNanoTokens, deductFreeNanoTokens, FREE_NANO_MODEL_ID } from "./lib/credits.js";
 import { computeCreditCost, FREE_TIER_ONLY_PLANS } from "./config/plans.js";
 import { checkThrottle } from "./lib/throttle.js";
@@ -170,7 +170,54 @@ app.post("/api/auth/login", async (req, res) => {
 app.get("/api/auth/me", requireAuth, async (req, res) => {
   const user = await refreshUser(req.user.id, req.user);
   if (!user) return res.status(404).json({ error: "Utilisateur introuvable" });
-  res.json({ id: user.id, email: user.email, plan: user.plan, status: user.status, sub_end: user.sub_end });
+  res.json({
+    id: user.id, email: user.email, plan: user.plan, status: user.status, sub_end: user.sub_end,
+    modelPreferences: user.model_preferences || {},
+    onboardedModels: Boolean(user.onboarded_models)
+  });
+});
+
+// ─── Préférences modèles par tier (mode auto) ────────────────────────────────
+app.get("/api/preferences/models", requireAuth, async (req, res) => {
+  try {
+    const { getDb } = await import("./lib/db.js");
+    const { rows } = await getDb().query(
+      `SELECT model_preferences, onboarded_models FROM users WHERE id=$1`, [req.user.id]
+    );
+    res.json({
+      preferences: rows[0]?.model_preferences || {},
+      onboarded: Boolean(rows[0]?.onboarded_models)
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put("/api/preferences/models", requireAuth, async (req, res) => {
+  try {
+    const prefs = req.body?.preferences;
+    if (!prefs || typeof prefs !== "object" || Array.isArray(prefs)) {
+      return res.status(400).json({ error: "preferences object requis" });
+    }
+    // Valide : chaque entrée doit être un modèle existant
+    const cleaned = {};
+    for (const [tier, modelId] of Object.entries(prefs)) {
+      if (!modelId) continue;
+      const found = findModelInCatalog(String(modelId));
+      if (found && normalizeTier(found.tier) === normalizeTier(tier)) {
+        cleaned[normalizeTier(tier)] = found.model.id;
+      }
+    }
+    const { getDb } = await import("./lib/db.js");
+    await getDb().query(
+      `UPDATE users SET model_preferences=$2, onboarded_models=TRUE WHERE id=$1`,
+      [req.user.id, JSON.stringify(cleaned)]
+    );
+    res.json({ preferences: cleaned, onboarded: true });
+  } catch (e) {
+    console.error("[preferences]", e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ─── RGPD : droits utilisateur ───────────────────────────────────────────────
@@ -196,6 +243,145 @@ app.delete("/api/privacy/account", requireAuth, async (req, res) => {
 });
 
 // ─── Quota snapshot ──────────────────────────────────────────────────────────
+
+// ─── Fusion intelligente de plusieurs réponses ──────────────────────────────
+app.post("/api/chat/merge", requireAuth, async (req, res) => {
+  try {
+    const { question, responses, modelId } = req.body ?? {};
+    if (!question || !Array.isArray(responses) || responses.length < 2) {
+      return res.status(400).json({ error: "question + responses (≥2) requis" });
+    }
+
+    const user = await refreshUser(req.user.id, req.user);
+    const isFreePlan = FREE_TIER_ONLY_PLANS.has(user.plan);
+    if (isFreePlan) {
+      return res.status(403).json({ error: "La fusion nécessite un plan payant." });
+    }
+
+    // Modèle synthétiseur : par défaut Claude Sonnet 4.5 (excellent pour la synthèse)
+    const fusionModel = modelId || "anthropic/claude-sonnet-4-5";
+    const found = findModelInCatalog(fusionModel);
+    if (!found) return res.status(400).json({ error: "Modèle de fusion invalide" });
+
+    const systemPrompt = [
+      "Tu es un synthétiseur expert. Tu reçois la question d'un utilisateur et plusieurs réponses générées par différents modèles d'IA.",
+      "Ta mission : produire UNE réponse fusionnée optimale qui :",
+      "1. Garde le meilleur de chaque réponse (faits, nuances, exemples).",
+      "2. Élimine les contradictions en privilégiant les faits vérifiables et le consensus.",
+      "3. Reste concise mais complète, structurée si nécessaire.",
+      "4. Ne dis JAMAIS 'le modèle A dit X' — produis une réponse unifiée comme si tu répondais toi-même.",
+      "5. Réponds dans la langue de la question."
+    ].join("\n");
+
+    const userPrompt = [
+      `QUESTION ORIGINALE :\n${question}`,
+      ``,
+      `RÉPONSES À FUSIONNER :`,
+      ...responses.map((r, i) => `\n— Réponse ${i + 1} (${r.model || "modèle inconnu"}) —\n${r.content}`),
+      ``,
+      `Produis maintenant la réponse fusionnée optimale.`
+    ].join("\n");
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+    res.write(`data: ${JSON.stringify({ type: "meta", model: found.model, tier: found.tier })}\n\n`);
+
+    await streamChat({
+      modelId: found.model.id,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user",   content: userPrompt }
+      ],
+      res,
+      onDone: async ({ tokensIn, tokensOut }) => {
+        const creditCost = computeCreditCost(found.model.id, tokensIn, tokensOut);
+        deductCredits(user.id, creditCost).catch(() => {});
+        recordUsage(user.id, found.tier, tokensIn, tokensOut).catch(() => {});
+        logUsage({ userId: user.id, modelId: found.model.id, tier: found.tier, tokensIn, tokensOut, costCr: creditCost, source: "merge" });
+        res.write(`data: ${JSON.stringify({ type: "done", tokensIn, tokensOut, creditCost })}\n\n`);
+        res.end();
+      }
+    });
+  } catch (e) {
+    console.error("[chat/merge]", e);
+    if (!res.headersSent) return res.status(500).json({ error: e.message });
+    res.write(`data: ${JSON.stringify({ type: "error", error: e.message })}\n\n`);
+    res.end();
+  }
+});
+
+app.get("/api/usage", requireAuth, async (req, res) => {
+  try {
+    const period = String(req.query.period || "30d");
+    const intervalDays = period === "7d" ? 7 : period === "90d" ? 90 : period === "all" ? 3650 : 30;
+    const { getDb } = await import("./lib/db.js");
+    const db = getDb();
+
+    const [byModel, byDay, totals, recent] = await Promise.all([
+      // Agrégation par modèle
+      db.query(
+        `SELECT model_id, tier,
+                SUM(tokens_in)  AS tokens_in,
+                SUM(tokens_out) AS tokens_out,
+                SUM(cost_cr)    AS cost_cr,
+                COUNT(*)        AS calls,
+                MAX(created_at) AS last_used
+         FROM usage_log
+         WHERE user_id = $1 AND created_at > NOW() - ($2 || ' days')::interval
+         GROUP BY model_id, tier
+         ORDER BY cost_cr DESC`,
+        [req.user.id, String(intervalDays)]
+      ),
+      // Série temporelle par jour
+      db.query(
+        `SELECT DATE(created_at) AS day,
+                SUM(tokens_in)  AS tokens_in,
+                SUM(tokens_out) AS tokens_out,
+                SUM(cost_cr)    AS cost_cr,
+                COUNT(*)        AS calls
+         FROM usage_log
+         WHERE user_id = $1 AND created_at > NOW() - ($2 || ' days')::interval
+         GROUP BY DATE(created_at)
+         ORDER BY day ASC`,
+        [req.user.id, String(intervalDays)]
+      ),
+      // Totaux globaux
+      db.query(
+        `SELECT
+           SUM(tokens_in)  AS tokens_in,
+           SUM(tokens_out) AS tokens_out,
+           SUM(cost_cr)    AS cost_cr,
+           COUNT(*)        AS calls,
+           COUNT(DISTINCT model_id) AS unique_models
+         FROM usage_log
+         WHERE user_id = $1 AND created_at > NOW() - ($2 || ' days')::interval`,
+        [req.user.id, String(intervalDays)]
+      ),
+      // 20 derniers appels
+      db.query(
+        `SELECT model_id, tier, tokens_in, tokens_out, cost_cr, source, created_at
+         FROM usage_log
+         WHERE user_id = $1
+         ORDER BY created_at DESC
+         LIMIT 20`,
+        [req.user.id]
+      )
+    ]);
+
+    res.json({
+      period,
+      byModel: byModel.rows,
+      byDay: byDay.rows,
+      totals: totals.rows[0] || { tokens_in: 0, tokens_out: 0, cost_cr: 0, calls: 0, unique_models: 0 },
+      recent: recent.rows
+    });
+  } catch (e) {
+    console.error("[usage]", e);
+    res.status(500).json({ error: e.message });
+  }
+});
 
 app.get("/api/quota", requireAuth, async (req, res) => {
   try {
@@ -404,7 +590,16 @@ app.post("/api/chat", requireAuth, async (req, res) => {
     const tier = inTier;
     const fellBack = false;
     const from = null;
-    const modelInfo = selectedModel?.model || TIER_MODELS[tier];
+    let modelInfo = selectedModel?.model;
+    if (!modelInfo) {
+      const prefs = user?.model_preferences || {};
+      const preferredId = prefs[tier];
+      if (preferredId) {
+        const pref = findModelInCatalog(preferredId);
+        if (pref && normalizeTier(pref.tier) === tier) modelInfo = pref.model;
+      }
+    }
+    if (!modelInfo) modelInfo = TIER_MODELS[tier];
 
     // Vérification crédits (FREE et UNCENSORED ne coûtent rien)
     const estimatedCost = computeCreditCost(modelInfo.id, 1000, 500); // estimation avant appel
@@ -443,6 +638,7 @@ app.post("/api/chat", requireAuth, async (req, res) => {
     const creditCost = computeCreditCost(result.modelUsed || modelInfo.id, tokensIn, tokensOut);
     const creditsLeft = await deductCredits(user.id, creditCost);
     await recordUsage(user.id, tier, tokensIn, tokensOut);
+    logUsage({ userId: user.id, modelId: result.modelUsed || modelInfo.id, tier, tokensIn, tokensOut, costCr: creditCost, source: "chat" });
 
     res.json({
       content:    result.content,
@@ -474,10 +670,21 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
 
     const selectedModel = modelId ? findModelInCatalog(modelId) : null;
     const inTier = normalizeTier(selectedModel?.tier || reqTier || "NANO");
-    const modelInfo = selectedModel?.model || TIER_MODELS[inTier];
-    if (!modelInfo) return res.status(400).json({ error: `Tier invalide: ${reqTier}` });
 
     const user = await refreshUser(req.user.id, req.user);
+
+    // En mode auto (pas de modelId), regarde la préférence user pour ce tier
+    let modelInfo = selectedModel?.model || null;
+    if (!modelInfo) {
+      const prefs = user?.model_preferences || {};
+      const preferredId = prefs[inTier];
+      if (preferredId) {
+        const pref = findModelInCatalog(preferredId);
+        if (pref && normalizeTier(pref.tier) === inTier) modelInfo = pref.model;
+      }
+    }
+    if (!modelInfo) modelInfo = TIER_MODELS[inTier];
+    if (!modelInfo) return res.status(400).json({ error: `Tier invalide: ${reqTier}` });
 
     // ─── Traitement des pièces jointes ──────────────────────────────────────
     // Vérifie la limite par conversation et convertit chaque message qui en a
@@ -597,7 +804,8 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
           isFreePlan && isFreeNanoModel
             ? deductFreeNanoTokens(user.id, tokensIn + tokensOut)
             : deductCredits(user.id, creditCost),
-          recordUsage(user.id, inTier, tokensIn, tokensOut)
+          recordUsage(user.id, inTier, tokensIn, tokensOut),
+          logUsage({ userId: user.id, modelId: modelInfo.id, tier: inTier, tokensIn, tokensOut, costCr: creditCost, source: "chat" })
         ]).catch((e) => console.error("[chat/stream] DB background:", e));
       }
     });

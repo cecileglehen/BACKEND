@@ -110,7 +110,7 @@ export async function refreshUser(userId, fallback = null) {
   try {
     const db = getDb();
     const { rows } = await db.query(
-      `SELECT id, email, plan, status, sub_id, sub_end FROM users WHERE id=$1 AND deleted_at IS NULL`,
+      `SELECT id, email, plan, status, sub_id, sub_end, model_preferences, onboarded_models, display_name, memory_profile FROM users WHERE id=$1 AND deleted_at IS NULL`,
       [userId]
     );
     return rows[0] ?? null;

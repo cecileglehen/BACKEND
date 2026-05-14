@@ -33,6 +33,19 @@ async function getOrCreateWindow(userId, tier) {
   }
 }
 
+// Log d'usage détaillé par modèle (pour la page Usage de l'utilisateur)
+export async function logUsage({ userId, modelId, tier, tokensIn, tokensOut, costCr, source = "chat" }) {
+  if (!userId || !modelId) return;
+  try {
+    const db = getDb();
+    await db.query(
+      `INSERT INTO usage_log (user_id, model_id, tier, tokens_in, tokens_out, cost_cr, source)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [userId, modelId, tier || null, tokensIn || 0, tokensOut || 0, costCr || 0, source]
+    );
+  } catch { /* ignore */ }
+}
+
 export async function recordUsage(userId, tier, tokensIn, tokensOut) {
   memInc(userId, tier); // toujours en mémoire (backup)
   try {

@@ -7,7 +7,7 @@ import { chatWithFallback, streamChat } from "../lib/openrouter.js";
 import { getApiCredits, deductApiCredits } from "../lib/credits.js";
 import { computeCreditCost, FREE_TIER_ONLY_PLANS } from "../config/plans.js";
 import { CATEGORIES, findModelInCatalog, normalizeTier } from "../config/models.js";
-import { recordUsage } from "../lib/windows.js";
+import { recordUsage, logUsage } from "../lib/windows.js";
 
 const router = express.Router();
 
@@ -94,7 +94,15 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
           "HTTP-Referer": "https://delt.ai",
           "X-Title": "DELT AI"
         },
-        body: JSON.stringify({ model: modelId, messages, stream: true, ...(temperature !== undefined && { temperature }), ...(max_tokens !== undefined && { max_tokens }) })
+        body: JSON.stringify({
+          model: modelId,
+          messages,
+          stream: true,
+          // Force l'envoi de l'objet "usage" dans le dernier chunk pour la facturation
+          stream_options: { include_usage: true, ...(req.body?.stream_options || {}) },
+          ...(temperature !== undefined && { temperature }),
+          ...(max_tokens !== undefined && { max_tokens })
+        })
       });
 
       if (!orRes.ok) {
@@ -140,6 +148,17 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
         id: completionId, object: "chat.completion.chunk", created, model: modelId,
         choices: [{ index: 0, delta: {}, finish_reason: "stop" }]
       })}\n\n`);
+
+      // Forward du chunk usage final (standard OpenAI avec stream_options.include_usage)
+      // pour que le SDK client puisse lire response.usage
+      if (usage) {
+        res.write(`data: ${JSON.stringify({
+          id: completionId, object: "chat.completion.chunk", created, model: modelId,
+          choices: [],
+          usage
+        })}\n\n`);
+      }
+
       res.write(`data: [DONE]\n\n`);
 
       // Comptage tokens + déduction crédits
@@ -150,6 +169,7 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
       const creditCost = computeCreditCost(modelId, tokensIn, tokensOut);
       await deductApiCredits(req.user.id, creditCost);
       await recordUsage(req.user.id, tier, tokensIn, tokensOut);
+      logUsage({ userId: req.user.id, modelId, tier, tokensIn, tokensOut, costCr: creditCost, source: "api" });
 
       return res.end();
     }
@@ -165,6 +185,7 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
     const creditCost = computeCreditCost(result.modelUsed || modelId, tokensIn, tokensOut);
     await deductApiCredits(req.user.id, creditCost);
     await recordUsage(req.user.id, tier, tokensIn, tokensOut);
+    logUsage({ userId: req.user.id, modelId: result.modelUsed || modelId, tier, tokensIn, tokensOut, costCr: creditCost, source: "api" });
 
     res.json({
       id: `chatcmpl-${Date.now()}${Math.random().toString(36).slice(2, 8)}`,

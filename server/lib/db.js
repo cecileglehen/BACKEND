@@ -61,6 +61,24 @@ export async function initSchema() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS transcription_month TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS free_nano_tokens INT NOT NULL DEFAULT 10000;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS free_nano_month TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS model_preferences JSONB NOT NULL DEFAULT '{}'::jsonb;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarded_models BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS memory_profile JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+    CREATE TABLE IF NOT EXISTS usage_log (
+      id          BIGSERIAL PRIMARY KEY,
+      user_id     UUID NOT NULL,
+      model_id    TEXT NOT NULL,
+      tier        TEXT,
+      tokens_in   INT  NOT NULL DEFAULT 0,
+      tokens_out  INT  NOT NULL DEFAULT 0,
+      cost_cr     NUMERIC(10,4) NOT NULL DEFAULT 0,
+      source      TEXT,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_usage_log_user_date ON usage_log(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_usage_log_user_model ON usage_log(user_id, model_id);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS secret_key TEXT;
     ALTER TABLE users ALTER COLUMN plan SET DEFAULT 'FREE';
     UPDATE users SET plan = 'FREE' WHERE plan = 'LITE';

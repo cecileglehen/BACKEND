@@ -73,6 +73,9 @@ export async function streamChat({ modelId, messages, res, onDone }) {
       model: modelId,
       messages,
       stream: true,
+      // Force le provider à émettre l'objet "usage" dans le dernier chunk
+      // (sinon il est absent en mode streaming et tokensOut est sous-estimé)
+      stream_options: { include_usage: true },
       include_reasoning: true,
       reasoning: { effort: "medium" }
     })

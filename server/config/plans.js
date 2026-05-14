@@ -32,13 +32,14 @@ export function getPlanLimits(plan) {
 export const CREDITS_PER_1K = {
   FREE:       0,
   UNCENSORED: 0.10,
+  PICO:       0.10,
   NANO:       0.20,
-  MINI:       0.80,
+  MINI:       0.40,
   NORMAL:     4.00,
-  EXPERT:     17.00,
+  EXPERT:     8.00,
   PRO:        50.00,
   VENICE:     0.10,
-  PRICE:      17.00
+  PRICE:      8.00
 };
 
 // Calcule le coût en crédits selon le tier DELT. La facturation ne dépend pas
