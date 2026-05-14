@@ -580,18 +580,25 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
       messages: compressed,
       res,
       onDone: async ({ content, tokensIn, tokensOut, thinkingTokens }) => {
-        let creditCost = 0;
-        let creditsLeft = await getCredits(user.id);
-        if (isFreePlan && isFreeNanoModel) {
-          await deductFreeNanoTokens(user.id, tokensIn + tokensOut);
-        } else {
-          creditCost = computeCreditCost(modelInfo.id, tokensIn, tokensOut);
-          creditsLeft = await deductCredits(user.id, creditCost);
-        }
-        await recordUsage(user.id, inTier, tokensIn, tokensOut);
+        // 1. Calcule le coût SANS appel DB (instantané)
+        const creditCost = (isFreePlan && isFreeNanoModel)
+          ? 0
+          : computeCreditCost(modelInfo.id, tokensIn, tokensOut);
         const costEur = estimateCostEur(inTier, tokensIn, tokensOut);
-        res.write(`data: ${JSON.stringify({ type: "done", tokensIn, tokensOut, thinkingTokens, creditCost, creditsLeft, costEur })}\n\n`);
+
+        // 2. Envoie immédiatement les tokens à l'UI (creditsLeft suit après)
+        res.write(`data: ${JSON.stringify({
+          type: "done", tokensIn, tokensOut, thinkingTokens, creditCost, costEur
+        })}\n\n`);
         res.end();
+
+        // 3. Déduit les crédits + enregistre l'usage en arrière-plan (parallèle)
+        Promise.allSettled([
+          isFreePlan && isFreeNanoModel
+            ? deductFreeNanoTokens(user.id, tokensIn + tokensOut)
+            : deductCredits(user.id, creditCost),
+          recordUsage(user.id, inTier, tokensIn, tokensOut)
+        ]).catch((e) => console.error("[chat/stream] DB background:", e));
       }
     });
   } catch (e) {

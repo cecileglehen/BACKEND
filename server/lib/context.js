@@ -1,7 +1,7 @@
 // Compression de contexte via NANO au-delà de 20 messages
 import { TIER_MODELS } from "../config/plans.js";
 
-const MAX_MESSAGES_BEFORE_COMPRESS = 20;
+const MAX_MESSAGES_BEFORE_COMPRESS = 50;
 const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 export async function compressIfNeeded(messages) {
