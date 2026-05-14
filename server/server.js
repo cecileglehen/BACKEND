@@ -382,7 +382,10 @@ app.post("/api/chat/debate", requireAuth, async (req, res) => {
       const a = agents[i];
       const role = a.role || (i === 0 ? "propose" : i === agents.length - 1 ? "synthesize" : i === 1 ? "critique" : "optimize");
       const found = findModelInCatalog(a.modelId);
-      if (!found) continue;
+      if (!found) {
+        res.write(`data: ${JSON.stringify({ type: "agent_error", index: i, error: `Modèle introuvable: ${a.modelId}` })}\n\n`);
+        continue;
+      }
 
       // Construit le prompt pour cet agent
       const sysPrompt = ROLE_PROMPTS[role] || ROLE_PROMPTS.propose;
@@ -403,6 +406,7 @@ app.post("/api/chat/debate", requireAuth, async (req, res) => {
       })}\n\n`);
 
       let agentContent = "";
+      let agentReasoning = "";
       await new Promise((resolve) => {
         streamChat({
           modelId: found.model.id,
@@ -418,6 +422,11 @@ app.post("/api/chat/debate", requireAuth, async (req, res) => {
               if (!m) return res.write(chunk);
               try {
                 const msg = JSON.parse(m[1]);
+                if (msg.type === "thinking") {
+                  agentReasoning += msg.delta || "";
+                  res.write(`data: ${JSON.stringify({ type: "agent_thinking", index: i, delta: msg.delta || "" })}\n\n`);
+                  return;
+                }
                 if (msg.delta !== undefined) {
                   agentContent += msg.delta;
                   res.write(`data: ${JSON.stringify({ type: "agent_delta", index: i, delta: msg.delta })}\n\n`);
@@ -426,19 +435,31 @@ app.post("/api/chat/debate", requireAuth, async (req, res) => {
             },
             setHeader: () => {}, flushHeaders: () => {}, end: () => {}
           },
-          onDone: async ({ tokensIn, tokensOut }) => {
+          onDone: async ({ tokensIn, tokensOut, thinkingTokens, costUsd }) => {
             const creditCost = computeCreditFromCost({
-              costUsd: 0, modelId: found.model.id, tokensIn, tokensOut
+              costUsd: Number(costUsd) || 0,
+              modelId: found.model.id,
+              tokensIn,
+              tokensOut
             });
-            deductCredits(user.id, creditCost).catch(() => {});
-            recordUsage(user.id, found.tier, tokensIn, tokensOut).catch(() => {});
-            logUsage({ userId: user.id, modelId: found.model.id, tier: found.tier, tokensIn, tokensOut, costCr: creditCost, source: "debate" });
+            const creditsLeft = await deductCredits(user.id, creditCost);
+            await Promise.allSettled([
+              recordUsage(user.id, found.tier, tokensIn, tokensOut),
+              logUsage({ userId: user.id, modelId: found.model.id, tier: found.tier, tokensIn, tokensOut, costCr: creditCost, source: "debate" })
+            ]);
             transcripts.push({
               role,
               modelDisplay: found.model.display,
               content: agentContent
             });
-            res.write(`data: ${JSON.stringify({ type: "agent_done", index: i, tokensOut, creditCost })}\n\n`);
+            res.write(`data: ${JSON.stringify({
+              type: "agent_done",
+              index: i,
+              tokensOut,
+              thinkingTokens,
+              creditCost,
+              creditsLeft
+            })}\n\n`);
             resolve();
           }
         }).catch((e) => {
