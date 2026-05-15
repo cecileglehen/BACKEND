@@ -133,10 +133,76 @@ body {
   font-family: "JetBrains Mono", ui-monospace, monospace;
 }
 
+/* ── Animations UI ── courbes ease-out-expo pour un feel premium */
+@keyframes delt-slide-in-left {
+  from { opacity: 0; transform: translate3d(-100%, 0, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+@keyframes delt-slide-up {
+  from { opacity: 0; transform: translate3d(0, 18px, 0) scale(0.98); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes delt-backdrop-fade {
+  from { opacity: 0; backdrop-filter: blur(0px); }
+  to   { opacity: 1; backdrop-filter: blur(2px); }
+}
+.animate-slideInLeft {
+  animation: delt-slide-in-left 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+.animate-slideUp {
+  animation: delt-slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+  transform-origin: bottom center;
+}
+.animate-backdropFade {
+  animation: delt-backdrop-fade 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
+  will-change: opacity, backdrop-filter;
+}
+
+/* ── Sorties ── ease-in-expo : commence lent, accélère à la fin */
+@keyframes delt-slide-out-left {
+  from { opacity: 1; transform: translate3d(0, 0, 0); }
+  to   { opacity: 0; transform: translate3d(-100%, 0, 0); }
+}
+@keyframes delt-slide-down {
+  from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  to   { opacity: 0; transform: translate3d(0, 12px, 0) scale(0.98); }
+}
+@keyframes delt-backdrop-fade-out {
+  from { opacity: 1; backdrop-filter: blur(2px); }
+  to   { opacity: 0; backdrop-filter: blur(0px); }
+}
+.animate-slideOutLeft {
+  animation: delt-slide-out-left 0.32s cubic-bezier(0.7, 0, 0.84, 0) both;
+  will-change: transform, opacity;
+}
+.animate-slideDown {
+  animation: delt-slide-down 0.25s cubic-bezier(0.4, 0, 1, 1) both;
+  will-change: transform, opacity;
+  transform-origin: bottom center;
+}
+.animate-backdropFadeOut {
+  animation: delt-backdrop-fade-out 0.25s cubic-bezier(0.4, 0, 1, 1) both;
+  will-change: opacity, backdrop-filter;
+}
+
 /* KaTeX display block centré */
 .prose-delt .katex-display {
   margin: 0.75rem 0;
   overflow-x: auto;
+}
+
+/* Tables GFM */
+.prose-delt table {
+  border-collapse: collapse;
+  /* Pas de width: 100% — laisse le contenu décider, le container parent gère le scroll */
+}
+.prose-delt tbody tr:nth-child(even) {
+  background-color: #f8fafc;
+}
+.prose-delt td, .prose-delt th {
+  word-break: break-word;
 }
 
 /* Messages (legacy, keep for safety) */
@@ -175,9 +241,35 @@ body {
 .cat-price  { color: #db2777; }
 .cat-expert { color: #d97706; }
 
+.badge-pico   { background: #f0fdfa; color: #115e59; border: 1px solid #99f6e4; }
 .badge-eco    { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
 .badge-mini   { background: #ecfeff; color: #155e75; border: 1px solid #a5f3fc; }
 .badge-normal { background: #eef2ff; color: #3730a3; border: 1px solid #c7d2fe; }
 .badge-price  { background: #fdf2f8; color: #9d174d; border: 1px solid #fbcfe8; }
 .badge-expert { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+.badge-pro    { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
 .badge-venice { background: #fdf4ff; color: #6b21a8; border: 1px solid #e9d5ff; }
+.badge-favorite { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+
+/* Thinking pulse — texte oscillant gris pendant le raisonnement */
+@keyframes thinking-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+.thinking-pulse {
+  animation: thinking-pulse 1.6s ease-in-out infinite;
+  font-style: italic;
+}
+@keyframes thinking-dots-anim {
+  0%   { content: ""; }
+  25%  { content: "."; }
+  50%  { content: ".."; }
+  75%  { content: "..."; }
+  100% { content: ""; }
+}
+.thinking-dots::after {
+  content: "...";
+  animation: thinking-dots-anim 1.5s steps(4, end) infinite;
+  display: inline-block;
+  width: 1em;
+}

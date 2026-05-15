@@ -66,9 +66,19 @@ export async function streamChat({ modelId, messages, res, onDone }) {
 
   const isPerplexity = /perplexity\/sonar/i.test(modelId);
 
+  // Abort upstream si le client coupe la connexion
+  const upstreamCtrl = new AbortController();
+  let clientAborted = false;
+  const onClientClose = () => {
+    clientAborted = true;
+    try { upstreamCtrl.abort(); } catch {}
+  };
+  res.on("close", onClientClose);
+
   const orRes = await fetch(OR_URL, {
     method: "POST",
     headers: headers(key),
+    signal: upstreamCtrl.signal,
     body: JSON.stringify({
       model: modelId,
       messages,
@@ -84,6 +94,7 @@ export async function streamChat({ modelId, messages, res, onDone }) {
   });
 
   if (!orRes.ok) {
+    res.off("close", onClientClose);
     const txt = await orRes.text().catch(() => "");
     throw new Error(`OpenRouter ${orRes.status}: ${txt.slice(0, 200)}`);
   }
@@ -103,8 +114,12 @@ export async function streamChat({ modelId, messages, res, onDone }) {
   let searchResults = [];
   let buf = "";
 
+  try {
   while (true) {
-    const { done, value } = await reader.read();
+    let chunk;
+    try { chunk = await reader.read(); }
+    catch (e) { if (clientAborted) break; throw e; }
+    const { done, value } = chunk;
     if (done) break;
 
     buf += decoder.decode(value, { stream: true });
@@ -155,18 +170,32 @@ export async function streamChat({ modelId, messages, res, onDone }) {
   }
 
   // Envoie les citations finales si Sonar a renvoyé des URLs sans search_results
-  if (isPerplexity && citations.length > 0 && searchResults.length === 0) {
-    const fallback = citations.map((url) => ({ url, title: url }));
-    res.write(`data: ${JSON.stringify({ type: "websearch", status: "found", count: fallback.length, results: fallback })}\n\n`);
+  if (!clientAborted && isPerplexity && citations.length > 0 && searchResults.length === 0) {
+    res.write(`data: ${JSON.stringify({ type: "websearch", status: "found", count: citations.length, results: citations.map((url) => ({ url, title: url })) })}\n\n`);
   }
+  } finally {
+    res.off("close", onClientClose);
 
-  const thinkingTokens = usage?.completion_tokens_details?.reasoning_tokens ?? 0;
-  const tokensIn  = usage?.prompt_tokens ?? Math.ceil(JSON.stringify(messages).length / 4);
-  const tokensOut = (usage?.completion_tokens ?? Math.ceil(fullContent.length / 4)) + thinkingTokens;
-  // OpenRouter renvoie aussi le coût réel en USD dans usage.cost
-  const costUsd = Number(usage?.cost) || 0;
+    const thinkingTokens = usage?.completion_tokens_details?.reasoning_tokens ?? 0;
+    const tokensIn  = usage?.prompt_tokens ?? Math.ceil(JSON.stringify(messages).length / 4);
+    const tokensOut = (usage?.completion_tokens ?? Math.ceil(fullContent.length / 4)) + thinkingTokens;
+    // OpenRouter renvoie usage.cost en streaming UNIQUEMENT au dernier chunk.
+    // Si le client a aborté avant ce chunk, on n'a pas le coût réel → on estime
+    // depuis tokensIn/Out pour quand même facturer.
+    const costUsd = Number(usage?.cost) || 0;
 
-  onDone({ content: fullContent, reasoning: fullReasoning, tokensIn, tokensOut, thinkingTokens, costUsd, citations, searchResults });
+    onDone({
+      content: fullContent,
+      reasoning: fullReasoning,
+      tokensIn,
+      tokensOut,
+      thinkingTokens,
+      costUsd,
+      citations,
+      searchResults,
+      aborted: clientAborted
+    });
+  }
 }
 
 function stripReasoningEcho(content, reasoning) {

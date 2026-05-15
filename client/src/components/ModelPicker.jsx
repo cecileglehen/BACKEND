@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-const BRANDS = ["OpenAI", "Anthropic", "Google", "Mistral", "Meta", "xAI", "Perplexity", "DeepSearch", "Venice", "InclusionAI"];
+const BRANDS = ["Mistral", "OpenAI", "Anthropic", "Google", "Meta", "xAI", "Perplexity", "DeepSearch", "Venice", "InclusionAI"];
 
 const CAT_STYLE = {
   FREE: "",
@@ -9,8 +9,9 @@ const CAT_STYLE = {
   ECO: "badge-eco",
   MINI: "badge-mini",
   NORMAL: "badge-normal",
-  PRICE: "badge-price",
-  EXPERT: "badge-expert"
+  PRICE: "badge-expert",
+  EXPERT: "badge-expert",
+  PRO: "badge-pro"
 };
 
 export default function ModelPicker({ catalog, selected, onSelect, disabled }) {
@@ -18,9 +19,9 @@ export default function ModelPicker({ catalog, selected, onSelect, disabled }) {
 
   const flat = useMemo(() => {
     if (!catalog) return [];
-    return Object.entries(catalog.categories).flatMap(([key, cat]) =>
-      cat.models.map((m) => ({ ...m, category: key, cost: cat.cost, catLabel: cat.label }))
-    );
+    return Object.entries(catalog.categories)
+      .flatMap(([key, cat]) => cat.models.map((m) => ({ ...m, category: key, cost: cat.cost, catLabel: cat.label })))
+      .sort((a, b) => Number(Boolean(b.featuredLabel)) - Number(Boolean(a.featuredLabel)));
   }, [catalog]);
 
   const filtered = brand === "All" ? flat : flat.filter((m) => m.brand === brand);
@@ -67,6 +68,11 @@ export default function ModelPicker({ catalog, selected, onSelect, disabled }) {
                 <div>
                   <div className={`text-sm font-medium ${active ? "text-delt-accent" : "text-delt-text"}`}>
                     {m.display}
+                    {m.featuredLabel && (
+                      <span className="ml-2 align-middle text-[10px] px-1.5 py-0.5 rounded font-semibold badge-favorite">
+                        {m.featuredLabel}
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs text-delt-muted mt-0.5">{m.brand}</div>
                 </div>
@@ -74,7 +80,6 @@ export default function ModelPicker({ catalog, selected, onSelect, disabled }) {
                   <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${CAT_STYLE[m.category]}`}>
                     {m.catLabel}
                   </span>
-                  <span className="text-[10px] text-delt-muted">{m.cost} cr.</span>
                 </div>
               </div>
             </button>

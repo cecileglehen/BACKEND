@@ -35,11 +35,26 @@ export default {
         pulse: {
           "0%,100%": { opacity: "1" },
           "50%": { opacity: "0.4" }
+        },
+        slideInLeft: {
+          "0%":   { opacity: "0", transform: "translateX(-100%)" },
+          "100%": { opacity: "1", transform: "translateX(0)" }
+        },
+        slideUp: {
+          "0%":   { opacity: "0", transform: "translateY(12px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" }
+        },
+        backdropFade: {
+          "0%":   { opacity: "0" },
+          "100%": { opacity: "1" }
         }
       },
       animation: {
         fadeIn: "fadeIn 0.2s ease-out",
-        pulse: "pulse 1.5s ease-in-out infinite"
+        pulse: "pulse 1.5s ease-in-out infinite",
+        slideInLeft: "slideInLeft 0.28s cubic-bezier(0.32, 0.72, 0, 1)",
+        slideUp: "slideUp 0.25s cubic-bezier(0.32, 0.72, 0, 1)",
+        backdropFade: "backdropFade 0.2s ease-out"
       }
     }
   },

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 140">
+  <defs>
+    <linearGradient id="gBlue" x1="0" y1="1" x2="0.5" y2="0">
+      <stop offset="0%" stop-color="#1a3a8f"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="gTeal" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#06d6c2"/>
+    </linearGradient>
+    <linearGradient id="gArrow" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#0ea5e9"/>
+      <stop offset="100%" stop-color="#06d6c2"/>
+    </linearGradient>
+    <linearGradient id="gMid" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#1d4ed8"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Left peak — dark navy with circular cutout (the "d" loop) -->
+  <path d="M34 78 L14 92 L54 92 Z" fill="url(#gBlue)"/>
+  <path d="M34 18 Q18 18 18 38 L18 72 Q18 92 34 92 Q50 92 50 72 L50 38 Q50 18 34 18 Z" fill="url(#gBlue)"/>
+  <!-- Inner cutout (hole of the "d") -->
+  <ellipse cx="34" cy="65" rx="11" ry="14" fill="white"/>
+
+  <!-- Middle peak -->
+  <path d="M74 28 L52 92 L96 92 Z" fill="url(#gMid)"/>
+
+  <!-- Right peak -->
+  <path d="M104 44 L84 92 L124 92 Z" fill="url(#gTeal)" opacity="0.85"/>
+
+  <!-- Arrow shooting top-right from the right peak -->
+  <g transform="translate(107, 40) rotate(-45)">
+    <rect x="-5" y="-30" width="10" height="36" rx="5" fill="url(#gArrow)"/>
+    <polygon points="0,-36 -10,-22 10,-22" fill="#06d6c2"/>
+  </g>
+</svg>

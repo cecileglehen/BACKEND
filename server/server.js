@@ -32,6 +32,10 @@ import { deleteUserData, exportUserData, recordConsent } from "./lib/privacy.js"
 import { deleteConversation, getConversation, listConversations, saveConversation } from "./lib/conversations.js";
 import { getUserDataKey } from "./lib/cryptoBox.js";
 import v1Router from "./routes/v1.js";
+import { getProject } from "./lib/projects.js";
+import { getPlanLimits } from "./config/plans.js";
+import { buildMessageContent } from "./lib/attachments.js";
+import { shouldSearchHeuristic, performWebSearch, buildSearchSystemPrompt } from "./lib/websearch.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -797,16 +801,35 @@ app.post("/api/route", requireAuth, async (req, res) => {
   try {
     const message = String(req.body?.message || "").slice(0, 8000);
     if (!message) return res.status(400).json({ error: "message requis" });
-    const level = await groqRoute(message);
-    // Mapping level → tier
+    const routed = await groqRoute(message);
+    const level = routed.level;
+    const intent = routed.intent;
+    // Mapping level → tier (PICO < NANO < MINI < NORMAL < EXPERT)
     let tier = "NANO";
     if (level >= 9) tier = "EXPERT";
     else if (level >= 7) tier = "NORMAL";
     else if (level >= 4) tier = "MINI";
+    else if (level <= 2) tier = "PICO";
 
     const user = await refreshUser(req.user.id, req.user);
     const { tier: resolved, fellBack, from } = await resolveTier(user.id, user.plan, tier);
-    res.json({ level, tier: resolved, fellBack, from, model: TIER_MODELS[resolved] });
+
+    // Si intent=="image", retourne aussi le modèle d'image recommandé
+    let imageModel = null;
+    if (intent === "image" && routed.imageModel) {
+      const found = CREATIVE.IMAGE.models.find((m) => m.id === routed.imageModel);
+      if (found) imageModel = found;
+    }
+
+    res.json({
+      level,
+      intent,
+      tier: resolved,
+      fellBack,
+      from,
+      model: TIER_MODELS[resolved],
+      imageModel
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -832,12 +855,35 @@ app.post("/api/deep-search", requireAuth, async (req, res) => {
       return res.status(402).json({ error: `Crédits insuffisants (${Number(credits).toFixed(2)} Cr).` });
     }
 
-    const report = await runDeepSearch({
-      userId: user.id,
-      prompt: question,
-      maxSources,
-      language
-    });
+    // SSE headers
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders?.();
+
+    const send = (event) => {
+      try { res.write(`data: ${JSON.stringify(event)}\n\n`); } catch { /* client gone */ }
+    };
+    // Heartbeat anti-timeout proxies (toutes les 15s)
+    const heartbeat = setInterval(() => { try { res.write(": ping\n\n"); } catch {} }, 15000);
+
+    let report;
+    try {
+      report = await runDeepSearch({
+        userId: user.id,
+        prompt: question,
+        maxSources,
+        language,
+        onEvent: send
+      });
+    } catch (e) {
+      console.error("[deep-search]", e);
+      send({ type: "error", error: e.message });
+      clearInterval(heartbeat);
+      res.end();
+      return;
+    }
 
     const creditsLeft = await deductCredits(user.id, report.creditCost);
     await Promise.allSettled([
@@ -853,10 +899,17 @@ app.post("/api/deep-search", requireAuth, async (req, res) => {
       })
     ]);
 
-    res.json({ ...report, creditsLeft });
+    send({ type: "done", report: { ...report, creditsLeft } });
+    clearInterval(heartbeat);
+    res.end();
   } catch (e) {
     console.error("[deep-search]", e);
-    res.status(500).json({ error: e.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: e.message });
+    } else {
+      try { res.write(`data: ${JSON.stringify({ type: "error", error: e.message })}\n\n`); } catch {}
+      res.end();
+    }
   }
 });
 
@@ -1008,21 +1061,20 @@ app.post("/api/chat", requireAuth, async (req, res) => {
 app.post("/api/chat/stream", requireAuth, async (req, res) => {
   try {
     const { messages, tier: reqTier, modelId, manual = false, projectId } = req.body ?? {};
-    let project = null;
-    if (projectId) {
-      const { getProject } = await import("./lib/projects.js");
-      project = await getProject(req.user.id, projectId);
-    }
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: "messages requis" });
     }
+
+    // Parallélise les deux DB queries (sinon ~300ms × 2 sur Supabase pooler)
+    const [user, project] = await Promise.all([
+      refreshUser(req.user.id, req.user),
+      projectId ? getProject(req.user.id, projectId) : Promise.resolve(null)
+    ]);
 
     // Si un projet a un défaut model et qu'aucun modèle n'est forcé, utilise-le
     const effectiveModelId = modelId || project?.defaultModel || null;
     const selectedModel = effectiveModelId ? resolveRequestedModel(effectiveModelId, reqTier || "NANO") : null;
     const inTier = normalizeTier(selectedModel?.tier || reqTier || "NANO");
-
-    const user = await refreshUser(req.user.id, req.user);
 
     // En mode auto (pas de modelId), regarde la préférence user pour ce tier
     let modelInfo = selectedModel?.model || null;
@@ -1038,9 +1090,6 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
     if (!modelInfo) return res.status(400).json({ error: `Tier invalide: ${reqTier}` });
 
     // ─── Traitement des pièces jointes ──────────────────────────────────────
-    // Vérifie la limite par conversation et convertit chaque message qui en a
-    const { getPlanLimits } = await import("./config/plans.js");
-    const { buildMessageContent } = await import("./lib/attachments.js");
     const planLimits = getPlanLimits(user.plan);
     const totalAttachments = messages.reduce((sum, m) => sum + (Array.isArray(m.attachments) ? m.attachments.length : 0), 0);
     if (totalAttachments > planLimits.attachmentsPerConv) {
@@ -1081,6 +1130,16 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
       }
     }
 
+    // ─── SSE headers FLUSHÉS LE PLUS TÔT POSSIBLE ───────────────────────────
+    // Tout ce qui suit prend potentiellement plusieurs secondes (compression,
+    // web search) — sans flush ici le client voit une page blanche.
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+    res.write(`data: ${JSON.stringify({ type: "meta", tier: inTier, model: modelInfo })}\n\n`);
+
     let compressed = await compressIfNeeded(messages);
 
     // ─── Injection system prompt projet (en premier) ────────────────────────
@@ -1107,21 +1166,11 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
       }
     }
 
-    // SSE headers
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    res.flushHeaders();
-
-    // Envoie les métadonnées initiales
-    res.write(`data: ${JSON.stringify({ type: "meta", tier: inTier, model: modelInfo })}\n\n`);
-
     // ─── Détection auto de recherche web ───────────────────────────────────
     const isSonar = /perplexity\/sonar/i.test(modelInfo.id);
     const userLastMsg = [...compressed].reverse().find((m) => m.role === "user")?.content || "";
     const hasSerperKey = Boolean((process.env.SERPER_API_KEY || "").trim());
 
-    const { shouldSearchHeuristic, performWebSearch, buildSearchSystemPrompt } = await import("./lib/websearch.js");
     const decision = shouldSearchHeuristic(userLastMsg);
 
     console.log("[websearch] decision:", {
@@ -1161,33 +1210,41 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
       modelId: modelInfo.id,
       messages: compressed,
       res,
-      onDone: async ({ content, tokensIn, tokensOut, thinkingTokens, costUsd }) => {
+      onDone: async ({ content, tokensIn, tokensOut, thinkingTokens, costUsd, aborted }) => {
         // 1. Calcule le coût SANS appel DB (instantané) — basé sur le coût réel OpenRouter
         const creditCost = (isFreePlan && isFreeNanoModel)
           ? 0
           : computeCreditFromCost({ costUsd, modelId: modelInfo.id, tokensIn, tokensOut });
         const costEur = estimateCostEur(inTier, tokensIn, tokensOut);
 
-        // 2. Envoie immédiatement les tokens à l'UI (creditsLeft suit après)
-        res.write(`data: ${JSON.stringify({
-          type: "done", tokensIn, tokensOut, thinkingTokens, creditCost, costEur
-        })}\n\n`);
-        res.end();
+        // 2. Envoie les tokens à l'UI (skip si le client a coupé — la socket est fermée)
+        if (!aborted) {
+          try {
+            res.write(`data: ${JSON.stringify({
+              type: "done", tokensIn, tokensOut, thinkingTokens, creditCost, costEur
+            })}\n\n`);
+            res.end();
+          } catch { /* socket already closed */ }
+        }
 
-        // 3. Déduit les crédits + enregistre l'usage en arrière-plan (parallèle)
+        // 3. Déduit les crédits + enregistre l'usage en arrière-plan
+        // IMPORTANT : la déduction se fait MÊME en cas d'abort, car OpenRouter
+        // facture déjà la part streamée (et donc le coût est réel pour nous).
         Promise.allSettled([
           isFreePlan && isFreeNanoModel
             ? deductFreeNanoTokens(user.id, tokensIn + tokensOut)
             : deductCredits(user.id, creditCost),
           recordUsage(user.id, inTier, tokensIn, tokensOut),
-          logUsage({ userId: user.id, modelId: modelInfo.id, tier: inTier, tokensIn, tokensOut, costCr: creditCost, source: "chat" })
+          logUsage({ userId: user.id, modelId: modelInfo.id, tier: inTier, tokensIn, tokensOut, costCr: creditCost, source: aborted ? "chat_aborted" : "chat" })
         ]).catch((e) => console.error("[chat/stream] DB background:", e));
       }
     });
   } catch (e) {
-    console.error("[chat/stream]", e);
-    if (!res.headersSent) return res.status(500).json({ error: e.message });
-    res.write(`data: ${JSON.stringify({ type: "error", error: e.message })}\n\n`);
+    console.error("[chat/stream] ERROR:", e?.message || e);
+    console.error("[chat/stream] STACK:", e?.stack);
+    const errPayload = { error: e?.message || "Erreur interne", type: "internal_error" };
+    if (!res.headersSent) return res.status(500).json(errPayload);
+    res.write(`data: ${JSON.stringify({ type: "error", error: errPayload.error })}\n\n`);
     res.end();
   }
 });

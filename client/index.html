@@ -2,17 +2,163 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/delt.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DELT AI · Multi-LLM Chat</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f172a" />
+
+    <!-- ── SEO PRIMARY ─────────────────────────────────────────── -->
+    <title>DELT AI — Tous les modèles d'IA en un seul abonnement à 10€</title>
+    <meta name="description" content="DELT AI réunit GPT, Claude, Gemini, Grok, Mistral, Llama, DeepSeek et plus dans une seule app à partir de 10€/mois. Génération d'images, vidéos, musique et API incluse. Alternative française à ChatGPT, Claude et Mammouth." />
+    <meta name="keywords" content="DELT AI, deltai, chat ia, intelligence artificielle, gpt-5, claude, gemini, grok, mistral, llama, deepseek, génération image, génération vidéo, suno, multi LLM, alternative chatgpt, alternative mammouth, ia française, ia tout en un, openrouter alternative, api ia, ia 10 euros, abonnement ia" />
+    <meta name="author" content="DELT AI" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="googlebot" content="index, follow" />
+    <meta name="bingbot" content="index, follow" />
+    <link rel="canonical" href="https://deltai.fr/" />
+    <link rel="alternate" hreflang="fr" href="https://deltai.fr/" />
+    <link rel="alternate" hreflang="x-default" href="https://deltai.fr/" />
+
+    <!-- ── OPEN GRAPH (Facebook, LinkedIn, Discord, Slack) ──────── -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="DELT AI" />
+    <meta property="og:title" content="DELT AI — Tous les modèles d'IA en un seul abonnement" />
+    <meta property="og:description" content="GPT, Claude, Gemini, Grok, Mistral, Llama, DeepSeek + image/vidéo/musique. À partir de 10€/mois." />
+    <meta property="og:url" content="https://deltai.fr/" />
+    <meta property="og:image" content="https://deltai.fr/logo-delt.png" />
+    <meta property="og:image:width" content="677" />
+    <meta property="og:image:height" content="369" />
+    <meta property="og:image:alt" content="Logo DELT AI" />
+    <meta property="og:locale" content="fr_FR" />
+
+    <!-- ── TWITTER CARD ────────────────────────────────────────── -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="DELT AI — Tous les modèles d'IA en un seul abonnement" />
+    <meta name="twitter:description" content="GPT, Claude, Gemini, Grok et bien plus dans une seule app à partir de 10€/mois. Génération d'images, vidéos, musique et API incluse." />
+    <meta name="twitter:image" content="https://deltai.fr/logo-delt.png" />
+    <meta name="twitter:image:alt" content="DELT AI" />
+
+    <!-- ── FAVICONS ────────────────────────────────────────────── -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- ── PRELOAD / PRECONNECT ────────────────────────────────── -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://deltai-backend.onrender.com" />
+    <link rel="dns-prefetch" href="https://deltai-backend.onrender.com" />
     <link
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
+
+    <!-- ── JSON-LD STRUCTURED DATA (Google rich results) ───────── -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://deltai.fr/#organization",
+          "name": "DELT AI",
+          "url": "https://deltai.fr",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://deltai.fr/logo-delt.png",
+            "width": 677,
+            "height": 369
+          },
+          "sameAs": [
+            "https://github.com/cecileglehen"
+          ]
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://deltai.fr/#website",
+          "url": "https://deltai.fr",
+          "name": "DELT AI",
+          "description": "Tous les modèles d'IA dans une seule app.",
+          "publisher": { "@id": "https://deltai.fr/#organization" },
+          "inLanguage": "fr-FR",
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": "https://deltai.fr/?q={search_term_string}",
+            "query-input": "required name=search_term_string"
+          }
+        },
+        {
+          "@type": "SoftwareApplication",
+          "name": "DELT AI",
+          "operatingSystem": "Web, Android, iOS",
+          "applicationCategory": "ProductivityApplication",
+          "description": "Plateforme tout-en-un qui réunit GPT, Claude, Gemini, Grok, Mistral, Llama, DeepSeek et plus, plus la génération d'images, de vidéos et de musique.",
+          "offers": [
+            { "@type": "Offer", "name": "Starter", "price": "10",  "priceCurrency": "EUR" },
+            { "@type": "Offer", "name": "Standard","price": "23",  "priceCurrency": "EUR" },
+            { "@type": "Offer", "name": "Expert",  "price": "75",  "priceCurrency": "EUR" },
+            { "@type": "Offer", "name": "Entreprise","price": "200","priceCurrency": "EUR" }
+          ],
+          "featureList": [
+            "GPT-5, Claude Sonnet/Opus, Gemini, Grok, Mistral, Llama, DeepSeek",
+            "Génération d'images (FLUX, GPT Image, Nano Banana)",
+            "Génération vidéo (Seedance 2)",
+            "Génération musicale (Suno V5.5)",
+            "Recherche web (Perplexity Sonar + Google)",
+            "API REST compatible OpenAI SDK"
+          ]
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "Qu'est-ce que DELT AI ?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "DELT AI est une plateforme française qui réunit tous les meilleurs modèles d'IA (GPT, Claude, Gemini, Grok, Mistral, Llama, DeepSeek) dans une seule application, avec génération d'images, de vidéos, de musique et accès API, à partir de 10€/mois."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Quels modèles sont inclus ?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Plus de 30 modèles : GPT-5.4 et GPT-5.5, Claude Sonnet 4.5 et Opus 4.5, Gemini 2.5 Flash et Gemini 3, Grok 4.20, Mistral Large 3, Llama 4 Maverick, DeepSeek V4, et bien d'autres. Toute la liste est dispo dès le plan Starter à 10€."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Est-ce une alternative française à ChatGPT et Mammouth ?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Oui. DELT AI est conçue en France, avec hébergement EU, conformité RGPD, et donne accès à plus de modèles que ChatGPT (qui n'a que les modèles OpenAI) et avec une UX plus moderne que Mammouth."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Y a-t-il une API ?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Oui, l'API DELT est 100% compatible avec le SDK OpenAI : il suffit de changer la base URL vers https://deltai-backend.onrender.com/v1 et utiliser une clé sk-delt-..."
+              }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
   </head>
   <body class="bg-white text-delt-text antialiased">
+    <!-- ── CONTENU CRAWLABLE (avant hydratation React) ─────────── -->
+    <noscript>
+      <div style="padding:32px;font-family:system-ui,sans-serif;max-width:720px;margin:auto">
+        <h1>DELT AI — Tous les modèles d'IA en un seul abonnement</h1>
+        <p>DELT AI réunit GPT-5, Claude, Gemini, Grok, Mistral, Llama, DeepSeek et plus dans une seule app à partir de <strong>10€/mois</strong>. Génération d'images, de vidéos et de musique incluse. Alternative française à ChatGPT et Mammouth.</p>
+        <p>Active JavaScript pour utiliser l'application.</p>
+      </div>
+    </noscript>
+    <h1 style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden">DELT AI — Tous les modèles d'IA réunis dans une seule plateforme à partir de 10€/mois</h1>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
