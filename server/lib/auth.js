@@ -105,17 +105,34 @@ export async function requireApiKey(req, res, next) {
   }
 }
 
-// Recharge le user depuis la DB — fallback sur le JWT si DB indisponible
+// Recharge le user depuis la DB — fallback sur le JWT si DB indisponible.
+// Robuste si la table users n'a pas encore les nouvelles colonnes (migrations à appliquer)
 export async function refreshUser(userId, fallback = null) {
+  const db = (() => { try { return getDb(); } catch { return null; } })();
+  if (!db) {
+    return fallback ?? { id: userId, email: "", plan: "FREE", status: "active" };
+  }
+
+  // 1ère tentative : full query
   try {
-    const db = getDb();
     const { rows } = await db.query(
-      `SELECT id, email, plan, status, sub_id, sub_end, model_preferences, onboarded_models, display_name, memory_profile FROM users WHERE id=$1 AND deleted_at IS NULL`,
+      `SELECT id, email, plan, status, sub_id, sub_end, model_preferences, onboarded_models, display_name, memory_profile
+       FROM users WHERE id=$1 AND deleted_at IS NULL`,
       [userId]
     );
     return rows[0] ?? null;
+  } catch (e) {
+    console.warn("[refreshUser] full query failed:", e.message);
+  }
+
+  // Fallback : query minimal (colonnes garanties)
+  try {
+    const { rows } = await db.query(
+      `SELECT id, email, plan, status, sub_id, sub_end FROM users WHERE id=$1 AND deleted_at IS NULL`,
+      [userId]
+    );
+    return rows[0] ?? (fallback ?? null);
   } catch {
-    // DB non disponible : retourne les infos du JWT (plan peut être décalé)
     return fallback ?? { id: userId, email: "", plan: "FREE", status: "active" };
   }
 }

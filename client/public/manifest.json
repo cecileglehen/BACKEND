@@ -1,0 +1,19 @@
+{
+  "name": "DELT AI — Tous les modèles d'IA",
+  "short_name": "DELT AI",
+  "description": "Tous les modèles d'IA (GPT, Claude, Gemini, Grok…) dans une seule app à partir de 10€/mois.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#0f172a",
+  "lang": "fr",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    { "src": "/favicon-32x32.png", "sizes": "32x32", "type": "image/png" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" }
+  ]
+}

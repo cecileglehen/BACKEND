@@ -8,6 +8,7 @@ export default function AuthPage({ onAuth }) {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [legalAccepted, setLegalAccepted] = useState(false);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -23,7 +24,10 @@ export default function AuthPage({ onAuth }) {
       if (sbErr) throw new Error(sbErr.message);
 
       // Envoie le token Supabase à notre backend pour obtenir le JWT DELT
-      const { token, user } = await api.googleAuth(data.session.access_token);
+      const { token, user } = await api.googleAuth(data.session.access_token, {
+        termsAccepted: legalAccepted,
+        privacyAccepted: legalAccepted
+      });
       setToken(token);
       onAuth(user);
     } catch (e) {
@@ -39,7 +43,13 @@ export default function AuthPage({ onAuth }) {
     setError(null);
     try {
       const fn = mode === "login" ? api.login : api.register;
-      const { token, user } = await fn(email, password);
+      if (mode === "register" && !legalAccepted) {
+        throw new Error("Tu dois accepter les CGU et la politique de confidentialité.");
+      }
+      const { token, user } = await fn(email, password, {
+        termsAccepted: legalAccepted,
+        privacyAccepted: legalAccepted
+      });
       setToken(token);
       onAuth(user);
     } catch (err) {
@@ -57,7 +67,7 @@ export default function AuthPage({ onAuth }) {
           {mode === "login" ? "Connexion" : "Créer un compte"}
         </h1>
         <p className="text-sm text-delt-muted mt-1">
-          {mode === "login" ? "Accède à tous les meilleurs modèles d'IA." : "Commence gratuitement avec le plan LITE."}
+          {mode === "login" ? "Accède à tous les meilleurs modèles d'IA." : "Commence gratuitement avec le plan FREE."}
         </p>
       </div>
 
@@ -91,6 +101,7 @@ export default function AuthPage({ onAuth }) {
               className="w-full rounded-lg border border-delt-border px-3 py-2.5 text-sm outline-none focus:border-delt-accent focus:ring-1 focus:ring-delt-accent/20 transition-all"
             />
           </div>
+
           <div>
             <label className="block text-xs font-semibold text-delt-muted uppercase tracking-wider mb-1.5">Mot de passe</label>
             <input
@@ -100,6 +111,20 @@ export default function AuthPage({ onAuth }) {
               className="w-full rounded-lg border border-delt-border px-3 py-2.5 text-sm outline-none focus:border-delt-accent focus:ring-1 focus:ring-delt-accent/20 transition-all"
             />
           </div>
+
+          <label className="flex items-start gap-2 text-xs text-delt-muted leading-relaxed">
+            <input
+              type="checkbox"
+              checked={legalAccepted}
+              onChange={(e) => setLegalAccepted(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              J'accepte les <a href="/terms" className="text-delt-accent font-semibold hover:underline">CGU</a> et la{" "}
+              <a href="/privacy" className="text-delt-accent font-semibold hover:underline">politique de confidentialité</a>
+              {mode === "login" ? " pour une première connexion Google." : "."}
+            </span>
+          </label>
 
           {error && (
             <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
@@ -118,6 +143,11 @@ export default function AuthPage({ onAuth }) {
             className="text-delt-accent font-semibold hover:underline cursor-pointer">
             {mode === "login" ? "S'inscrire" : "Se connecter"}
           </button>
+        </p>
+        <p className="text-[11px] text-center text-delt-muted mt-3">
+          <a href="/privacy" className="hover:underline">Confidentialité</a>
+          {" · "}
+          <a href="/terms" className="hover:underline">CGU</a>
         </p>
       </div>
     </div>

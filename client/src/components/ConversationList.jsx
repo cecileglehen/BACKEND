@@ -58,7 +58,7 @@ export default function ConversationList({ conversations, activeId, onSelect, on
                     {conv.title}
                   </div>
                   <div className="text-[10px] text-delt-muted mt-0.5">
-                    {timeAgo(conv.updatedAt)} · {conv.messages.length} msg
+                    {timeAgo(conv.updatedAt)} · {conv.messageCount ?? conv.messages?.length ?? 0} msg
                   </div>
                 </div>
 
