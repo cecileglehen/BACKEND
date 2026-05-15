@@ -21,7 +21,7 @@ import { checkThrottle } from "./lib/throttle.js";
 import { compressIfNeeded } from "./lib/context.js";
 import { createCodeSession, editCodeSession, getCodePreviewFile, getCodeZip } from "./lib/codegen.js";
 import { TIER_MODELS, estimateCostEur } from "./config/plans.js";
-import { CREATIVE, findModelInCatalog, normalizeTier, publicCatalog } from "./config/models.js";
+import { brandFromAlias, CREATIVE, findModelForBrand, findModelInCatalog, isBrandAlias, normalizeTier, publicCatalog } from "./config/models.js";
 import { createSubscriptionLink, activateSubscription, handleWebhook, PAYPAL_PLAN_IDS } from "./lib/paypal.js";
 import { createClient } from "@supabase/supabase-js";
 import { routeMessage as groqRoute } from "./lib/router.js";
@@ -350,12 +350,21 @@ function buildProjectSystemMessage(project) {
   return { role: "system", content: lines.join("\n") };
 }
 
+function resolveRequestedModel(modelId, tier) {
+  if (!modelId) return null;
+  if (isBrandAlias(modelId)) {
+    const brand = brandFromAlias(modelId);
+    return findModelForBrand(brand, tier);
+  }
+  return findModelInCatalog(modelId);
+}
+
 // ─── Mode Débat — multi-agent séquentiel ───────────────────────────────────
 // Phases : propose → critique → optimize → synthesize
 // Chaque agent voit le contexte des précédents.
 app.post("/api/chat/debate", requireAuth, async (req, res) => {
   try {
-    const { question, agents } = req.body ?? {};
+    const { question, agents, debateMode, rounds } = req.body ?? {};
     if (!question || !Array.isArray(agents) || agents.length < 2) {
       return res.status(400).json({ error: "question + agents (≥2) requis" });
     }
@@ -376,25 +385,48 @@ app.post("/api/chat/debate", requireAuth, async (req, res) => {
       optimize:   "Tu es OPTIMISEUR. À partir de la proposition initiale et de la critique, produis une VERSION AMÉLIORÉE de la réponse. Corrige les erreurs, complète les manques, garde le bon. Ne dis pas 'voici la version améliorée', réponds simplement comme si tu répondais à la question d'origine.",
       synthesize: "Tu es SYNTHÉTISEUR. Tu vois la question d'origine et le travail des autres agents. Produis la RÉPONSE FINALE ultime — claire, complète, structurée, sans mentionner le processus. C'est ce que l'utilisateur va lire."
     };
+    const ITERATIVE_PROMPTS = {
+      propose: "Tu participes à un débat. Donne une première réponse en 3 à 6 phrases, concrète, sans tout développer.",
+      critique: "Tu participes à un débat. Commence naturellement par reconnaître ce qui va, puis expose les failles, angles morts ou corrections. 3 à 6 phrases.",
+      optimize: "Tu participes à un débat. Améliore la réponse précédente en intégrant les critiques. 3 à 7 phrases, précis.",
+      synthesize: "Tu clos le débat. Produit la réponse finale parfaite, claire et structurée, sans raconter le débat."
+    };
 
     const transcripts = []; // [{role, model, content}]
+    const debateRounds = Math.max(4, Math.min(12, Number(rounds) || 10));
+    const baseAgents = debateMode === "iterative" ? agents.slice(0, 3) : agents;
+    const turns = debateMode === "iterative"
+      ? Array.from({ length: debateRounds }, (_, index) => {
+          let role = "critique";
+          if (index === 0) role = "propose";
+          else if (index === debateRounds - 1) role = "synthesize";
+          else if (index % 3 === 2) role = "optimize";
+          return { agent: baseAgents[index % baseAgents.length], role };
+        })
+      : baseAgents.map((agent, i) => ({
+          agent,
+          role: agent.role || (i === 0 ? "propose" : i === baseAgents.length - 1 ? "synthesize" : i === 1 ? "critique" : "optimize")
+        }));
 
-    for (let i = 0; i < agents.length; i++) {
-      const a = agents[i];
-      const role = a.role || (i === 0 ? "propose" : i === agents.length - 1 ? "synthesize" : i === 1 ? "critique" : "optimize");
-      const found = findModelInCatalog(a.modelId);
+    for (let i = 0; i < turns.length; i++) {
+      const { agent: a, role } = turns[i];
+      const found = resolveRequestedModel(a.modelId, a.tier || "NORMAL");
       if (!found) {
         res.write(`data: ${JSON.stringify({ type: "agent_error", index: i, error: `Modèle introuvable: ${a.modelId}` })}\n\n`);
         continue;
       }
 
       // Construit le prompt pour cet agent
-      const sysPrompt = ROLE_PROMPTS[role] || ROLE_PROMPTS.propose;
+      const sysPrompt = debateMode === "iterative"
+        ? (ITERATIVE_PROMPTS[role] || ITERATIVE_PROMPTS.propose)
+        : (ROLE_PROMPTS[role] || ROLE_PROMPTS.propose);
       const userPrompt = [
         `QUESTION DE L'UTILISATEUR :\n${question}`,
-        ...transcripts.map((t, j) => `\n— Agent ${j + 1} (${t.role} · ${t.modelDisplay}) —\n${t.content}`),
+        ...transcripts.map((t, j) => `\n— Tour ${j + 1} (${t.role} · ${t.modelDisplay}) —\n${t.content}`),
         ``,
-        `Maintenant, en tant que ${role.toUpperCase()}, réponds.`
+        debateMode === "iterative"
+          ? `Réponds au tour ${i + 1} comme dans une vraie discussion.`
+          : `Maintenant, en tant que ${role.toUpperCase()}, réponds.`
       ].join("\n");
 
       // Notifie le client : démarrage de cette étape
@@ -859,7 +891,7 @@ app.post("/api/chat", requireAuth, async (req, res) => {
       project = await getProject(req.user.id, projectId);
     }
     const effectiveModelId = modelId || project?.defaultModel || null;
-    const selectedModel = effectiveModelId ? findModelInCatalog(effectiveModelId) : null;
+    const selectedModel = effectiveModelId ? resolveRequestedModel(effectiveModelId, reqTier || "NANO") : null;
     if (modelId && !selectedModel) return res.status(400).json({ error: `Modèle invalide: ${modelId}` });
 
     const inTier = normalizeTier(selectedModel?.tier || reqTier || "NANO");
@@ -987,7 +1019,7 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
 
     // Si un projet a un défaut model et qu'aucun modèle n'est forcé, utilise-le
     const effectiveModelId = modelId || project?.defaultModel || null;
-    const selectedModel = effectiveModelId ? findModelInCatalog(effectiveModelId) : null;
+    const selectedModel = effectiveModelId ? resolveRequestedModel(effectiveModelId, reqTier || "NANO") : null;
     const inTier = normalizeTier(selectedModel?.tier || reqTier || "NANO");
 
     const user = await refreshUser(req.user.id, req.user);

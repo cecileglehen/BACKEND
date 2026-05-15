@@ -198,6 +198,35 @@ export function findModelInCatalog(modelId) {
   return null;
 }
 
+export function isBrandAlias(modelId) {
+  return /^brand:/i.test(String(modelId || ""));
+}
+
+export function brandFromAlias(modelId) {
+  const value = String(modelId || "");
+  if (!isBrandAlias(value)) return null;
+  return decodeURIComponent(value.slice("brand:".length));
+}
+
+export function findModelForBrand(brand, tier) {
+  const wantedBrand = String(brand || "").toLowerCase();
+  const wantedTier = normalizeTier(tier || "NANO");
+  const tierOrder = ["FREE", "PICO", "NANO", "MINI", "NORMAL", "EXPERT", "PRO"];
+  const wantedIndex = Math.max(0, tierOrder.indexOf(wantedTier));
+  const searchOrder = [
+    wantedTier,
+    ...tierOrder.slice(0, wantedIndex).reverse(),
+    ...tierOrder.slice(wantedIndex + 1)
+  ].filter((value, index, arr) => value && arr.indexOf(value) === index);
+
+  for (const key of searchOrder) {
+    const cat = CATEGORIES[key];
+    const model = cat?.models?.find((m) => String(m.brand || "").toLowerCase() === wantedBrand && !m.adult);
+    if (model) return { tier: key, model };
+  }
+  return null;
+}
+
 export function fallbackChain(modelId) {
   const cat = findCategoryOfModel(modelId);
   if (!cat) return [modelId];
