@@ -71,7 +71,26 @@ export async function parseAttachment(buffer, file, plan = "FREE") {
   }
 
   // ─── Texte / code ───────────────────────────────────────────
-  if (TEXT_MIMES.has(mime) || /\.(txt|md|csv|json|xml|html|css|js|ts|jsx|tsx|py|c|cpp|java|go|rs|rb|php|sh|yml|yaml|toml|ini)$/i.test(name)) {
+  // Extensions explicitement reconnues (couvre la majorité des langages/configs)
+  const TEXT_EXT_REGEX = /\.(txt|md|mdx|rst|tex|bib|csv|tsv|log|json|jsonc|jsonl|ndjson|xml|yaml|yml|toml|ini|env|conf|cfg|properties|editorconfig|html?|css|scss|sass|less|js|mjs|cjs|jsx|ts|tsx|vue|svelte|astro|py|pyw|rb|php|pl|pm|lua|r|jl|c|h|cpp|hpp|cc|hh|cxx|cs|java|kt|kts|scala|go|rs|swift|dart|m|mm|sh|bash|zsh|fish|ps1|bat|cmd|sql|graphql|gql|proto|prisma|dockerfile|makefile|mk|gradle|sbt|cmake|nim|zig|v|vb|fs|fsx|ml|mli|ex|exs|elm|erl|hs|clj|cljs|asm|s|srt|vtt)$/i;
+
+  const looksTextual = (buf) => {
+    // Heuristique : UTF-8 décodable + ratio de caractères imprimables élevé sur les 4 premiers KB
+    const sample = buf.subarray(0, Math.min(buf.length, 4096));
+    try {
+      const decoded = new TextDecoder("utf-8", { fatal: false }).decode(sample);
+      // null bytes ou ratio > 5% de caractères de contrôle = binaire
+      if (decoded.indexOf("\x00") !== -1) return false;
+      let ctrl = 0;
+      for (const c of decoded) {
+        const code = c.charCodeAt(0);
+        if (code < 9 || (code > 13 && code < 32) || code === 127) ctrl++;
+      }
+      return ctrl / decoded.length < 0.05;
+    } catch { return false; }
+  };
+
+  if (TEXT_MIMES.has(mime) || mime.startsWith("text/") || TEXT_EXT_REGEX.test(name) || looksTextual(buffer)) {
     const text = buffer.toString("utf8").slice(0, 200_000);
     return {
       type: "text",

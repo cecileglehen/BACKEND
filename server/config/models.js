@@ -22,6 +22,7 @@ export const CATEGORIES = {
     cost: 0,
     levelRange: [1, 3],
     models: [
+      { id: "delt/delt-33m", brand: "DELT", display: "DELT 33M", free: true, ctx: 1024, proprietary: true, tagline: "Notre modèle propriétaire — entraîné from scratch", featuredLabel: "Made in DELT" },
       { id: "inclusionai/ring-2.6-1t:free", brand: "InclusionAI", display: "Ring 2.6 1T", free: true, ctx: 262144 },
       { id: "openai/gpt-oss-120b:free", brand: "OpenAI", display: "GPT OSS 120B", free: true, ctx: 131072 },
       { id: "google/gemma-4-31b-it:free", brand: "Google", display: "Gemma 4 31B", free: true, ctx: 262144 },
@@ -49,7 +50,7 @@ export const CATEGORIES = {
     cost: 0.1,
     levelRange: [1, 2],
     models: [
-      { id: "google/gemini-2.5-flash-lite", brand: "Google", display: "Gemini 2.5 Flash Lite", price: { in: 0.10, out: 0.40 }, ctx: 1048576, tagline: "Ultra rapide & ultra cheap" },
+      { id: "google/gemini-2.5-flash-lite", brand: "Google", display: "Gemini 2.5 Flash Lite", price: { in: 0.10, out: 0.40 }, ctx: 1048576, vision: true, tagline: "Ultra rapide & ultra cheap" },
       { id: "deepseek/deepseek-v4-flash", brand: "DeepSeek", display: "DeepSeek V4 Flash", price: { in: 0.10, out: 0.30 }, ctx: 163840, tagline: "Meilleur rapport qualité/prix" }
     ]
   },
@@ -58,10 +59,10 @@ export const CATEGORIES = {
     cost: 0.2,
     levelRange: [1, 3],
     models: [
-      { id: "mistralai/mistral-small-2603", brand: "Mistral", display: "Mistral Small 4", price: { in: 0.15, out: 0.60 }, ctx: 262144, featuredLabel: "Coup de coeur · 10K tokens offerts", freeMonthlyTokens: 10000 },
-      { id: "openai/gpt-5.4-nano", brand: "OpenAI", display: "GPT-5.4 Nano", price: { in: 0.20, out: 1.25 }, ctx: 400000 },
-      { id: "openai/gpt-4o-mini", brand: "OpenAI", display: "GPT-4o Mini", price: { in: 0.15, out: 0.60 }, ctx: 128000 },
-      { id: "google/gemini-2.5-flash", brand: "Google", display: "Gemini 2.5 Flash", price: { in: 0.30, out: 2.50 }, ctx: 1048576 }
+      { id: "mistralai/mistral-small-2603", brand: "Mistral", display: "Mistral Small 4", price: { in: 0.15, out: 0.60 }, ctx: 262144, vision: true, featuredLabel: "Coup de coeur · 10K tokens offerts", freeMonthlyTokens: 10000 },
+      { id: "openai/gpt-5.4-nano", brand: "OpenAI", display: "GPT-5.4 Nano", price: { in: 0.20, out: 1.25 }, ctx: 400000, vision: true },
+      { id: "openai/gpt-4o-mini", brand: "OpenAI", display: "GPT-4o Mini", price: { in: 0.15, out: 0.60 }, ctx: 128000, vision: true },
+      { id: "google/gemini-2.5-flash", brand: "Google", display: "Gemini 2.5 Flash", price: { in: 0.30, out: 2.50 }, ctx: 1048576, vision: true }
     ]
   },
   MINI: {
@@ -69,15 +70,15 @@ export const CATEGORIES = {
     cost: 0.4,
     levelRange: [4, 6],
     models: [
-      { id: "openai/gpt-5.4-mini", brand: "OpenAI", display: "GPT-5.4 Mini", price: { in: 0.75, out: 4.50 }, ctx: 400000 },
+      { id: "openai/gpt-5.4-mini", brand: "OpenAI", display: "GPT-5.4 Mini", price: { in: 0.75, out: 4.50 }, ctx: 400000, vision: true },
       { id: "openai/gpt-5.1-codex-mini", brand: "OpenAI", display: "GPT-5.1 Codex Mini", price: { in: 0.25, out: 2.00 }, ctx: 400000 },
-      { id: "mistralai/mistral-large-2512", brand: "Mistral", display: "Mistral Large 3 2512", price: { in: 0.50, out: 1.50 }, ctx: 262144 },
-      { id: "meta-llama/llama-4-maverick", brand: "Meta", display: "Llama 4 Maverick", price: { in: 0.15, out: 0.60 }, ctx: 1048576 },
-      { id: "google/gemini-3.1-flash-lite", brand: "Google", display: "Gemini 3.1 Flash Lite", price: { in: 0.15, out: 0.60 }, ctx: 1048576 },
-      { id: "anthropic/claude-haiku-4.5", brand: "Anthropic", display: "Claude Haiku 4.5", price: { in: 1.00, out: 5.00 }, ctx: 200000 },
-      { id: "anthropic/claude-haiku-latest", brand: "Anthropic", display: "Claude Haiku (latest)", price: { in: 1.00, out: 5.00 }, ctx: 200000 },
-      { id: "x-ai/grok-4.20", brand: "xAI", display: "Grok 4.20", price: { in: 1.25, out: 2.50 }, ctx: 2000000 },
-      { id: "x-ai/grok-4.3", brand: "xAI", display: "Grok 4.3", price: { in: 0.50, out: 2.00 }, ctx: 2000000 }
+      { id: "mistralai/mistral-large-2512", brand: "Mistral", display: "Mistral Large 3 2512", price: { in: 0.50, out: 1.50 }, ctx: 262144, vision: true },
+      { id: "meta-llama/llama-4-maverick", brand: "Meta", display: "Llama 4 Maverick", price: { in: 0.15, out: 0.60 }, ctx: 1048576, vision: true },
+      { id: "google/gemini-3.1-flash-lite", brand: "Google", display: "Gemini 3.1 Flash Lite", price: { in: 0.15, out: 0.60 }, ctx: 1048576, vision: true },
+      { id: "anthropic/claude-haiku-4.5", brand: "Anthropic", display: "Claude Haiku 4.5", price: { in: 1.00, out: 5.00 }, ctx: 200000, vision: true },
+      { id: "anthropic/claude-haiku-latest", brand: "Anthropic", display: "Claude Haiku (latest)", price: { in: 1.00, out: 5.00 }, ctx: 200000, vision: true },
+      { id: "x-ai/grok-4.20", brand: "xAI", display: "Grok 4.20", price: { in: 1.25, out: 2.50 }, ctx: 2000000, vision: true },
+      { id: "x-ai/grok-4.3", brand: "xAI", display: "Grok 4.3", price: { in: 0.50, out: 2.00 }, ctx: 2000000, vision: true }
     ]
   },
   NORMAL: {
@@ -85,10 +86,10 @@ export const CATEGORIES = {
     cost: 4,
     levelRange: [7, 8],
     models: [
-      { id: "openai/gpt-5.4", brand: "OpenAI", display: "GPT-5.4", price: { in: 2.50, out: 15.00 }, ctx: 400000 },
+      { id: "openai/gpt-5.4", brand: "OpenAI", display: "GPT-5.4", price: { in: 2.50, out: 15.00 }, ctx: 400000, vision: true },
       { id: "openai/gpt-5.3-codex", brand: "OpenAI", display: "GPT-5.3 Codex", price: { in: 1.75, out: 14.00 }, ctx: 400000 },
-      { id: "mistralai/mistral-large", brand: "Mistral", display: "Mistral Large", price: { in: 2.00, out: 6.00 }, ctx: 128000 },
-      { id: "anthropic/claude-sonnet-4-5", brand: "Anthropic", display: "Claude Sonnet 4.5", price: { in: 3.00, out: 15.00 }, ctx: 1000000 },
+      { id: "mistralai/mistral-large", brand: "Mistral", display: "Mistral Large", price: { in: 2.00, out: 6.00 }, ctx: 128000, vision: true },
+      { id: "anthropic/claude-sonnet-4-5", brand: "Anthropic", display: "Claude Sonnet 4.5", price: { in: 3.00, out: 15.00 }, ctx: 1000000, vision: true },
       { id: "perplexity/sonar", brand: "Perplexity", display: "Sonar Web Search", price: { in: 1.00, out: 1.00 }, ctx: 127072 }
     ]
   },
@@ -97,9 +98,9 @@ export const CATEGORIES = {
     cost: 8,
     levelRange: [9, 10],
     models: [
-      { id: "openai/gpt-5.5", brand: "OpenAI", display: "GPT-5.5", price: { in: 5.00, out: 30.00 }, ctx: 400000 },
-      { id: "anthropic/claude-opus-4-5", brand: "Anthropic", display: "Claude Opus 4.5", price: { in: 5.00, out: 25.00 }, ctx: 1000000 },
-      { id: "x-ai/grok-4.20-multi-agent", brand: "xAI", display: "Grok 4.20 Multi-Agent", price: { in: 2.00, out: 6.00 }, ctx: 2000000 },
+      { id: "openai/gpt-5.5", brand: "OpenAI", display: "GPT-5.5", price: { in: 5.00, out: 30.00 }, ctx: 400000, vision: true },
+      { id: "anthropic/claude-opus-4-5", brand: "Anthropic", display: "Claude Opus 4.5", price: { in: 5.00, out: 25.00 }, ctx: 1000000, vision: true },
+      { id: "x-ai/grok-4.20-multi-agent", brand: "xAI", display: "Grok 4.20 Multi-Agent", price: { in: 2.00, out: 6.00 }, ctx: 2000000, vision: true },
       { id: "perplexity/sonar-deep-research", brand: "Perplexity", display: "Sonar Deep Research", price: { in: 2.00, out: 8.00 }, ctx: 128000 }
     ]
   },
@@ -108,11 +109,34 @@ export const CATEGORIES = {
     cost: 50,
     levelRange: [10, 10],
     models: [
-      { id: "openai/gpt-5.5-pro", brand: "OpenAI", display: "GPT-5.5 Pro", price: { in: 30.00, out: 180.00 }, ctx: 400000 },
-      { id: "openai/gpt-5.4-pro", brand: "OpenAI", display: "GPT-5.4 Pro", price: { in: 30.00, out: 180.00 }, ctx: 400000 }
+      { id: "openai/gpt-5.5-pro", brand: "OpenAI", display: "GPT-5.5 Pro", price: { in: 30.00, out: 180.00 }, ctx: 400000, vision: true },
+      { id: "openai/gpt-5.4-pro", brand: "OpenAI", display: "GPT-5.4 Pro", price: { in: 30.00, out: 180.00 }, ctx: 400000, vision: true }
     ]
   }
 };
+
+// ─── Vision (analyse d'images) ──────────────────────────────────────────────
+// Modèles qui acceptent des images en entrée. Utilisé pour auto-switcher
+// quand l'utilisateur joint une image à un modèle text-only.
+export function supportsVision(modelOrId) {
+  if (!modelOrId) return false;
+  if (typeof modelOrId === "object" && modelOrId !== null) return Boolean(modelOrId.vision);
+  for (const cat of Object.values(CATEGORIES)) {
+    const m = cat.models?.find((x) => x.id === modelOrId);
+    if (m) return Boolean(m.vision);
+  }
+  return false;
+}
+
+// Renvoie un modèle vision-compatible pour un tier donné, ou null.
+// Préfère le modèle primaire (premier de la liste) s'il a vision, sinon le 1er compatible.
+export function pickVisionModelForTier(tier) {
+  const cat = CATEGORIES[String(tier || "").toUpperCase()];
+  if (!cat) return null;
+  const primary = cat.models?.[0];
+  if (primary?.vision) return primary;
+  return cat.models?.find((m) => m.vision) || null;
+}
 
 export const CREATIVE = {
   IMAGE: {

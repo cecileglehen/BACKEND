@@ -21,7 +21,7 @@ import { checkThrottle } from "./lib/throttle.js";
 import { compressIfNeeded } from "./lib/context.js";
 import { createCodeSession, editCodeSession, getCodePreviewFile, getCodeZip } from "./lib/codegen.js";
 import { TIER_MODELS, estimateCostEur } from "./config/plans.js";
-import { brandFromAlias, CREATIVE, findModelForBrand, findModelInCatalog, isBrandAlias, normalizeTier, publicCatalog } from "./config/models.js";
+import { brandFromAlias, CREATIVE, findModelForBrand, findModelInCatalog, isBrandAlias, normalizeTier, publicCatalog, supportsVision, pickVisionModelForTier } from "./config/models.js";
 import { createSubscriptionLink, activateSubscription, handleWebhook, PAYPAL_PLAN_IDS } from "./lib/paypal.js";
 import { createClient } from "@supabase/supabase-js";
 import { routeMessage as groqRoute } from "./lib/router.js";
@@ -1098,6 +1098,19 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
       });
     }
 
+    // ─── Auto-swap vers modèle vision si image jointe ───────────────────────
+    const hasImage = messages.some((m) =>
+      Array.isArray(m.attachments) && m.attachments.some((a) => a?.type === "image")
+    );
+    let visionSwap = null;
+    if (hasImage && !supportsVision(modelInfo)) {
+      const visionModel = pickVisionModelForTier(inTier) || pickVisionModelForTier("MINI") || pickVisionModelForTier("NANO");
+      if (visionModel) {
+        visionSwap = { from: modelInfo.display || modelInfo.id, to: visionModel.display || visionModel.id, reason: "image_attachment" };
+        modelInfo = visionModel;
+      }
+    }
+
     // Reconstruit les messages avec le format multimodal si attachments présents
     for (const m of messages) {
       if (Array.isArray(m.attachments) && m.attachments.length > 0) {
@@ -1138,7 +1151,7 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders();
-    res.write(`data: ${JSON.stringify({ type: "meta", tier: inTier, model: modelInfo })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: "meta", tier: inTier, model: modelInfo, visionSwap })}\n\n`);
 
     let compressed = await compressIfNeeded(messages);
 

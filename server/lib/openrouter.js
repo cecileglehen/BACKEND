@@ -3,6 +3,11 @@ import { fallbackChain } from "../config/models.js";
 
 const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
 
+// ─── DELT 33M (modèle propriétaire interne) ─────────────────────────────────
+const DELT_INFERENCE_URL = (process.env.DELT_INFERENCE_URL || "").trim();
+const DELT_INFERENCE_KEY = (process.env.DELT_INFERENCE_KEY || "").trim();
+const isDeltModel = (id) => typeof id === "string" && id.startsWith("delt/");
+
 const RETRYABLE = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 const headers = (key) => ({
@@ -12,7 +17,48 @@ const headers = (key) => ({
   "X-Title": "DELT AI"
 });
 
+// Pour les messages multimodaux (parts image_url + text) on garde uniquement le texte
+// — DELT 33M ne supporte pas la vision.
+function flattenMessages(messages) {
+  return messages.map((m) => {
+    if (typeof m.content === "string") return m;
+    if (Array.isArray(m.content)) {
+      const text = m.content.filter((p) => p?.type === "text").map((p) => p.text || "").join("\n");
+      return { ...m, content: text };
+    }
+    return m;
+  });
+}
+
+async function callDeltModel(modelId, messages, signal) {
+  if (!DELT_INFERENCE_URL) {
+    const err = new Error("DELT_INFERENCE_URL non configuré");
+    err.status = 503;
+    err.retryable = false;
+    throw err;
+  }
+  const res = await fetch(`${DELT_INFERENCE_URL.replace(/\/$/, "")}/v1/chat/completions`, {
+    method: "POST",
+    signal,
+    headers: {
+      "Content-Type": "application/json",
+      ...(DELT_INFERENCE_KEY ? { Authorization: `Bearer ${DELT_INFERENCE_KEY}` } : {})
+    },
+    body: JSON.stringify({ model: modelId, messages: flattenMessages(messages), max_tokens: 256, temperature: 0.8 })
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    const err = new Error(`DELT ${res.status}: ${txt.slice(0, 200)}`);
+    err.status = res.status;
+    err.retryable = RETRYABLE.has(res.status);
+    throw err;
+  }
+  return res.json();
+}
+
 async function callModel(modelId, messages, signal) {
+  if (isDeltModel(modelId)) return callDeltModel(modelId, messages, signal);
+
   const key = (process.env.OPENROUTER_API_KEY || "").trim();
   if (!key) throw new Error("OPENROUTER_API_KEY manquante");
 
@@ -59,12 +105,15 @@ export async function chatWithFallback({ modelId, messages, signal, manual = fal
   throw err;
 }
 
-// Streaming SSE — pipe OpenRouter → Express response
+// Streaming SSE — pipe OpenRouter (ou DELT 33M) → Express response
 export async function streamChat({ modelId, messages, res, onDone }) {
-  const key = (process.env.OPENROUTER_API_KEY || "").trim();
-  if (!key) throw new Error("OPENROUTER_API_KEY manquante");
-
+  const isDelt = isDeltModel(modelId);
   const isPerplexity = /perplexity\/sonar/i.test(modelId);
+
+  if (!isDelt) {
+    const key = (process.env.OPENROUTER_API_KEY || "").trim();
+    if (!key) throw new Error("OPENROUTER_API_KEY manquante");
+  }
 
   // Abort upstream si le client coupe la connexion
   const upstreamCtrl = new AbortController();
@@ -75,23 +124,36 @@ export async function streamChat({ modelId, messages, res, onDone }) {
   };
   res.on("close", onClientClose);
 
-  const orRes = await fetch(OR_URL, {
-    method: "POST",
-    headers: headers(key),
-    signal: upstreamCtrl.signal,
-    body: JSON.stringify({
-      model: modelId,
-      messages,
-      stream: true,
-      // Force le provider à émettre l'objet "usage" dans le dernier chunk
-      // (sinon il est absent en mode streaming et tokensOut est sous-estimé)
-      stream_options: { include_usage: true },
-      // Demande à OpenRouter d'inclure usage.cost dans la réponse (prix réel en $)
-      usage: { include: true },
-      include_reasoning: true,
-      reasoning: { effort: "medium" }
-    })
-  });
+  const orRes = isDelt
+    ? await fetch(`${DELT_INFERENCE_URL.replace(/\/$/, "")}/v1/chat/completions`, {
+        method: "POST",
+        signal: upstreamCtrl.signal,
+        headers: {
+          "Content-Type": "application/json",
+          ...(DELT_INFERENCE_KEY ? { Authorization: `Bearer ${DELT_INFERENCE_KEY}` } : {})
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages: flattenMessages(messages),
+          stream: true,
+          max_tokens: 256,
+          temperature: 0.8
+        })
+      })
+    : await fetch(OR_URL, {
+        method: "POST",
+        headers: headers((process.env.OPENROUTER_API_KEY || "").trim()),
+        signal: upstreamCtrl.signal,
+        body: JSON.stringify({
+          model: modelId,
+          messages,
+          stream: true,
+          stream_options: { include_usage: true },
+          usage: { include: true },
+          include_reasoning: true,
+          reasoning: { effort: "medium" }
+        })
+      });
 
   if (!orRes.ok) {
     res.off("close", onClientClose);
