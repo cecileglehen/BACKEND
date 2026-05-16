@@ -4,7 +4,7 @@ import { fallbackChain } from "../config/models.js";
 const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 // ─── DELT 33M (modèle propriétaire interne) ─────────────────────────────────
-const DELT_INFERENCE_URL = (process.env.DELT_INFERENCE_URL || "").trim();
+const DELT_INFERENCE_URL = (process.env.DELT_INFERENCE_URL || "https://nickel-state-citations-kentucky.trycloudflare.com").trim();
 const DELT_INFERENCE_KEY = (process.env.DELT_INFERENCE_KEY || "").trim();
 const isDeltModel = (id) => typeof id === "string" && id.startsWith("delt/");
 
@@ -113,6 +113,8 @@ export async function streamChat({ modelId, messages, res, onDone }) {
   if (!isDelt) {
     const key = (process.env.OPENROUTER_API_KEY || "").trim();
     if (!key) throw new Error("OPENROUTER_API_KEY manquante");
+  } else if (!DELT_INFERENCE_URL) {
+    throw new Error("DELT_INFERENCE_URL non configuré — modèle DELT 33M indisponible");
   }
 
   // Abort upstream si le client coupe la connexion
