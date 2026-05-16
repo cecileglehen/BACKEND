@@ -7,7 +7,8 @@ const TABS = [
   { to: "/",        label: "Chat" },
   { to: "/code",    label: "Code" },
   { to: "/studio",  label: "Studio" },
-  { to: "/billing", label: "Tarifs" }
+  { to: "/billing", label: "Tarifs" },
+  { to: "/notre-modele", label: "NOTRE MODÈLE", highlight: "blue" }
 ];
 
 const PLAN_COLORS = {
@@ -43,21 +44,28 @@ export default function Navbar() {
   };
 
   return (
-    <header className="flex-shrink-0 border-b border-delt-border bg-white sticky top-0 z-30">
-      <div className="min-h-14 px-2 sm:px-4 py-2 flex items-center justify-between gap-2 sm:gap-4">
+    <header className="flex-shrink-0 border-b border-delt-border bg-white sticky top-0 z-30 safe-pt">
+      <div className="min-h-14 px-2 sm:px-4 py-2 flex items-center justify-between gap-2 sm:gap-4 safe-px">
         <Logo />
 
         <nav className="flex items-center gap-0.5 overflow-x-auto min-w-0 max-w-[58vw] sm:max-w-none">
-          {TABS.map(({ to, label }) => (
+          {TABS.map(({ to, label, highlight }) => (
             <NavLink
               key={to}
               to={to}
               end={to === "/"}
-              className={({ isActive }) =>
-                `px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
+              className={({ isActive }) => {
+                if (highlight === "blue") {
+                  return `px-2.5 sm:px-3.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold tracking-wider transition-colors whitespace-nowrap ${
+                    isActive
+                      ? "bg-blue-600 text-white"
+                      : "bg-blue-500 text-white hover:bg-blue-600 shadow-sm"
+                  }`;
+                }
+                return `px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                   isActive ? "bg-delt-panel text-delt-text" : "text-delt-muted hover:text-delt-text hover:bg-delt-surface/60"
-                }`
-              }
+                }`;
+              }}
             >
               {label}
             </NavLink>
