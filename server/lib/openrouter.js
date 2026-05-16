@@ -17,17 +17,19 @@ const headers = (key) => ({
   "X-Title": "DELT AI"
 });
 
-// Pour les messages multimodaux (parts image_url + text) on garde uniquement le texte
-// — DELT 33M ne supporte pas la vision.
+// Pour DELT 33M : strip system prompts (le modèle n'est pas instruct-tuned)
+// + flatten multimodal (image_url + text → text only, pas de vision)
 function flattenMessages(messages) {
-  return messages.map((m) => {
-    if (typeof m.content === "string") return m;
-    if (Array.isArray(m.content)) {
-      const text = m.content.filter((p) => p?.type === "text").map((p) => p.text || "").join("\n");
-      return { ...m, content: text };
-    }
-    return m;
-  });
+  return messages
+    .filter((m) => m.role !== "system")
+    .map((m) => {
+      if (typeof m.content === "string") return m;
+      if (Array.isArray(m.content)) {
+        const text = m.content.filter((p) => p?.type === "text").map((p) => p.text || "").join("\n");
+        return { ...m, content: text };
+      }
+      return m;
+    });
 }
 
 async function callDeltModel(modelId, messages, signal) {
