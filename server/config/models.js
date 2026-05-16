@@ -22,7 +22,6 @@ export const CATEGORIES = {
     cost: 0,
     levelRange: [1, 3],
     models: [
-      { id: "delt/delt-33m", brand: "DELT", display: "DELT 33M", free: true, ctx: 1024, proprietary: true, tagline: "Notre modèle propriétaire — entraîné from scratch", featuredLabel: "Made in DELT" },
       { id: "inclusionai/ring-2.6-1t:free", brand: "InclusionAI", display: "Ring 2.6 1T", free: true, ctx: 262144 },
       { id: "openai/gpt-oss-120b:free", brand: "OpenAI", display: "GPT OSS 120B", free: true, ctx: 131072 },
       { id: "google/gemma-4-31b-it:free", brand: "Google", display: "Gemma 4 31B", free: true, ctx: 262144 },
