@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 
-const DELT_URL = "https://nickel-state-citations-kentucky.trycloudflare.com";
-const DELT_KEY = "CTL4hcDVdo5poLNZodArL6RpTRvNIIH5XfkQT8TYfz0";
+const DELT_URL = "https://bathroom-ultram-usd-offering.trycloudflare.com";
+const DELT_KEY = "myDMpvoCuw1ePElUrbqapiB7sXPfShWGfrSh5WdaSpM";
 
 export default function OurModelRoute() {
   const [prompt, setPrompt] = useState("");

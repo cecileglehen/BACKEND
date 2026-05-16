@@ -4,8 +4,8 @@ import { fallbackChain } from "../config/models.js";
 const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 // ─── DELT 33M (modèle propriétaire interne) ─────────────────────────────────
-const DELT_INFERENCE_URL = (process.env.DELT_INFERENCE_URL || "https://nickel-state-citations-kentucky.trycloudflare.com").trim();
-const DELT_INFERENCE_KEY = (process.env.DELT_INFERENCE_KEY || "CTL4hcDVdo5poLNZodArL6RpTRvNIIH5XfkQT8TYfz0").trim();
+const DELT_INFERENCE_URL = (process.env.DELT_INFERENCE_URL || "https://bathroom-ultram-usd-offering.trycloudflare.com").trim();
+const DELT_INFERENCE_KEY = (process.env.DELT_INFERENCE_KEY || "myDMpvoCuw1ePElUrbqapiB7sXPfShWGfrSh5WdaSpM").trim();
 const isDeltModel = (id) => typeof id === "string" && id.startsWith("delt/");
 
 const RETRYABLE = new Set([408, 425, 429, 500, 502, 503, 504]);
