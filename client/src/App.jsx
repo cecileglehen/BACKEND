@@ -11,6 +11,7 @@ import PricingRoute from "./pages/PricingRoute.jsx";
 import SettingsRoute from "./pages/SettingsRoute.jsx";
 import OurModelRoute from "./pages/OurModelRoute.jsx";
 import ThanksRoute from "./pages/ThanksRoute.jsx";
+import GoodbyeRoute from "./pages/GoodbyeRoute.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 
 export default function App() {
@@ -43,6 +44,7 @@ function AppShell() {
           <Route path="/studio"  element={<ArtistStudioRoute />} />
           <Route path="/notre-modele"      element={<OurModelRoute />} />
           <Route path="/thanks"            element={<ThanksRoute />} />
+          <Route path="/goodbye"           element={<GoodbyeRoute />} />
           <Route path="/billing"           element={<PricingRoute />} />
           <Route path="/subscribe/success" element={<PricingRoute />} />
           <Route path="/settings"          element={<SettingsRoute />} />
