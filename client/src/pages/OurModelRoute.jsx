@@ -195,7 +195,7 @@ export default function OurModelRoute() {
           </p>
 
           <div className="flex flex-wrap justify-center gap-2 mb-6">
-            {[5, 10, 25, 50].map((amt) => (
+            {[5, 10, 25].map((amt) => (
               <span key={amt} className="px-4 py-2 rounded-full bg-white border border-blue-300 text-blue-700 text-sm font-semibold">
                 {amt}€
               </span>
