@@ -1,7 +1,38 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 
 const DELT_URL = "https://bathroom-ultram-usd-offering.trycloudflare.com";
 const DELT_KEY = "myDMpvoCuw1ePElUrbqapiB7sXPfShWGfrSh5WdaSpM";
+const PAYPAL_DONATE_ID = "GNLL9DWV9ML56";
+
+function PayPalDonate() {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!ref.current) return;
+    const render = () => {
+      if (!window.PayPal?.Donation) return;
+      ref.current.innerHTML = "";
+      window.PayPal.Donation.Button({
+        env: "production",
+        hosted_button_id: PAYPAL_DONATE_ID,
+        image: {
+          src: "https://www.paypalobjects.com/en_US/FR/i/btn/btn_donateCC_LG.gif",
+          alt: "Faire un don avec PayPal",
+          title: "Soutenir DELT AI"
+        }
+      }).render(ref.current);
+    };
+    if (window.PayPal?.Donation) { render(); return; }
+    const existing = document.querySelector('script[data-paypal-donate="1"]');
+    if (existing) { existing.addEventListener("load", render); return; }
+    const script = document.createElement("script");
+    script.src = "https://www.paypalobjects.com/donate/sdk/donate-sdk.js";
+    script.charset = "UTF-8";
+    script.dataset.paypalDonate = "1";
+    script.onload = render;
+    document.body.appendChild(script);
+  }, []);
+  return <div ref={ref} className="flex justify-center" />;
+}
 
 export default function OurModelRoute() {
   const [prompt, setPrompt] = useState("");
@@ -151,18 +182,48 @@ export default function OurModelRoute() {
           </p>
         </div>
 
+        <div className="rounded-3xl border-2 border-blue-300 bg-gradient-to-br from-blue-50 to-white p-6 sm:p-8 mb-10 text-center shadow-md">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-600 text-white text-[10px] font-bold uppercase tracking-wider mb-4">
+            🇫🇷 Soutiens un LLM 100% français
+          </div>
+          <h3 className="text-2xl sm:text-3xl font-extrabold text-delt-text mb-3">
+            Aide-nous à passer de 33M → 750M
+          </h3>
+          <p className="text-sm sm:text-base text-delt-muted max-w-xl mx-auto leading-relaxed mb-6">
+            GPU, dataset, formation : il nous faut <span className="font-bold text-delt-text">~5000€</span> pour la prochaine génération.
+            Chaque euro va directement dans le compute d'entraînement.
+          </p>
+
+          <div className="flex flex-wrap justify-center gap-2 mb-6">
+            {[5, 10, 25, 50].map((amt) => (
+              <span key={amt} className="px-4 py-2 rounded-full bg-white border border-blue-300 text-blue-700 text-sm font-semibold">
+                {amt}€
+              </span>
+            ))}
+            <span className="px-4 py-2 rounded-full bg-white border border-blue-300 text-blue-700 text-sm font-semibold">
+              Libre
+            </span>
+          </div>
+
+          <PayPalDonate />
+
+          <p className="text-xs text-delt-muted mt-4">
+            Paiement 100% sécurisé via PayPal · Reçu par email
+          </p>
+        </div>
+
         <div className="text-center">
           <a
             href="/billing"
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-colors shadow-md hover:shadow-lg"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-delt-text hover:bg-black text-white font-semibold transition-colors shadow-md hover:shadow-lg"
           >
-            Soutenir Delt AI
+            Ou prends un abonnement Delt AI
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M5 12h14M13 5l7 7-7 7"/>
             </svg>
           </a>
           <p className="text-xs text-delt-muted mt-3">
-            Chaque crédit acheté finance les prochains modèles maison.
+            Chaque crédit acheté finance aussi les prochains modèles maison.
           </p>
         </div>
 
