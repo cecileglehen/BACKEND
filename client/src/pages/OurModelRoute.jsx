@@ -1,37 +1,24 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 
 const DELT_URL = "https://bathroom-ultram-usd-offering.trycloudflare.com";
 const DELT_KEY = "myDMpvoCuw1ePElUrbqapiB7sXPfShWGfrSh5WdaSpM";
 const PAYPAL_DONATE_ID = "GNLL9DWV9ML56";
 
 function PayPalDonate() {
-  const ref = useRef(null);
-  useEffect(() => {
-    if (!ref.current) return;
-    const render = () => {
-      if (!window.PayPal?.Donation) return;
-      ref.current.innerHTML = "";
-      window.PayPal.Donation.Button({
-        env: "production",
-        hosted_button_id: PAYPAL_DONATE_ID,
-        image: {
-          src: "https://www.paypalobjects.com/en_US/FR/i/btn/btn_donateCC_LG.gif",
-          alt: "Faire un don avec PayPal",
-          title: "Soutenir DELT AI"
-        }
-      }).render(ref.current);
-    };
-    if (window.PayPal?.Donation) { render(); return; }
-    const existing = document.querySelector('script[data-paypal-donate="1"]');
-    if (existing) { existing.addEventListener("load", render); return; }
-    const script = document.createElement("script");
-    script.src = "https://www.paypalobjects.com/donate/sdk/donate-sdk.js";
-    script.charset = "UTF-8";
-    script.dataset.paypalDonate = "1";
-    script.onload = render;
-    document.body.appendChild(script);
-  }, []);
-  return <div ref={ref} className="flex justify-center" />;
+  return (
+    <form action="https://www.paypal.com/donate" method="post" target="_blank" className="flex justify-center">
+      <input type="hidden" name="hosted_button_id" value={PAYPAL_DONATE_ID} />
+      <button
+        type="submit"
+        className="inline-flex items-center gap-2 px-8 py-3.5 rounded-full bg-[#0070ba] hover:bg-[#005a96] text-white font-bold text-base transition-colors shadow-md hover:shadow-xl"
+      >
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797h-2.19c-.524 0-.968.382-1.05.9l-1.12 7.106zm14.146-14.42a3.35 3.35 0 0 0-.607-.541c-.013.076-.026.175-.041.254-.59 3.025-2.566 6.082-7.27 6.082h-2.19a.563.563 0 0 0-.556.479l-1.187 7.527h-.506l-.24 1.516a.56.56 0 0 0 .554.647h3.882c.46 0 .85-.334.922-.788.06-.26.76-4.852.816-5.09a.932.932 0 0 1 .923-.788h.58c3.76 0 6.705-1.528 7.565-5.946.36-1.847.174-3.388-.777-4.474z"/>
+        </svg>
+        Faire un don via PayPal
+      </button>
+    </form>
+  );
 }
 
 export default function OurModelRoute() {
