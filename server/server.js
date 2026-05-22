@@ -470,7 +470,8 @@ app.post("/api/chat/debate", requireAuth, async (req, res) => {
                 }
               } catch { /* */ }
             },
-            setHeader: () => {}, flushHeaders: () => {}, end: () => {}
+            setHeader: () => {}, flushHeaders: () => {}, end: () => {},
+            on: () => {}, off: () => {}, once: () => {}, removeListener: () => {}
           },
           onDone: async ({ tokensIn, tokensOut, thinkingTokens, costUsd }) => {
             const creditCost = computeCreditFromCost({
