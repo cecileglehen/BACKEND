@@ -78,17 +78,12 @@ function CsvTable({ content }) {
 }
 
 function HtmlPreview({ content }) {
-  const blob = useMemo(() => {
-    const b = new Blob([content], { type: "text/html" });
-    return URL.createObjectURL(b);
-  }, [content]);
-  useEffect(() => () => URL.revokeObjectURL(blob), [blob]);
   return (
     <iframe
-      src={blob}
-      sandbox="allow-scripts"
+      srcDoc={content}
+      sandbox="allow-scripts allow-same-origin"
       title="HTML preview"
-      className="w-full h-full min-h-[400px] border-0 bg-white rounded-lg"
+      className="w-full h-full min-h-[500px] border-0 bg-white rounded-lg"
     />
   );
 }
@@ -145,11 +140,7 @@ export default function ArtifactViewer({ artifact, onClose }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
-    };
+    return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
   const hasPreview = type.kind !== "code" && type.kind !== "text";
@@ -158,11 +149,7 @@ export default function ArtifactViewer({ artifact, onClose }) {
   const lines = (artifact.content || "").split("\n").length;
 
   return (
-    <div className="fixed inset-0 z-[100] flex justify-end bg-black/40 backdrop-blur-sm animate-fadeIn" onClick={onClose}>
-      <div
-        className="w-full sm:w-[600px] lg:w-[760px] bg-white h-full flex flex-col shadow-2xl animate-slideInRight"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="flex-1 min-w-0 flex flex-col bg-white border-l border-delt-border animate-slideInRight overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-delt-border flex-shrink-0">
           <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs uppercase">
@@ -240,7 +227,6 @@ export default function ArtifactViewer({ artifact, onClose }) {
             <CodeView content={artifact.content} lang={type.hljs} />
           )}
         </div>
-      </div>
     </div>
   );
 }

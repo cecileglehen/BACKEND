@@ -20,6 +20,7 @@ import BrandPills from "../components/BrandPills.jsx";
 import ProjectsSidebar from "../components/ProjectsSidebar.jsx";
 import ProjectSettingsModal from "../components/ProjectSettingsModal.jsx";
 import ManualModelSelector from "../components/ManualModelSelector.jsx";
+import ArtifactViewer from "../components/ArtifactViewer.jsx";
 
 function HamburgerIcon() {
   return (
@@ -116,6 +117,7 @@ export default function ChatPage() {
   const [modelsOpen, setModelsOpen] = useState(false);
   const [debateAgents, setDebateAgents] = useState(null);
   const [debateSetupOpen, setDebateSetupOpen] = useState(false);
+  const [openArtifact, setOpenArtifact] = useState(null);
   const [deepMode, setDeepMode] = useState(false);
 
   const sidebarAnim = useAnimatedMount(historyOpen, 450);
@@ -529,7 +531,7 @@ export default function ChatPage() {
       )}
 
       {/* Main */}
-      <main className="flex-1 min-w-0 flex flex-col">
+      <main className={`flex-1 min-w-0 flex flex-col ${openArtifact ? "hidden lg:flex lg:max-w-[50%]" : ""}`}>
         {chat.messages.length === 0 ? (
           <>
             <HeaderTools />
@@ -558,7 +560,7 @@ export default function ChatPage() {
             <div className="flex-1 min-h-0 overflow-y-auto">
               <WelcomeScreen />
             </div>
-            <div className="flex-shrink-0 px-2 sm:px-4 pb-3 sm:pb-4 pt-2 bg-white">
+            <div className="flex-shrink-0 px-2 sm:px-4 pt-2 bg-white safe-pb">
               <div className="max-w-3xl mx-auto">
                 <ErrorBanner error={chat.error} onClose={() => chat.setError(null)} />
                 <Composer
@@ -605,6 +607,7 @@ export default function ChatPage() {
                     onRemake={m.role === "assistant" ? (model) => chat.remake(i, model) : undefined}
                     onChooseVariant={(variantIndex) => chat.chooseVariant(i, variantIndex)}
                     onMerge={m.role === "assistant" && m.variants ? () => chat.mergeVariants(i) : undefined}
+                    onOpenArtifact={setOpenArtifact}
                   />
                 ))}
                 {chat.busy && (
@@ -619,7 +622,7 @@ export default function ChatPage() {
                 )}
               </div>
             </div>
-            <div className="px-2 sm:px-4 pb-3 sm:pb-4 pt-2 bg-white">
+            <div className="px-2 sm:px-4 pt-2 bg-white safe-pb">
               <div className="max-w-3xl mx-auto">
                 <ErrorBanner error={chat.error} onClose={() => chat.setError(null)} />
                 <Composer
@@ -655,6 +658,11 @@ export default function ChatPage() {
           </>
         )}
       </main>
+
+      {/* Artifact viewer (split view : chat + panel) */}
+      {openArtifact && (
+        <ArtifactViewer artifact={openArtifact} onClose={() => setOpenArtifact(null)} />
+      )}
 
       {/* Modale débat */}
       {debateSetupOpen && (
