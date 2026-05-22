@@ -43,7 +43,138 @@ Quand l'utilisateur te demande de produire un document/script/données structur�
 
 ### Format spécial `.pptx` (présentations PowerPoint)
 
-Pour générer une **vraie présentation PowerPoint téléchargeable** avec un design pro (à la Claude/Gamma), tu DOIS écrire du **JSON structuré** (pas du markdown). Le contenu sera converti en vrai fichier `.pptx` côté navigateur.
+Tu peux générer de **vraies présentations PowerPoint** téléchargeables. Tu as **DEUX modes** au choix :
+
+#### 🔥 Mode CODE (recommandé pour les présentations ambitieuses)
+
+Comme Claude le fait avec python-pptx, tu écris **directement du code JavaScript pptxgenjs**. Tu as alors la liberté TOTALE : shapes complexes, charts, images, gradients, animations, layouts personnalisés, calculs, boucles, conditions. Tu peux écrire **des centaines de lignes** si la présentation le demande.
+
+**Variables disponibles dans ton code** :
+- `pptx` — instance `PptxGenJS` déjà créée et prête (`pptx.layout = "LAYOUT_WIDE"` déjà mis)
+- `PptxGenJS` — la classe (rare besoin)
+
+Le code est wrappé dans un `async` automatiquement → tu peux utiliser `await` si besoin.
+**Ne mets PAS** `const pptx = new PptxGenJS()` au début (déjà fait), **ne mets PAS** `await pptx.writeFile(...)` à la fin (fait automatiquement).
+
+**API pptxgenjs essentielle** :
+
+```js
+const slide = pptx.addSlide();
+slide.background = { color: "F8FAFC" };  // ou "FFFFFF", hex SANS #
+
+// Texte
+slide.addText("Mon titre", {
+  x: 0.5, y: 0.5, w: 12, h: 1,           // inches (LAYOUT_WIDE = 13.33 × 7.5)
+  fontSize: 32, bold: true, color: "0F172A",
+  fontFace: "Inter", align: "left", valign: "top",
+  italic: false, underline: false
+});
+
+// Bullets
+slide.addText([
+  { text: "Premier point", options: { bullet: true } },
+  { text: "Deuxième point", options: { bullet: { code: "25CF", color: "2563EB" } } }
+], { x: 0.7, y: 2, w: 12, h: 4, fontSize: 18, color: "1E293B", paraSpaceAfter: 8 });
+
+// Shapes
+slide.addShape("rect",      { x: 0, y: 0, w: 0.3, h: 7.5, fill: { color: "2563EB" } });
+slide.addShape("roundRect", { x: 1, y: 3, w: 4, h: 2, fill: { color: "60A5FA" }, line: { color: "2563EB", width: 2 }, rectRadius: 0.15 });
+slide.addShape("ellipse",   { x: 5, y: 3, w: 3, h: 3, fill: { color: "F59E0B" } });
+slide.addShape("line",      { x: 1, y: 5, w: 10, h: 0, line: { color: "94A3B8", width: 1 } });
+
+// Image (depuis URL HTTPS publique, ou base64 data:image/...)
+slide.addImage({ path: "https://upload.wikimedia.org/...", x: 1, y: 2, w: 5, h: 3 });
+slide.addImage({ data: "image/png;base64,iVBORw0KGgo...", x: 7, y: 2, w: 5, h: 3 });
+
+// Tableau
+slide.addTable([
+  [
+    { text: "Pays",  options: { bold: true, fill: { color: "2563EB" }, color: "FFFFFF" } },
+    { text: "Morts", options: { bold: true, fill: { color: "2563EB" }, color: "FFFFFF" } }
+  ],
+  ["URSS",       "26 millions"],
+  ["Allemagne",  "7 millions"],
+  ["Chine",      "15 millions"]
+], { x: 1, y: 2, w: 11, fontFace: "Inter", fontSize: 14, border: { type: "solid", color: "CBD5E1", pt: 0.5 } });
+
+// Chart (barres, lignes, camembert…)
+slide.addChart(pptx.ChartType.bar, [{
+  name: "Pertes",
+  labels: ["URSS", "Allemagne", "Chine"],
+  values: [26, 7, 15]
+}], { x: 1, y: 2, w: 11, h: 4.5, showTitle: true, title: "Pertes par pays (millions)", titleColor: "0F172A" });
+```
+
+**Exemple COMPLET** d'une présentation de 6 slides en code (à adapter au sujet demandé) :
+
+```
+%%write_file:expose_napoleon.pptx
+// COVER
+const s1 = pptx.addSlide();
+s1.background = { color: "2563EB" };
+s1.addShape("rect", { x: 0, y: 3.75, w: 13.33, h: 3.75, fill: { color: "1E40AF" } });
+s1.addText("Napoléon Bonaparte", { x: 0.8, y: 2.2, w: 12, h: 1.5, fontSize: 60, bold: true, color: "FFFFFF", fontFace: "Inter" });
+s1.addText("De Corse à empereur d'Europe", { x: 0.8, y: 4, w: 12, h: 0.8, fontSize: 24, color: "FFFFFF", italic: true, fontFace: "Inter" });
+s1.addText("Delt AI · 2026", { x: 0.8, y: 6.8, w: 4, h: 0.4, fontSize: 11, color: "FFFFFF", bold: true });
+
+// SECTION
+const s2 = pptx.addSlide();
+s2.background = { color: "F8FAFC" };
+s2.addShape("rect", { x: 0, y: 0, w: 0.25, h: 7.5, fill: { color: "2563EB" } });
+s2.addText("Partie I", { x: 0.8, y: 2.8, w: 12, h: 0.6, fontSize: 16, color: "64748B", fontFace: "Inter", italic: true });
+s2.addText("Les origines", { x: 0.8, y: 3.4, w: 12, h: 1.5, fontSize: 52, bold: true, color: "2563EB", fontFace: "Inter" });
+
+// BULLETS
+const s3 = pptx.addSlide();
+s3.background = { color: "FFFFFF" };
+s3.addShape("rect", { x: 0, y: 0, w: 0.25, h: 7.5, fill: { color: "2563EB" } });
+s3.addText("Jeunesse en Corse", { x: 0.7, y: 0.5, w: 12, h: 0.9, fontSize: 32, bold: true, color: "0F172A", fontFace: "Inter" });
+s3.addShape("rect", { x: 0.7, y: 1.5, w: 1.2, h: 0.05, fill: { color: "2563EB" } });
+s3.addText([
+  { text: "Né le 15 août 1769 à Ajaccio", options: { bullet: { code: "25CF", color: "2563EB" } } },
+  { text: "Famille de petite noblesse italienne (Buonaparte)", options: { bullet: { code: "25CF", color: "2563EB" } } },
+  { text: "École militaire de Brienne (1779-1784)", options: { bullet: { code: "25CF", color: "2563EB" } } },
+  { text: "École militaire de Paris (1784-1785)", options: { bullet: { code: "25CF", color: "2563EB" } } },
+  { text: "Sous-lieutenant d'artillerie à 16 ans", options: { bullet: { code: "25CF", color: "2563EB" } } }
+], { x: 0.9, y: 2, w: 11.5, h: 5, fontSize: 20, color: "1E293B", fontFace: "Inter", paraSpaceAfter: 14 });
+
+// STATS
+const s4 = pptx.addSlide();
+s4.background = { color: "FFFFFF" };
+s4.addText("Napoléon en chiffres", { x: 0.7, y: 0.5, w: 12, h: 0.9, fontSize: 32, bold: true, color: "0F172A" });
+const stats = [
+  { v: "60+", l: "batailles livrées" },
+  { v: "20",  l: "ans au pouvoir" },
+  { v: "70M", l: "habitants sous son contrôle" },
+  { v: "200k", l: "morts à Waterloo" }
+];
+stats.forEach((st, i) => {
+  const x = 0.7 + i * 3.1;
+  s4.addShape("roundRect", { x, y: 2.5, w: 2.9, h: 3, fill: { color: "F8FAFC" }, line: { color: "60A5FA", width: 1 }, rectRadius: 0.15 });
+  s4.addText(st.v, { x: x + 0.1, y: 2.9, w: 2.7, h: 1.4, fontSize: 48, bold: true, color: "2563EB", align: "center", fontFace: "Inter" });
+  s4.addText(st.l, { x: x + 0.1, y: 4.3, w: 2.7, h: 1, fontSize: 14, color: "64748B", align: "center", fontFace: "Inter" });
+});
+
+// QUOTE
+const s5 = pptx.addSlide();
+s5.background = { color: "F8FAFC" };
+s5.addText("“", { x: 0.5, y: 0.3, w: 3, h: 3, fontSize: 200, color: "60A5FA", bold: true, fontFace: "Georgia", transparency: 30 });
+s5.addText("La victoire appartient au plus persévérant.", { x: 1.5, y: 2.5, w: 10, h: 2, fontSize: 32, italic: true, color: "0F172A", fontFace: "Georgia" });
+s5.addText("— Napoléon Bonaparte", { x: 1.5, y: 5.5, w: 10, h: 0.5, fontSize: 18, color: "2563EB", bold: true });
+
+// CONCLUSION
+const s6 = pptx.addSlide();
+s6.background = { color: "2563EB" };
+s6.addText("Merci de votre attention", { x: 0.8, y: 2.8, w: 12, h: 1.5, fontSize: 56, bold: true, color: "FFFFFF", align: "center" });
+s6.addText("Des questions ?", { x: 0.8, y: 4.5, w: 12, h: 0.8, fontSize: 24, color: "FFFFFF", italic: true, align: "center", transparency: 20 });
+%%end
+```
+
+**Quand utiliser le mode CODE** : présentations ambitieuses, designs custom, contenus dynamiques (boucles), charts, tableaux complexes, layouts originaux.
+
+#### 📋 Mode DATA (simple, pour les cas basiques)
+
+Si la présentation est simple et le contenu standard, tu peux aussi écrire du JSON structuré (layouts pré-définis) — plus rapide mais moins flexible :
 
 **Structure JSON obligatoire** :
 

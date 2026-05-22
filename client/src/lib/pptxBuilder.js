@@ -37,6 +37,36 @@ function tryParseJson(content) {
   try { return JSON.parse(trimmed); } catch { return null; }
 }
 
+// Détecte si le contenu est du **code JS pptxgenjs** plutôt que du JSON/markdown.
+// Signal fort : présence de `pptx.addSlide(` ou `new PptxGenJS(`.
+function isPptxCode(content) {
+  return /pptx\.addSlide\s*\(|new\s+PptxGenJS\s*\(/.test(content);
+}
+
+// Exécute le code JS écrit par l'IA dans un scope contrôlé.
+// L'IA reçoit un objet `pptx` (instance PptxGenJS), elle ajoute des slides
+// dessus, et on appelle `writeFile` derrière.
+async function executePptxCode(filename, code) {
+  const pptx = new PptxGenJS();
+  pptx.layout = "LAYOUT_WIDE";
+  pptx.title = filename.replace(/\.pptx$/i, "");
+  pptx.author = "Delt AI";
+
+  // Helper async-friendly wrapper. Le code AI peut être sync ou async.
+  // On lui donne `pptx` + `PptxGenJS` (au cas où il veut instancier des consts).
+  const fn = new Function(
+    "pptx",
+    "PptxGenJS",
+    `return (async () => {\n${code}\n})();`
+  );
+
+  await fn(pptx, PptxGenJS);
+  await pptx.writeFile({ fileName: filename });
+
+  // Compte les slides ajoutées (heuristique : .slides est interne mais souvent dispo)
+  return { slideCount: pptx?.slides?.length || pptx?._slides?.length || 0 };
+}
+
 function parseMarkdownAsJson(markdown) {
   const blocks = markdown.split(/^\s*---\s*$/gm).map((b) => b.trim()).filter(Boolean);
   const slides = blocks.map((block, idx) => {
@@ -368,6 +398,11 @@ function renderConclusion(slide, data, theme) {
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 export async function downloadPptx(filename, content) {
+  // Mode CODE : l'IA a écrit du JS pptxgenjs brut → on l'exécute directement.
+  if (isPptxCode(content)) {
+    return executePptxCode(filename, content);
+  }
+
   const data = normalizeData(content);
   const slides = data.slides || [];
   if (slides.length === 0) throw new Error("Aucune slide détectée");
@@ -407,6 +442,16 @@ export async function downloadPptx(filename, content) {
 }
 
 export function parseForPreview(content) {
+  if (isPptxCode(content)) {
+    // Mode code : on extrait le nb approximatif d'addSlide() pour info
+    const addSlideMatches = content.match(/pptx\.addSlide\s*\(/g) || [];
+    return {
+      mode: "code",
+      codeLines: content.split("\n").length,
+      slideCount: addSlideMatches.length,
+      theme: "custom"
+    };
+  }
   const data = normalizeData(content);
-  return { slides: data.slides || [], theme: data.theme || "blue", title: data.title };
+  return { mode: "data", slides: data.slides || [], theme: data.theme || "blue", title: data.title };
 }

@@ -270,16 +270,48 @@ function SlidePreview({ slide, index, total, theme }) {
 }
 
 function PptxPreview({ content }) {
-  const { slides, theme } = useMemo(() => parseForPreview(content), [content]);
+  const info = useMemo(() => parseForPreview(content), [content]);
+
+  if (info.mode === "code") {
+    return (
+      <div className="space-y-3">
+        <div className="rounded-2xl border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="px-2 py-0.5 rounded-full bg-amber-600 text-white text-[10px] font-bold uppercase tracking-wider">Code mode</span>
+            <span className="text-sm font-semibold text-amber-900">Présentation générée par code</span>
+          </div>
+          <p className="text-xs text-amber-800 mb-3 leading-relaxed">
+            L'IA a écrit du code JavaScript pptxgenjs pour fabriquer cette présentation sur mesure.
+            Click <strong>Télécharger .pptx</strong> pour exécuter le code et obtenir le fichier.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-white rounded-lg p-3 border border-amber-200">
+              <div className="text-2xl font-extrabold text-amber-700">{info.slideCount}</div>
+              <div className="text-[10px] text-amber-900 uppercase tracking-wider font-semibold">Slides</div>
+            </div>
+            <div className="bg-white rounded-lg p-3 border border-amber-200">
+              <div className="text-2xl font-extrabold text-amber-700">{info.codeLines}</div>
+              <div className="text-[10px] text-amber-900 uppercase tracking-wider font-semibold">Lignes de code</div>
+            </div>
+          </div>
+        </div>
+        <div className="text-xs text-delt-muted">
+          Aperçu non-disponible en mode code — le rendu final dépend du code exécuté.
+          Va dans l'onglet <strong>Code source</strong> pour voir le script.
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div className="text-xs text-delt-muted uppercase tracking-wider font-semibold">
-          {slides.length} slide{slides.length > 1 ? "s" : ""} · theme {theme}
+          {info.slides.length} slide{info.slides.length > 1 ? "s" : ""} · theme {info.theme}
         </div>
       </div>
-      {slides.map((s, i) => (
-        <SlidePreview key={i} slide={s} index={i} total={slides.length} theme={theme} />
+      {info.slides.map((s, i) => (
+        <SlidePreview key={i} slide={s} index={i} total={info.slides.length} theme={info.theme} />
       ))}
     </div>
   );
