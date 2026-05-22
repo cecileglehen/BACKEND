@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
+import { downloadPptx } from "../lib/pptxBuilder.js";
 
 const PREVIEW_TYPES = {
   html:  { kind: "html",     label: "HTML",       hljs: "html" },
@@ -9,6 +10,7 @@ const PREVIEW_TYPES = {
   md:    { kind: "markdown", label: "Markdown",   hljs: "markdown" },
   csv:   { kind: "csv",      label: "CSV",        hljs: "plaintext" },
   json:  { kind: "json",     label: "JSON",       hljs: "json" },
+  pptx:  { kind: "pptx",     label: "Présentation",hljs: "markdown" },
   py:    { kind: "code",     label: "Python",     hljs: "python" },
   js:    { kind: "code",     label: "JavaScript", hljs: "javascript" },
   jsx:   { kind: "code",     label: "JSX",        hljs: "javascript" },
@@ -102,6 +104,60 @@ function CodeView({ content, lang }) {
   );
 }
 
+function PptxPreview({ content }) {
+  const slides = useMemo(() => {
+    const blocks = content.split(/^\s*---\s*$/gm).map((b) => b.trim()).filter(Boolean);
+    return blocks.map((block) => {
+      const lines = block.split("\n");
+      let title = "", subtitle = "";
+      const bullets = [];
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line) continue;
+        if (line.startsWith("# ") && !title) title = line.slice(2).trim();
+        else if (line.startsWith("## ") && !subtitle) subtitle = line.slice(3).trim();
+        else if (/^[-*•]\s+/.test(line)) bullets.push(line.replace(/^[-*•]\s+/, "").trim());
+      }
+      return { title, subtitle, bullets };
+    });
+  }, [content]);
+
+  return (
+    <div className="space-y-3">
+      <div className="text-xs text-delt-muted uppercase tracking-wider font-semibold">
+        {slides.length} slide{slides.length > 1 ? "s" : ""}
+      </div>
+      {slides.map((s, i) => (
+        <div key={i} className="bg-white border border-delt-border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+          <div className="flex">
+            <div className="w-1.5 bg-gradient-to-b from-blue-600 to-indigo-600 flex-shrink-0" />
+            <div className="flex-1 p-5 min-h-[140px]">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="text-[10px] uppercase tracking-wider font-bold text-delt-muted">
+                  {i === 0 ? "Couverture" : `Slide ${i}`}
+                </div>
+                <div className="text-[10px] text-delt-muted">{i + 1} / {slides.length}</div>
+              </div>
+              {s.title && <h3 className="text-lg font-bold text-delt-text leading-tight">{s.title}</h3>}
+              {s.subtitle && <p className="text-sm text-delt-muted italic mt-1">{s.subtitle}</p>}
+              {s.bullets.length > 0 && (
+                <ul className="mt-3 space-y-1">
+                  {s.bullets.map((b, j) => (
+                    <li key={j} className="text-sm text-delt-text flex gap-2">
+                      <span className="text-blue-600 font-bold">•</span>
+                      <span>{b}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function MarkdownPreview({ content }) {
   return (
     <div className="prose prose-sm sm:prose-base max-w-none prose-headings:text-delt-text prose-p:text-delt-text prose-code:text-pink-600 prose-pre:bg-slate-900">
@@ -117,7 +173,19 @@ export default function ArtifactViewer({ artifact, onClose }) {
   const [tab, setTab] = useState(type.kind === "code" || type.kind === "text" ? "code" : "preview");
   const [copied, setCopied] = useState(false);
 
-  const download = () => {
+  const [downloading, setDownloading] = useState(false);
+  const download = async () => {
+    if (type.kind === "pptx") {
+      try {
+        setDownloading(true);
+        await downloadPptx(artifact.filename, artifact.content);
+      } catch (e) {
+        alert("Erreur génération .pptx : " + e.message);
+      } finally {
+        setDownloading(false);
+      }
+      return;
+    }
     const blob = new Blob([artifact.content], { type: artifact.mime || "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -167,14 +235,15 @@ export default function ArtifactViewer({ artifact, onClose }) {
           </button>
           <button
             onClick={download}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors"
+            disabled={downloading}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-xs font-semibold transition-colors"
           >
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/>
               <line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
-            Télécharger
+            {downloading ? "Génération…" : (type.kind === "pptx" ? "Télécharger .pptx" : "Télécharger")}
           </button>
           <button
             onClick={onClose}
@@ -215,6 +284,7 @@ export default function ArtifactViewer({ artifact, onClose }) {
           {tab === "preview" && type.kind === "svg"      && <SvgPreview content={artifact.content} />}
           {tab === "preview" && type.kind === "markdown" && <MarkdownPreview content={artifact.content} />}
           {tab === "preview" && type.kind === "csv"      && <CsvTable content={artifact.content} />}
+          {tab === "preview" && type.kind === "pptx"     && <PptxPreview content={artifact.content} />}
           {tab === "preview" && type.kind === "json"     && (
             <pre className="text-sm overflow-auto rounded-lg bg-slate-50 border border-delt-border p-4 font-mono">
               {(() => {

@@ -58,7 +58,9 @@ const EXT_MIME = {
   cpp: "text/x-c++",
   c: "text/x-c",
   rb: "text/x-ruby",
-  php: "text/x-php"
+  php: "text/x-php",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  svg: "image/svg+xml"
 };
 
 export function parseSkillBlocks(content) {
