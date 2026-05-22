@@ -181,6 +181,43 @@ function DeepSearchBlock({ data, streaming }) {
   );
 }
 
+function ArtifactCard({ artifact }) {
+  const { filename, content, mime, ext } = artifact;
+  const download = () => {
+    const blob = new Blob([content], { type: mime || "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+  const lines = (content || "").split("\n").length;
+  const size = new Blob([content || ""]).size;
+  const sizeLabel = size < 1024 ? `${size} o` : `${(size / 1024).toFixed(1)} Ko`;
+  return (
+    <button
+      onClick={download}
+      className="flex items-center gap-3 px-4 py-3 rounded-xl border border-delt-border bg-white hover:bg-delt-surface hover:border-blue-300 transition-colors text-left min-w-[220px] max-w-sm group"
+    >
+      <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs uppercase">
+        {ext || "FILE"}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold text-sm text-delt-text truncate">{filename}</div>
+        <div className="text-[11px] text-delt-muted">{lines} lignes · {sizeLabel}</div>
+      </div>
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-delt-muted group-hover:text-blue-600 transition-colors">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+    </button>
+  );
+}
+
 function ThinkingBlock({ reasoning, thinking, streaming }) {
   const [open, setOpen] = useState(false);
   if (!reasoning && !thinking) return null;
@@ -413,6 +450,37 @@ export default function ChatMessage({ msg, models = [], onRemake, onChooseVarian
           </div>
         )}
 
+        {/* Artifacts (fichiers générés via %%write_file) */}
+        {!isUser && msg.artifacts?.length > 0 && (
+          <div className="flex flex-wrap gap-2 px-1">
+            {msg.artifacts.map((a, i) => (
+              <ArtifactCard key={i} artifact={a} />
+            ))}
+          </div>
+        )}
+
+        {/* Images générées via %%generate_image */}
+        {!isUser && msg.imagePending && (
+          <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 text-sm text-blue-700">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin" style={{ animationDuration: "1.5s" }}>
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" strokeLinecap="round"/>
+            </svg>
+            <span className="font-medium truncate">Génération image : {msg.imagePending.slice(0, 60)}…</span>
+          </div>
+        )}
+        {!isUser && msg.generatedImages?.length > 0 && (
+          <div className="flex flex-wrap gap-2 px-1">
+            {msg.generatedImages.map((img, i) => (
+              <div key={i} className="rounded-xl overflow-hidden border border-delt-border max-w-sm">
+                <img src={img.url} alt={img.prompt} className="w-full h-auto block" />
+                <div className="px-3 py-2 text-[11px] text-delt-muted bg-delt-surface">
+                  {img.model && <span className="font-semibold text-delt-text">{img.model}</span>} · {img.prompt.slice(0, 80)}{img.prompt.length > 80 ? "…" : ""}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Contenu */}
         {(isUser || msg.content || msg.imageUrl || msg.videoUrl || msg.musicTracks?.length > 0 || msg.error) && (
           <div className={`w-full ${
@@ -425,7 +493,39 @@ export default function ChatMessage({ msg, models = [], onRemake, onChooseVarian
               : "text-delt-text" // texte IA brut sur le fond du site
           }`}>
             {isUser ? (
-              <span className="whitespace-pre-wrap">{msg.content}</span>
+              <>
+                {Array.isArray(msg.attachments) && msg.attachments.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {msg.attachments.map((att, i) => (
+                      <div
+                        key={att._id || i}
+                        className="flex items-center gap-2 px-2 py-1 rounded-lg bg-white/15 border border-white/25 max-w-[14rem]"
+                      >
+                        {att.type === "image" && att.dataUrl ? (
+                          <img src={att.dataUrl} alt={att.name} className="w-7 h-7 rounded object-cover flex-shrink-0" />
+                        ) : (
+                          <div className="w-7 h-7 rounded bg-white/20 flex items-center justify-center flex-shrink-0">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                              <polyline points="14 2 14 8 20 8"/>
+                            </svg>
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[11px] font-medium truncate">{att.name || att.type}</div>
+                          {att.type === "pdf" && att.pageCount && (
+                            <div className="text-[10px] opacity-70">{att.readPages}/{att.pageCount} pages</div>
+                          )}
+                          {att.type === "text" && Number.isFinite(att.size) && (
+                            <div className="text-[10px] opacity-70">{(att.size / 1024).toFixed(1)} KB</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {msg.content && <span className="whitespace-pre-wrap">{msg.content}</span>}
+              </>
             ) : msg.musicTracks?.length > 0 ? (
               <div className="space-y-3">
                 {msg.musicTracks.map((track, idx) => (
