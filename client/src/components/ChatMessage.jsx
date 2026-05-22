@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import MessageRenderer from "./MessageRenderer.jsx";
+import ArtifactViewer from "./ArtifactViewer.jsx";
 
 // Masque les blocs de commande %% (write_file, generate_image) du texte affiché.
 // Les blocs deviennent des cartes interactives ailleurs dans l'UI.
@@ -197,39 +198,47 @@ function DeepSearchBlock({ data, streaming }) {
   );
 }
 
-function ArtifactCard({ artifact }) {
-  const { filename, content, mime, ext } = artifact;
-  const download = () => {
-    const blob = new Blob([content], { type: mime || "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  };
+const PREVIEW_EXT_LABEL = {
+  html: "HTML", svg: "SVG", md: "MD", csv: "CSV", json: "JSON",
+  py: "PY", js: "JS", jsx: "JSX", ts: "TS", tsx: "TSX", css: "CSS",
+  sql: "SQL", sh: "SH", yaml: "YAML", yml: "YAML", xml: "XML",
+  dart: "DART", go: "GO", rs: "RS", java: "JAVA", kt: "KT", swift: "SWIFT",
+  cpp: "C++", c: "C", rb: "RB", php: "PHP", txt: "TXT"
+};
+const PREVIEWABLE = new Set(["html", "svg", "md", "csv", "json"]);
+
+function ArtifactCard({ artifact, onOpen }) {
+  const { filename, content, ext } = artifact;
   const lines = (content || "").split("\n").length;
   const size = new Blob([content || ""]).size;
   const sizeLabel = size < 1024 ? `${size} o` : `${(size / 1024).toFixed(1)} Ko`;
+  const extLabel = PREVIEW_EXT_LABEL[ext] || (ext || "FILE").toUpperCase();
+  const isPreviewable = PREVIEWABLE.has(ext);
+
   return (
     <button
-      onClick={download}
-      className="flex items-center gap-3 px-4 py-3 rounded-xl border border-delt-border bg-white hover:bg-delt-surface hover:border-blue-300 transition-colors text-left min-w-[220px] max-w-sm group"
+      onClick={() => onOpen(artifact)}
+      className="flex items-stretch gap-0 rounded-xl border border-delt-border bg-white hover:bg-delt-surface hover:border-blue-400 hover:shadow-md transition-all text-left min-w-[260px] max-w-md group overflow-hidden"
     >
-      <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs uppercase">
-        {ext || "FILE"}
+      <div className="flex-shrink-0 w-14 bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex flex-col items-center justify-center font-bold text-[10px] uppercase tracking-wider">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mb-0.5 opacity-80">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        <span>{extLabel}</span>
       </div>
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 px-3 py-2.5">
         <div className="font-semibold text-sm text-delt-text truncate">{filename}</div>
-        <div className="text-[11px] text-delt-muted">{lines} lignes · {sizeLabel}</div>
+        <div className="text-[11px] text-delt-muted mt-0.5">{lines} lignes · {sizeLabel}</div>
+        <div className="text-[10px] text-blue-600 font-semibold mt-1.5 uppercase tracking-wider">
+          {isPreviewable ? "Cliquer pour ouvrir" : "Cliquer pour voir le code"}
+        </div>
       </div>
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-delt-muted group-hover:text-blue-600 transition-colors">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="7 10 12 15 17 10"/>
-        <line x1="12" y1="15" x2="12" y2="3"/>
-      </svg>
+      <div className="flex-shrink-0 px-3 flex items-center text-delt-muted group-hover:text-blue-600 transition-colors">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+      </div>
     </button>
   );
 }
@@ -319,6 +328,7 @@ export default function ChatMessage({ msg, models = [], onRemake, onChooseVarian
   const generatedTokens = Number(msg.tokensOut ?? 0);
   const [hovered, setHovered] = useState(false);
   const [remakeOpen, setRemakeOpen] = useState(false);
+  const [openArtifact, setOpenArtifact] = useState(null);
 
   const brandLogo = !isUser && msg.model?.brand ? BRAND_LOGO[msg.model.brand] : null;
 
@@ -470,9 +480,12 @@ export default function ChatMessage({ msg, models = [], onRemake, onChooseVarian
         {!isUser && msg.artifacts?.length > 0 && (
           <div className="flex flex-wrap gap-2 px-1">
             {msg.artifacts.map((a, i) => (
-              <ArtifactCard key={i} artifact={a} />
+              <ArtifactCard key={i} artifact={a} onOpen={setOpenArtifact} />
             ))}
           </div>
+        )}
+        {openArtifact && (
+          <ArtifactViewer artifact={openArtifact} onClose={() => setOpenArtifact(null)} />
         )}
 
         {/* Images générées via %%generate_image */}
