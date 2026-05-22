@@ -79,6 +79,22 @@ export function useChatStream({ projectId, onCreditsUsed, onAgeGate }) {
         webResults: info.status === "found" ? info.results : (m.webResults || [])
       })),
       onDelta: (delta) => applyUpdate((m) => ({ ...m, content: (m.content || "") + delta, thinking: false })),
+      onArtifact: (a) => applyUpdate((m) => ({
+        ...m,
+        artifacts: [...(m.artifacts || []), { filename: a.filename, content: a.content, mime: a.mime, ext: a.ext }]
+      })),
+      onImage: (info) => applyUpdate((m) => {
+        if (info.type === "image") {
+          return { ...m, generatedImages: [...(m.generatedImages || []), { url: info.url, prompt: info.prompt, model: info.model }] };
+        }
+        if (info.type === "image_pending") {
+          return { ...m, imagePending: info.prompt };
+        }
+        if (info.type === "image_error") {
+          return { ...m, imagePending: null, imageError: info.error };
+        }
+        return m;
+      }),
       onDone: ({ tokensOut, creditCost }) => {
         applyUpdate((m) => ({ ...m, streaming: false, tokensOut }));
         onCreditsUsed?.(creditCost);

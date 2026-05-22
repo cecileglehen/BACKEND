@@ -13,6 +13,7 @@ import { initSchema } from "./lib/db.js";
 import { register, login, signToken, requireAuth, refreshUser, verifyToken } from "./lib/auth.js";
 import { routeMessage } from "./lib/router.js";
 import { chatWithFallback, streamChat } from "./lib/openrouter.js";
+import { getBaseSkillPrompt, parseSkillBlocks } from "./lib/skills.js";
 import { recordUsage, logUsage, quotaSnapshot, resolveTier } from "./lib/windows.js";
 import { getCredits, deductCredits, hasEnoughCredits, grantPlanCredits, resetMonthlyCredits, getApiCredits, transferCredits, getFreeNanoTokens, deductFreeNanoTokens, FREE_NANO_MODEL_ID } from "./lib/credits.js";
 import { computeCreditCost, computeCreditFromCost, FREE_TIER_ONLY_PLANS } from "./config/plans.js";
@@ -1162,6 +1163,12 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
       if (projectSystem) compressed = [projectSystem, ...compressed];
     }
 
+    // ─── Skills système (commandes %% : write_file, generate_image) ────────
+    const skillPrompt = getBaseSkillPrompt();
+    if (skillPrompt) {
+      compressed = [{ role: "system", content: skillPrompt }, ...compressed];
+    }
+
     // ─── Injection mémoire utilisateur (system prompt) ──────────────────────
     if (user.display_name || (user.memory_profile && Object.keys(user.memory_profile).length > 0)) {
       const mem = user.memory_profile || {};
@@ -1231,11 +1238,59 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
           : computeCreditFromCost({ costUsd, modelId: modelInfo.id, tokensIn, tokensOut });
         const costEur = estimateCostEur(inTier, tokensIn, tokensOut);
 
-        // 2. Envoie les tokens à l'UI (skip si le client a coupé — la socket est fermée)
+        // 2. Parse les blocs skills %% (write_file, generate_image)
+        let extraImageCost = 0;
+        if (!aborted && content) {
+          try {
+            const parsed = parseSkillBlocks(content);
+
+            // Envoie les artifacts (fichiers texte)
+            for (const a of parsed.artifacts) {
+              try {
+                res.write(`data: ${JSON.stringify({
+                  type: "artifact",
+                  filename: a.filename,
+                  content: a.content,
+                  mime: a.mime,
+                  ext: a.ext
+                })}\n\n`);
+              } catch {}
+            }
+
+            // Génère les images demandées (modèle FLUX par défaut, cheap)
+            if (parsed.images.length > 0) {
+              const { falGenerateImage } = await import("./lib/fal.js");
+              const imgModel = CREATIVE.IMAGE.models.find((m) => m.id === "fal-ai/flux-1/schnell") || CREATIVE.IMAGE.models[0];
+              for (const img of parsed.images.slice(0, 3)) { // max 3 images / message
+                try {
+                  res.write(`data: ${JSON.stringify({ type: "image_pending", prompt: img.prompt })}\n\n`);
+                  const result = await falGenerateImage(imgModel.id, img.prompt);
+                  if (result?.url) {
+                    extraImageCost += imgModel.cost || 5;
+                    res.write(`data: ${JSON.stringify({
+                      type: "image",
+                      url: result.url,
+                      prompt: img.prompt,
+                      model: imgModel.display,
+                      cost: imgModel.cost
+                    })}\n\n`);
+                  }
+                } catch (e) {
+                  res.write(`data: ${JSON.stringify({ type: "image_error", error: e.message })}\n\n`);
+                }
+              }
+            }
+          } catch (e) {
+            console.error("[skills] parse error:", e?.message);
+          }
+        }
+
+        // 3. Envoie les tokens à l'UI (skip si le client a coupé — la socket est fermée)
+        const totalCreditCost = creditCost + extraImageCost;
         if (!aborted) {
           try {
             res.write(`data: ${JSON.stringify({
-              type: "done", tokensIn, tokensOut, thinkingTokens, creditCost, costEur
+              type: "done", tokensIn, tokensOut, thinkingTokens, creditCost: totalCreditCost, costEur
             })}\n\n`);
             res.end();
           } catch { /* socket already closed */ }
@@ -1247,9 +1302,9 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
         Promise.allSettled([
           isFreePlan && isFreeNanoModel
             ? deductFreeNanoTokens(user.id, tokensIn + tokensOut)
-            : deductCredits(user.id, creditCost),
+            : deductCredits(user.id, creditCost + extraImageCost),
           recordUsage(user.id, inTier, tokensIn, tokensOut),
-          logUsage({ userId: user.id, modelId: modelInfo.id, tier: inTier, tokensIn, tokensOut, costCr: creditCost, source: aborted ? "chat_aborted" : "chat" })
+          logUsage({ userId: user.id, modelId: modelInfo.id, tier: inTier, tokensIn, tokensOut, costCr: creditCost + extraImageCost, source: aborted ? "chat_aborted" : "chat" })
         ]).catch((e) => console.error("[chat/stream] DB background:", e));
       }
     });
