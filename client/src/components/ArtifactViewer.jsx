@@ -272,6 +272,26 @@ function SlidePreview({ slide, index, total, theme }) {
 function PptxPreview({ content }) {
   const info = useMemo(() => parseForPreview(content), [content]);
 
+  if (info.mode === "invalid") {
+    return (
+      <div className="rounded-2xl border-2 border-red-200 bg-red-50 p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="px-2 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-bold uppercase tracking-wider">Format invalide</span>
+        </div>
+        <p className="text-sm text-red-900 leading-relaxed">
+          Le contenu de ce <code className="font-mono bg-white px-1 rounded">.pptx</code> n'est pas du code <strong>pptxgenjs</strong>.
+          Le téléchargement échouera. L'IA doit générer du JS exécutable du type :
+        </p>
+        <pre className="mt-3 text-xs bg-white border border-red-200 rounded p-3 font-mono overflow-auto">
+          {`const s = pptx.addSlide();\ns.addText("Mon titre", { x: 1, y: 1, fontSize: 32 });`}
+        </pre>
+        <p className="text-xs text-red-700 mt-3">
+          Demande à l'IA de régénérer la présentation en mode CODE.
+        </p>
+      </div>
+    );
+  }
+
   if (info.mode === "code") {
     return (
       <div className="space-y-3">
