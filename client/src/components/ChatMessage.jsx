@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from "react";
 import MessageRenderer from "./MessageRenderer.jsx";
-import ArtifactViewer from "./ArtifactViewer.jsx";
 
 // Masque les blocs de commande %% (write_file, generate_image) du texte affiché.
 // Les blocs deviennent des cartes interactives ailleurs dans l'UI.
@@ -230,8 +229,8 @@ function ArtifactCard({ artifact, onOpen }) {
       <div className="flex-1 min-w-0 px-3 py-2.5">
         <div className="font-semibold text-sm text-delt-text truncate">{filename}</div>
         <div className="text-[11px] text-delt-muted mt-0.5">{lines} lignes · {sizeLabel}</div>
-        <div className="text-[10px] text-blue-600 font-semibold mt-1.5 uppercase tracking-wider">
-          {isPreviewable ? "Cliquer pour ouvrir" : "Cliquer pour voir le code"}
+        <div className="inline-flex items-center gap-1 text-[10px] text-white bg-blue-600 group-hover:bg-blue-700 font-bold mt-1.5 uppercase tracking-wider px-2 py-0.5 rounded-full transition-colors">
+          {isPreviewable ? "▶ Ouvrir l'aperçu" : "▶ Voir le code"}
         </div>
       </div>
       <div className="flex-shrink-0 px-3 flex items-center text-delt-muted group-hover:text-blue-600 transition-colors">
@@ -323,12 +322,11 @@ function RemakePicker({ models, onSelect, onClose }) {
   );
 }
 
-export default function ChatMessage({ msg, models = [], onRemake, onChooseVariant, onMerge, hideAvatar = false, variantIndex, userQuestion }) {
+export default function ChatMessage({ msg, models = [], onRemake, onChooseVariant, onMerge, onOpenArtifact, hideAvatar = false, variantIndex, userQuestion }) {
   const isUser = msg.role === "user";
   const generatedTokens = Number(msg.tokensOut ?? 0);
   const [hovered, setHovered] = useState(false);
   const [remakeOpen, setRemakeOpen] = useState(false);
-  const [openArtifact, setOpenArtifact] = useState(null);
 
   const brandLogo = !isUser && msg.model?.brand ? BRAND_LOGO[msg.model.brand] : null;
 
@@ -480,12 +478,9 @@ export default function ChatMessage({ msg, models = [], onRemake, onChooseVarian
         {!isUser && msg.artifacts?.length > 0 && (
           <div className="flex flex-wrap gap-2 px-1">
             {msg.artifacts.map((a, i) => (
-              <ArtifactCard key={i} artifact={a} onOpen={setOpenArtifact} />
+              <ArtifactCard key={i} artifact={a} onOpen={onOpenArtifact} />
             ))}
           </div>
-        )}
-        {openArtifact && (
-          <ArtifactViewer artifact={openArtifact} onClose={() => setOpenArtifact(null)} />
         )}
 
         {/* Images générées via %%generate_image */}
