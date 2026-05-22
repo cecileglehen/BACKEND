@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
-import { downloadPptx } from "../lib/pptxBuilder.js";
+import { downloadPptx, parseForPreview } from "../lib/pptxBuilder.js";
 
 const PREVIEW_TYPES = {
   html:  { kind: "html",     label: "HTML",       hljs: "html" },
@@ -104,55 +104,182 @@ function CodeView({ content, lang }) {
   );
 }
 
-function PptxPreview({ content }) {
-  const slides = useMemo(() => {
-    const blocks = content.split(/^\s*---\s*$/gm).map((b) => b.trim()).filter(Boolean);
-    return blocks.map((block) => {
-      const lines = block.split("\n");
-      let title = "", subtitle = "";
-      const bullets = [];
-      for (const raw of lines) {
-        const line = raw.trim();
-        if (!line) continue;
-        if (line.startsWith("# ") && !title) title = line.slice(2).trim();
-        else if (line.startsWith("## ") && !subtitle) subtitle = line.slice(3).trim();
-        else if (/^[-*•]\s+/.test(line)) bullets.push(line.replace(/^[-*•]\s+/, "").trim());
-      }
-      return { title, subtitle, bullets };
-    });
-  }, [content]);
+const PPTX_THEME_COLORS = {
+  blue:   { primary: "#2563EB", accent: "#60A5FA", bg: "#F8FAFC", text: "#0F172A" },
+  purple: { primary: "#7C3AED", accent: "#A78BFA", bg: "#FAF5FF", text: "#1E1B4B" },
+  green:  { primary: "#059669", accent: "#34D399", bg: "#F0FDF4", text: "#064E3B" },
+  dark:   { primary: "#F59E0B", accent: "#FBBF24", bg: "#0F172A", text: "#F8FAFC" }
+};
 
-  return (
-    <div className="space-y-3">
-      <div className="text-xs text-delt-muted uppercase tracking-wider font-semibold">
-        {slides.length} slide{slides.length > 1 ? "s" : ""}
+function SlidePreview({ slide, index, total, theme }) {
+  const c = PPTX_THEME_COLORS[theme] || PPTX_THEME_COLORS.blue;
+  const isDark = theme === "dark";
+  const layout = slide.layout || "bullets";
+
+  // Cover & Conclusion : full color background
+  if (layout === "cover" || layout === "conclusion") {
+    return (
+      <div className="rounded-lg overflow-hidden shadow-md aspect-[16/9] flex flex-col justify-center px-8 py-6 text-white relative" style={{ background: c.primary }}>
+        <div className="absolute top-3 left-3 text-[9px] uppercase tracking-wider font-bold opacity-60">{layout === "cover" ? "Couverture" : "Conclusion"}</div>
+        <div className="absolute top-3 right-3 text-[9px] opacity-60">{index + 1} / {total}</div>
+        <div className="text-3xl sm:text-4xl font-extrabold leading-tight">{slide.title}</div>
+        {slide.subtitle && <div className="text-base sm:text-lg italic opacity-90 mt-2">{slide.subtitle}</div>}
+        {slide.author && <div className="text-xs opacity-70 mt-4">{slide.author}</div>}
+        <div className="absolute bottom-3 left-3 text-[10px] font-bold opacity-60">Delt AI</div>
       </div>
-      {slides.map((s, i) => (
-        <div key={i} className="bg-white border border-delt-border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex">
-            <div className="w-1.5 bg-gradient-to-b from-blue-600 to-indigo-600 flex-shrink-0" />
-            <div className="flex-1 p-5 min-h-[140px]">
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <div className="text-[10px] uppercase tracking-wider font-bold text-delt-muted">
-                  {i === 0 ? "Couverture" : `Slide ${i}`}
-                </div>
-                <div className="text-[10px] text-delt-muted">{i + 1} / {slides.length}</div>
-              </div>
-              {s.title && <h3 className="text-lg font-bold text-delt-text leading-tight">{s.title}</h3>}
-              {s.subtitle && <p className="text-sm text-delt-muted italic mt-1">{s.subtitle}</p>}
-              {s.bullets.length > 0 && (
-                <ul className="mt-3 space-y-1">
-                  {s.bullets.map((b, j) => (
-                    <li key={j} className="text-sm text-delt-text flex gap-2">
-                      <span className="text-blue-600 font-bold">•</span>
-                      <span>{b}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+    );
+  }
+
+  // Section
+  if (layout === "section") {
+    return (
+      <div className="rounded-lg overflow-hidden shadow-md aspect-[16/9] flex flex-col justify-center px-8 py-6 relative" style={{ background: c.bg }}>
+        <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ background: c.primary }} />
+        <div className="absolute top-3 right-3 text-[9px] opacity-60">{index + 1} / {total}</div>
+        <div className="text-[10px] uppercase tracking-wider font-bold opacity-60 mb-2">Section</div>
+        <div className="text-3xl sm:text-4xl font-extrabold" style={{ color: c.primary }}>{slide.title}</div>
+        {slide.subtitle && <div className="text-base text-slate-500 italic mt-2">{slide.subtitle}</div>}
+      </div>
+    );
+  }
+
+  // Quote
+  if (layout === "quote") {
+    return (
+      <div className="rounded-lg overflow-hidden shadow-md aspect-[16/9] flex flex-col justify-center px-8 py-6 relative" style={{ background: c.bg }}>
+        <div className="absolute top-3 left-3 text-[9px] uppercase tracking-wider font-bold opacity-60">Citation</div>
+        <div className="absolute top-3 right-3 text-[9px] opacity-60">{index + 1} / {total}</div>
+        <div className="text-7xl absolute -top-2 left-4 opacity-20" style={{ color: c.accent }}>"</div>
+        <div className="text-xl sm:text-2xl italic relative pl-4" style={{ color: c.text }}>{slide.quote}</div>
+        {slide.author && <div className="text-sm font-bold mt-3 pl-4" style={{ color: c.primary }}>— {slide.author}</div>}
+      </div>
+    );
+  }
+
+  // Stats
+  if (layout === "stats") {
+    return (
+      <div className="rounded-lg overflow-hidden shadow-md aspect-[16/9] px-6 py-5 relative bg-white">
+        <div className="h-1 absolute top-0 left-0 right-0" style={{ background: c.primary }} />
+        <div className="absolute top-3 right-3 text-[9px] opacity-60">{index + 1} / {total}</div>
+        <div className="text-xl font-bold mb-4 mt-2" style={{ color: c.text }}>{slide.title}</div>
+        <div className={`grid grid-cols-${Math.min(slide.stats?.length || 1, 4)} gap-2`}>
+          {(slide.stats || []).slice(0, 4).map((s, i) => (
+            <div key={i} className="rounded-lg p-3 border" style={{ background: c.bg, borderColor: c.accent }}>
+              <div className="text-2xl sm:text-3xl font-extrabold text-center" style={{ color: c.primary }}>{s.value}</div>
+              <div className="text-[10px] text-slate-500 text-center mt-1">{s.label}</div>
             </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Two-column
+  if (layout === "two-column") {
+    return (
+      <div className="rounded-lg overflow-hidden shadow-md aspect-[16/9] px-6 py-5 relative bg-white">
+        <div className="absolute left-0 top-0 bottom-0 w-1" style={{ background: c.primary }} />
+        <div className="absolute top-3 right-3 text-[9px] opacity-60">{index + 1} / {total}</div>
+        <div className="text-xl font-bold mb-3 pl-3" style={{ color: c.text }}>{slide.title}</div>
+        <div className="grid grid-cols-2 gap-3 pl-3">
+          <div>
+            <div className="text-sm font-bold mb-2" style={{ color: c.primary }}>{slide.leftTitle}</div>
+            <ul className="space-y-1">
+              {(slide.leftBullets || []).map((b, i) => (
+                <li key={i} className="text-xs" style={{ color: c.text }}>• {b}</li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <div className="text-sm font-bold mb-2" style={{ color: c.primary }}>{slide.rightTitle}</div>
+            <ul className="space-y-1">
+              {(slide.rightBullets || []).map((b, i) => (
+                <li key={i} className="text-xs" style={{ color: c.text }}>• {b}</li>
+              ))}
+            </ul>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // Table
+  if (layout === "table") {
+    const [header, ...rows] = slide.table || [];
+    return (
+      <div className="rounded-lg overflow-hidden shadow-md aspect-[16/9] px-6 py-5 relative bg-white">
+        <div className="absolute left-0 top-0 bottom-0 w-1" style={{ background: c.primary }} />
+        <div className="absolute top-3 right-3 text-[9px] opacity-60">{index + 1} / {total}</div>
+        <div className="text-xl font-bold mb-3 pl-3" style={{ color: c.text }}>{slide.title}</div>
+        <div className="overflow-hidden rounded text-xs">
+          {header && (
+            <div className="grid gap-px text-white font-bold" style={{ background: c.primary, gridTemplateColumns: `repeat(${header.length}, 1fr)` }}>
+              {header.map((h, i) => <div key={i} className="px-2 py-1">{h}</div>)}
+            </div>
+          )}
+          {rows.slice(0, 5).map((row, ri) => (
+            <div key={ri} className="grid gap-px" style={{ background: ri % 2 ? "#fff" : c.bg, gridTemplateColumns: `repeat(${row.length}, 1fr)` }}>
+              {row.map((cell, ci) => <div key={ci} className="px-2 py-1" style={{ color: c.text }}>{cell}</div>)}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // image-text
+  if (layout === "image-text") {
+    return (
+      <div className="rounded-lg overflow-hidden shadow-md aspect-[16/9] px-6 py-5 relative bg-white">
+        <div className="absolute left-0 top-0 bottom-0 w-1" style={{ background: c.primary }} />
+        <div className="absolute top-3 right-3 text-[9px] opacity-60">{index + 1} / {total}</div>
+        <div className="text-xl font-bold mb-3 pl-3" style={{ color: c.text }}>{slide.title}</div>
+        <div className="grid grid-cols-2 gap-3 pl-3">
+          <div className="flex items-center justify-center rounded-lg border" style={{ background: c.bg, borderColor: c.accent }}>
+            <span className="text-4xl">🖼️</span>
+          </div>
+          <ul className="space-y-1">
+            {(slide.bullets || []).map((b, i) => (
+              <li key={i} className="text-xs" style={{ color: c.text }}>• {b}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    );
+  }
+
+  // Bullets (default)
+  return (
+    <div className="rounded-lg overflow-hidden shadow-md aspect-[16/9] px-6 py-5 relative bg-white">
+      <div className="absolute left-0 top-0 bottom-0 w-1" style={{ background: c.primary }} />
+      <div className="absolute top-3 right-3 text-[9px] opacity-60">{index + 1} / {total}</div>
+      <div className="text-xl font-bold mb-1 pl-3" style={{ color: c.text }}>{slide.title}</div>
+      {slide.subtitle && <div className="text-xs italic mb-3 pl-3 text-slate-500">{slide.subtitle}</div>}
+      <div className="h-0.5 w-12 mb-3 ml-3" style={{ background: c.primary }} />
+      <ul className="space-y-1.5 pl-3">
+        {(slide.bullets || []).slice(0, 7).map((b, i) => (
+          <li key={i} className="text-sm flex gap-2" style={{ color: c.text }}>
+            <span className="font-bold" style={{ color: c.primary }}>•</span>
+            <span>{typeof b === "string" ? b : b.text}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function PptxPreview({ content }) {
+  const { slides, theme } = useMemo(() => parseForPreview(content), [content]);
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-delt-muted uppercase tracking-wider font-semibold">
+          {slides.length} slide{slides.length > 1 ? "s" : ""} · theme {theme}
+        </div>
+      </div>
+      {slides.map((s, i) => (
+        <SlidePreview key={i} slide={s} index={i} total={slides.length} theme={theme} />
       ))}
     </div>
   );
