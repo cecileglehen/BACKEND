@@ -198,13 +198,13 @@ function DeepSearchBlock({ data, streaming }) {
 }
 
 const PREVIEW_EXT_LABEL = {
-  html: "HTML", svg: "SVG", md: "MD", csv: "CSV", json: "JSON",
+  html: "HTML", svg: "SVG", md: "MD", csv: "CSV", json: "JSON", pptx: "PPTX",
   py: "PY", js: "JS", jsx: "JSX", ts: "TS", tsx: "TSX", css: "CSS",
   sql: "SQL", sh: "SH", yaml: "YAML", yml: "YAML", xml: "XML",
   dart: "DART", go: "GO", rs: "RS", java: "JAVA", kt: "KT", swift: "SWIFT",
   cpp: "C++", c: "C", rb: "RB", php: "PHP", txt: "TXT"
 };
-const PREVIEWABLE = new Set(["html", "svg", "md", "csv", "json"]);
+const PREVIEWABLE = new Set(["html", "svg", "md", "csv", "json", "pptx"]);
 
 function ArtifactCard({ artifact, onOpen }) {
   const { filename, content, ext } = artifact;
