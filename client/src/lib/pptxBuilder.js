@@ -398,11 +398,21 @@ function renderConclusion(slide, data, theme) {
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 export async function downloadPptx(filename, content) {
-  // Mode CODE : l'IA a écrit du JS pptxgenjs brut → on l'exécute directement.
+  // SEUL mode autorisé : code JS pptxgenjs brut (pptx.addSlide(...)).
+  // Le mode JSON et le mode markdown sont DÉSACTIVÉS — l'IA doit générer
+  // du code exécutable, point.
   if (isPptxCode(content)) {
     return executePptxCode(filename, content);
   }
 
+  throw new Error(
+    "Format .pptx invalide — l'IA doit générer du code JavaScript pptxgenjs " +
+    "(pptx.addSlide(...), slide.addText(...), etc.). Les modes JSON et markdown " +
+    "ne sont plus acceptés. Relance la demande pour que l'IA réessaye."
+  );
+
+  // ─── Code legacy mort ci-dessous (gardé en cas de rollback) ────────────
+  // eslint-disable-next-line no-unreachable
   const data = normalizeData(content);
   const slides = data.slides || [];
   if (slides.length === 0) throw new Error("Aucune slide détectée");
@@ -443,7 +453,6 @@ export async function downloadPptx(filename, content) {
 
 export function parseForPreview(content) {
   if (isPptxCode(content)) {
-    // Mode code : on extrait le nb approximatif d'addSlide() pour info
     const addSlideMatches = content.match(/pptx\.addSlide\s*\(/g) || [];
     return {
       mode: "code",
@@ -452,6 +461,6 @@ export function parseForPreview(content) {
       theme: "custom"
     };
   }
-  const data = normalizeData(content);
-  return { mode: "data", slides: data.slides || [], theme: data.theme || "blue", title: data.title };
+  // Non-code = invalide. Frontend affichera un état d'erreur.
+  return { mode: "invalid", codeLines: content.split("\n").length, slideCount: 0 };
 }

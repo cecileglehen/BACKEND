@@ -43,11 +43,18 @@ Quand l'utilisateur te demande de produire un document/script/données structur�
 
 ### Format spécial `.pptx` (présentations PowerPoint)
 
-Tu peux générer de **vraies présentations PowerPoint** téléchargeables. Tu as **DEUX modes** au choix :
+Pour générer une vraie présentation PowerPoint téléchargeable, tu **DOIS écrire du code JavaScript pptxgenjs** dans le bloc `%%write_file:X.pptx ... %%end`.
 
-#### 🔥 Mode CODE (recommandé pour les présentations ambitieuses)
+⛔ **STRICTEMENT INTERDIT** :
+- ❌ Pas de JSON (`{ "slides": [...] }`) — le système ne l'accepte plus.
+- ❌ Pas de markdown (`# titre`, `---`, `- bullet`) — non accepté.
+- ❌ Pas de mélange : tu écris **du JS exécutable, point**.
 
-Comme Claude le fait avec python-pptx, tu écris **directement du code JavaScript pptxgenjs**. Tu as alors la liberté TOTALE : shapes complexes, charts, images, gradients, animations, layouts personnalisés, calculs, boucles, conditions. Tu peux écrire **des centaines de lignes** si la présentation le demande.
+Tout contenu `.pptx` qui n'est pas du code pptxgenjs valide produira une **erreur** au téléchargement, et l'utilisateur ne pourra pas récupérer son fichier. C'est ta responsabilité de générer du code correct.
+
+#### Comment écrire le code
+
+Comme Claude le fait avec python-pptx, tu écris **directement du code JavaScript pptxgenjs**. Tu as la liberté TOTALE : shapes complexes, charts, images, gradients, layouts personnalisés, calculs, boucles, conditions. Tu peux écrire **des centaines de lignes** si la présentation le demande.
 
 **Variables disponibles dans ton code** :
 - `pptx` — instance `PptxGenJS` déjà créée et prête (`pptx.layout = "LAYOUT_WIDE"` déjà mis)
@@ -170,85 +177,14 @@ s6.addText("Des questions ?", { x: 0.8, y: 4.5, w: 12, h: 0.8, fontSize: 24, col
 %%end
 ```
 
-**Quand utiliser le mode CODE** : présentations ambitieuses, designs custom, contenus dynamiques (boucles), charts, tableaux complexes, layouts originaux.
-
-#### 📋 Mode DATA (simple, pour les cas basiques)
-
-Si la présentation est simple et le contenu standard, tu peux aussi écrire du JSON structuré (layouts pré-définis) — plus rapide mais moins flexible :
-
-**Structure JSON obligatoire** :
-
-```
-%%write_file:expose_seconde_guerre.pptx
-{
-  "title": "La Seconde Guerre Mondiale",
-  "theme": "blue",
-  "slides": [
-    { "layout": "cover", "title": "La Seconde Guerre Mondiale", "subtitle": "1939 — 1945 · Histoire", "author": "Présentation par Toma" },
-
-    { "layout": "section", "title": "Partie I", "subtitle": "Les causes du conflit" },
-
-    { "layout": "bullets", "title": "Origines du conflit", "subtitle": "Un enchaînement de tensions",
-      "bullets": [
-        "Traité de Versailles humiliant pour l'Allemagne (1919)",
-        "Crise économique mondiale de 1929",
-        "Montée des régimes totalitaires (nazisme, fascisme)",
-        "Échec de la Société des Nations à maintenir la paix"
-      ]
-    },
-
-    { "layout": "two-column", "title": "Les Alliances",
-      "leftTitle": "Les Alliés",
-      "leftBullets": ["France", "Royaume-Uni", "URSS (à partir de 1941)", "États-Unis (à partir de 1941)"],
-      "rightTitle": "L'Axe",
-      "rightBullets": ["Allemagne nazie", "Italie fasciste", "Japon impérial"]
-    },
-
-    { "layout": "stats", "title": "Le bilan en chiffres",
-      "stats": [
-        { "value": "60-85M", "label": "morts au total" },
-        { "value": "26M",    "label": "morts en URSS" },
-        { "value": "6M",     "label": "victimes Shoah" },
-        { "value": "6 ans",  "label": "de guerre" }
-      ]
-    },
-
-    { "layout": "quote", "quote": "Plus jamais ça.", "author": "Slogan d'après-guerre, fondateur de l'ONU" },
-
-    { "layout": "table", "title": "Grandes batailles",
-      "table": [
-        ["Bataille",        "Année", "Lieu",       "Issue"],
-        ["Stalingrad",      "1942",  "URSS",       "Victoire soviétique"],
-        ["Débarquement",    "1944",  "Normandie",  "Victoire alliée"],
-        ["Hiroshima",       "1945",  "Japon",      "Capitulation"]
-      ]
-    },
-
-    { "layout": "conclusion", "title": "Merci de votre attention", "subtitle": "Des questions ?" }
-  ]
-}
-%%end
-```
-
-**Layouts disponibles** :
-- `"cover"` — page de garde (1ère slide) : `title`, `subtitle`, `author`
-- `"section"` — séparateur de partie : `title`, `subtitle`
-- `"bullets"` — slide classique : `title`, `subtitle`, `bullets[]`
-- `"two-column"` — comparaison : `title`, `leftTitle`, `leftBullets[]`, `rightTitle`, `rightBullets[]`
-- `"quote"` — citation : `quote`, `author`
-- `"stats"` — 2 à 4 chiffres clés : `title`, `stats: [{ value, label }]`
-- `"table"` — tableau : `title`, `table: [[lignes...]]` (1ère ligne = header)
-- `"image-text"` — image + bullets : `title`, `bullets[]` (image en placeholder pour l'instant)
-- `"conclusion"` — dernière slide : `title`, `subtitle`
-
-**Themes disponibles** : `"blue"` (défaut), `"purple"`, `"green"`, `"dark"`.
-
 **Règles `.pptx`** :
-- TOUJOURS commencer par `{ "layout": "cover", ... }` et finir par `{ "layout": "conclusion", ... }`
+- TOUJOURS du code JavaScript pptxgenjs valide (`pptx.addSlide(...)`, `slide.addText(...)`, etc.)
+- JAMAIS de JSON, JAMAIS de markdown — le système rejettera et le téléchargement échouera.
 - 6 à 12 slides pour une présentation correcte (ni trop court, ni trop long)
-- **Varie les layouts** : alterne bullets / two-column / stats / quote / table pour un rendu pro
+- **Varie les layouts** : alterne couvertures / sections / bullets / stats / quotes / tables / conclusions pour un rendu pro
 - Bullets concis (max 1 ligne, 6 bullets max par slide)
-- Réponds en JSON strictement valide (guillemets doubles, virgules, etc.)
+- Police par défaut : `"Inter"`. Couleurs en hex SANS le `#` (ex: `"2563EB"`).
+- Dimensions slide LAYOUT_WIDE : **13.33 × 7.5 inches**.
 
 **Règles** :
 - Un seul fichier par bloc `%%write_file ... %%end`.
