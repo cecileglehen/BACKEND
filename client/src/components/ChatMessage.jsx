@@ -1,6 +1,22 @@
 import { useState, useRef, useEffect } from "react";
 import MessageRenderer from "./MessageRenderer.jsx";
 
+// Masque les blocs de commande %% (write_file, generate_image) du texte affiché.
+// Les blocs deviennent des cartes interactives ailleurs dans l'UI.
+// Pendant le streaming, un bloc peut être incomplet (pas encore de %%end) — on
+// coupe alors tout depuis le marqueur d'ouverture pour éviter de l'afficher.
+function stripSkillBlocks(content) {
+  if (!content) return content;
+  return content
+    .replace(/%%write_file:[^\n\r]+\r?\n[\s\S]*?%%end\r?\n?/g, "")
+    .replace(/%%generate_image:[^\n\r]+(?:\r?\n)?%%end\r?\n?/g, "")
+    // Bloc en cours de streaming (pas encore fermé) → masque jusqu'à la fin
+    .replace(/%%write_file:[\s\S]*$/g, "")
+    .replace(/%%generate_image:[\s\S]*$/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 const CAT_BADGE = {
   FREE:   "",
   UNCENSORED: "badge-venice",
@@ -619,7 +635,7 @@ export default function ChatMessage({ msg, models = [], onRemake, onChooseVarian
                 </div>
               </div>
             ) : (
-              <MessageRenderer content={msg.content} sources={msg.deepSearch?.sources} />
+              <MessageRenderer content={stripSkillBlocks(msg.content)} sources={msg.deepSearch?.sources} />
             )}
           </div>
         )}
