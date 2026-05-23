@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-const PROVIDERS = ["Mistral", "OpenAI", "Anthropic", "Google", "Meta", "xAI", "Perplexity", "DeepSeek", "Venice", "InclusionAI", "Arcee"];
+const PROVIDERS = ["Mistral", "OpenAI", "Anthropic", "Google", "Meta", "xAI", "Perplexity", "DeepSeek", "Venice", "InclusionAI", "Arcee", "Moonshot", "Nova", "Qwen"];
 
 const BRAND_LOGO = {
   OpenAI:     "/brands/openai.svg",
@@ -14,6 +14,9 @@ const BRAND_LOGO = {
   InclusionAI:"/brands/antgroup-color.svg",
   Arcee:      "/brands/arcee-color.png",
   DeepSeek:   "/brands/deepseek-color.svg",
+  Moonshot:   "/brands/moonshot-color.svg",
+  Nova:       "/brands/nova-color.svg",
+  Qwen:       "/brands/qwen-color.svg",
 };
 
 const BRAND_LABEL = {
@@ -22,7 +25,8 @@ const BRAND_LABEL = {
   Google: "Gemini",
   Meta: "Llama",
   xAI: "Grok",
-  InclusionAI: "Inclusion"
+  InclusionAI: "Inclusion",
+  Moonshot: "Kimi"
 };
 
 export default function ManualModelSelector({ catalog, selectedId, onSelect, plan }) {
