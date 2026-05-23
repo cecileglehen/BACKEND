@@ -48,6 +48,14 @@ export function AuthProvider({ children }) {
     setToken(null);
     setUser(null);
     localStorage.removeItem("delt_user");
+    // Purge le cache local des conversations pour éviter qu'un user suivant
+    // sur le même browser voie le contenu de l'ancien (partage PC public).
+    try {
+      localStorage.removeItem("delt-conversations");
+      for (const key of Object.keys(localStorage)) {
+        if (key.startsWith("delt-conv-msgs:")) localStorage.removeItem(key);
+      }
+    } catch {}
   }, [setUser]);
 
   // Validation initiale du token

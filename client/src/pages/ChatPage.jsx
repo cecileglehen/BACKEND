@@ -174,12 +174,19 @@ export default function ChatPage() {
     chat.setRouterInfo(null);
 
     // Hot-swap quand la version serveur arrive (cross-browser sync).
-    // On vérifie que l'utilisateur est toujours sur la même conv pour ne pas
-    // écraser une autre conv ouverte entre-temps.
-    fresh.then((serverMessages) => {
-      if (!serverMessages) return;
+    // Si 404/403 (conv pas à nous), on redirige + toast.
+    fresh.then((result) => {
       if (id !== activeIdRef.current) return;
-      chat.setMessages(serverMessages);
+      if (result?.notFound) {
+        toast.error("Cette conversation n'existe pas ou ne t'appartient pas.");
+        setActiveId(null);
+        chat.setMessages([]);
+        setSearchParams({}, { replace: true });
+        return;
+      }
+      if (result?.messages) {
+        chat.setMessages(result.messages);
+      }
     });
   };
 
