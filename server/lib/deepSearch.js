@@ -5,6 +5,8 @@ import { TIER_MODELS, computeCreditFromCost } from "../config/plans.js";
 import { embedOne, chunkAndScore, clusterChunks } from "./embeddings.js";
 import { llmRerank } from "./llmRerank.js";
 import { scoreAllSources } from "./sourceScoring.js";
+import { scoreAllClaims, reportConfidence } from "./claimScoring.js";
+import { classifyContent } from "./contentClassifier.js";
 import { pageCache, searchCache } from "./pageCache.js";
 
 // ─── Modèles par étape ────────────────────────────────────────────────────────
@@ -220,20 +222,97 @@ export async function runDeepSearch({ userId, prompt, maxSources = MAX_PAGES_DEF
 
   // ─── 9. CROSS-REFERENCE (1 appel LLM batch) ───────────────────────────────
   start("Croisement des sources");
-  const graph = await crossReference({ question, subQuestions: plan.subQuestions, sources, language, signal, usage });
+  let graph = await crossReference({ question, subQuestions: plan.subQuestions, sources, language, signal, usage });
   done("Croisement des sources", {
     consensus: graph.clusters.filter((c) => c.confidence === "high").length,
     contradictions: graph.contradictions.length,
     gaps: graph.gaps.length
   });
 
-  // ─── 10. SCORING DES SOURCES (authority + freshness + cohérence + cit.) ────
+  // ─── 9b. CONFIDENCE-DRIVEN AGGRESSIVE HOP ─────────────────────────────────
+  // Si la confiance globale du rapport < 0.7, on relance une vague de recherche
+  // ciblée sur les contradictions ET les sub-questions floues, avec des queries
+  // PLUS spécifiques (ajout "benchmark", "specs", "données chiffrées"…) +
+  // exclusion des domaines déjà scrapés pour forcer du sang neuf.
+  const initialConfidence = reportConfidence(sources, graph);
+  if (initialConfidence < 0.7) {
+    try {
+      const scrapedHosts = new Set(sources.map((s) => safeHost(s.url)).filter(Boolean));
+      const contradictionQueries = (graph.contradictions || []).slice(0, 2).map((c) =>
+        `${question} ${c.note || ""}`.trim().slice(0, 200)
+      );
+      const subQs = (plan.subQuestions || []).slice(0, 3).map((s) => s.text || s);
+      const specifiers = language === "fr"
+        ? ["benchmark chiffres", "spécifications détaillées", "comparatif récent"]
+        : ["benchmark numbers", "detailed specifications", "recent comparison"];
+      const aggressiveQueries = [
+        ...contradictionQueries,
+        ...subQs.map((q, i) => `${q} ${specifiers[i % specifiers.length]}`)
+      ].filter(Boolean).slice(0, 5);
+
+      if (aggressiveQueries.length > 0) {
+        const newBatches = await Promise.all(
+          aggressiveQueries.map((q) =>
+            serperSearch(q, { num: 3, lang: language, country: language === "fr" ? "fr" : "us" }).catch(() => ({ results: [] }))
+          )
+        );
+        const newRanked = rankResults(newBatches.flatMap((b) => b.results || []), 8)
+          .filter((r) => !scrapedHosts.has(safeHost(r.url))); // force du sang neuf
+        const newPages = (await mapLimit(newRanked, SCRAPE_CONCURRENCY, scrapeWithFallback)).filter(Boolean);
+        if (newPages.length > 0 && questionEmbedding) {
+          const newChunkBatches = await mapLimit(newPages, EXTRACT_CONCURRENCY, (page, i) =>
+            chunkAndScore({
+              pageText: page.text || "",
+              sourceId: 2000 + i,
+              sourceUrl: page.url,
+              sourceTitle: page.title,
+              questionEmbedding,
+              signal
+            }).catch(() => [])
+          );
+          const newChunks = newChunkBatches.flat().sort((a, b) => b.score - a.score).slice(0, 15);
+          const newReranked = await llmRerank({ question, chunks: newChunks, signal, keepCount: 8, minScore: 6 });
+          const newGrouped = new Map();
+          for (const c of newReranked) {
+            if (!newGrouped.has(c.sourceId)) newGrouped.set(c.sourceId, []);
+            newGrouped.get(c.sourceId).push(c);
+          }
+          for (const [sourceId, chunks] of newGrouped.entries()) {
+            const original = newPages[sourceId - 2000];
+            if (!original) continue;
+            const focused = chunks.map((c) => `[Hop+ · pertinence ${c.llmScore}/10]\n${c.text}`).join("\n\n");
+            const ext = await extractClaims({
+              question,
+              page: { ...original, text: focused },
+              language, signal, usage,
+              subQuestions: plan.subQuestions
+            }).catch(() => null);
+            if (ext && (ext.claims?.length || ext.summary)) {
+              sources.push({ sourceId: sources.length + 1, ...ext, _hopAggressive: true });
+            }
+          }
+          // Re-cross-reference avec les nouvelles sources
+          if (sources.some((s) => s._hopAggressive)) {
+            graph = await crossReference({ question, subQuestions: plan.subQuestions, sources, language, signal, usage });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[deepsearch] aggressive hop fail:", e.message);
+    }
+  }
+
+  // ─── 10. SCORING DES SOURCES + CLAIMS ────────────────────────────────────
   start("Scoring des sources");
   sources = scoreAllSources(sources, graph);
+  sources = scoreAllClaims(sources, graph);
+  const finalConfidence = reportConfidence(sources, graph);
   done("Scoring des sources", {
     avg: Math.round(sources.reduce((n, s) => n + (s.scoring?.score || 0), 0) / Math.max(sources.length, 1)),
     high: sources.filter((s) => s.scoring?.tier === "high").length,
-    low: sources.filter((s) => s.scoring?.tier === "low").length
+    low: sources.filter((s) => s.scoring?.tier === "low").length,
+    confidence: finalConfidence.toFixed(2),
+    aggressiveHopUsed: sources.some((s) => s._hopAggressive)
   });
 
   // ─── 11. SYNTHÈSE PONDÉRÉE (les claims des sources mieux scorées pèsent +) ─
@@ -407,22 +486,20 @@ async function scrapeWithFallback(result) {
   const cached = pageCache.get(cacheKey);
   if (cached) return cached;
 
-  const page = await scrapePage(result).catch(() => null);
-  if (page && (page.text || "").length >= 400) {
+  const tagAndCache = (page) => {
+    page.contentType = classifyContent({ url: page.url, text: page.text });
     pageCache.set(cacheKey, page);
     return page;
-  }
+  };
+
+  const page = await scrapePage(result).catch(() => null);
+  if (page && (page.text || "").length >= 400) return tagAndCache(page);
   // Fallback Jina Reader pour pages JS/paywall
   const jina = await scrapeJina(result).catch(() => null);
-  if (jina && (jina.text || "").length >= 400) {
-    pageCache.set(cacheKey, jina);
-    return jina;
-  }
+  if (jina && (jina.text || "").length >= 400) return tagAndCache(jina);
   // Dernier recours : snippet uniquement
   if (result.snippet) {
-    const snip = { url: result.url, title: result.title || result.url, text: result.snippet, snippet: result.snippet };
-    pageCache.set(cacheKey, snip);
-    return snip;
+    return tagAndCache({ url: result.url, title: result.title || result.url, text: result.snippet, snippet: result.snippet });
   }
   return null;
 }
@@ -525,6 +602,7 @@ async function extractClaims({ question, page, language, signal, usage, subQuest
     title: String(json.title || page.title || page.url).slice(0, 300),
     summary: String(json.summary || "").slice(0, 800),
     reliability: normalizeReliability(json.reliability, page.url),
+    contentType: page.contentType || null,
     claims: Array.isArray(json.claims) ? json.claims.slice(0, 15).map((c) => ({
       text: String(c?.text || "").slice(0, 400).trim(),
       quote: String(c?.quote || "").slice(0, 400).trim(),
@@ -657,10 +735,11 @@ async function synthesize({ question, plan, sources, graph, language, signal, us
         role: "system",
         content: [
           "Tu es DELT Deep Search, synthèse finale pondérée.",
-          "Tu reçois un GRAPHE de claims déjà croisés (clusters de consensus + contradictions + gaps), ET un scoring quantitatif de chaque source (0-100).",
+          "Tu reçois un GRAPHE de claims déjà croisés (clusters de consensus + contradictions + gaps), un scoring quantitatif par SOURCE (0-100) ET par CLAIM (0-100).",
           "Règles strictes :",
           "- Cite chaque affirmation avec les ids des sources entre crochets [3] ou [2,5,7].",
-          "- PONDÈRE par le score : claims des sources `tier:high` (score ≥75) sont prioritaires. Si une info ne vient que de sources `tier:low`, mentionne le doute explicitement.",
+          "- PONDÈRE par les 2 scores : claims avec `claimScoring.score ≥75` ET `source.scoring.tier:high` = certitude. Si claim score <40 ou source tier:low = doute explicite.",
+          "- Le `contentType` de chaque source compte : un `benchmark` ou `paper` est plus fiable qu'un `reddit` ou `blog`.",
           "- Hiérarchise par confiance : 'confidence: high' = consensus solide, 'low' = à prendre avec prudence.",
           "- Signale explicitement contradictions et gaps.",
           "- N'invente AUCUNE info hors du graphe.",

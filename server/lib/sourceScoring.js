@@ -68,7 +68,7 @@ function citationScore(page) {
   return 30;
 }
 
-// Score global pondéré [0-100]
+// Score global pondéré [0-100] + multiplicateur de type de contenu
 export function scoreSource(source, graph) {
   const weights = { authority: 0.35, freshness: 0.15, coherence: 0.35, citations: 0.15 };
   const dims = {
@@ -77,15 +77,19 @@ export function scoreSource(source, graph) {
     coherence: coherenceScore(source, graph),
     citations: citationScore(source)
   };
-  const total =
+  const base =
     weights.authority * dims.authority +
     weights.freshness * dims.freshness +
     weights.coherence * dims.coherence +
     weights.citations * dims.citations;
 
+  // Multiplicateur de type (benchmark 1.3, paper 1.2, doc 1.0, blog 0.8, reddit 0.5…)
+  const typeMult = source.contentType?.multiplier ?? 1.0;
+  const total = Math.min(100, base * typeMult);
+
   return {
     score: Math.round(total),
-    breakdown: dims,
+    breakdown: { ...dims, typeMultiplier: typeMult, type: source.contentType?.type || "unknown" },
     tier: total >= 75 ? "high" : total >= 50 ? "medium" : "low"
   };
 }
