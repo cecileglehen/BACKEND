@@ -170,6 +170,15 @@ export const CREATIVE = {
     label: "Vidéo",
     models: [
       {
+        id: "google/veo-3.1-lite",
+        brand: "Google",
+        display: "Veo 3.1 Lite",
+        provider: "fal",
+        // ~$0.10/s en 720p → ~18 Cr/s avec marge
+        crPerSecond720p: 18,
+        tagline: "Le moins cher"
+      },
+      {
         id: "bytedance/seedance-2.0/text-to-video",
         brand: "ByteDance",
         display: "Seedance 2",
