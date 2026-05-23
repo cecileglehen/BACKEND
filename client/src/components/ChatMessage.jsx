@@ -17,6 +17,7 @@ const ID_PREFIX_TO_BRAND = [
   [/^arcee-ai\//i,         { brand: "Arcee",       display: "Arcee" }],
   [/^moonshotai\//i,       { brand: "Moonshot",    display: "Kimi" }],
   [/^amazon\/nova/i,       { brand: "Nova",        display: "Nova" }],
+  [/^qwen\//i,             { brand: "Qwen",        display: "Qwen" }],
   [/^delt\//i,             { brand: "DELT",        display: "DELT" }],
   [/^bytedance\//i,        { brand: "ByteDance",   display: "Seedance" }],
   [/^suno\//i,             { brand: "Suno",        display: "Suno" }],
@@ -77,6 +78,7 @@ const BRAND_LOGO = {
   DeepSeek:   "/brands/deepseek-color.svg",
   Moonshot:   "/brands/moonshot-color.svg",
   Nova:       "/brands/nova-color.svg",
+  Qwen:       "/brands/qwen-color.svg",
 };
 
 const TIER_ORDER = ["FREE", "UNCENSORED", "PICO", "NANO", "MINI", "NORMAL", "EXPERT", "PRO"];

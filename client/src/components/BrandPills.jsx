@@ -18,6 +18,7 @@ const BRAND_CONFIG = {
   Arcee:       { icon: "/brands/arcee-color.png",      label: "Arcee" },
   Moonshot:    { icon: "/brands/moonshot-color.svg",   label: "Kimi" },
   Nova:        { icon: "/brands/nova-color.svg",       label: "Nova" },
+  Qwen:        { icon: "/brands/qwen-color.svg",       label: "Qwen" },
   DeepSeek:    { icon: "/brands/deepseek-color.svg",   label: "DeepSeek" },
   Suno:        { icon: null,                           label: "Suno" }
 };
