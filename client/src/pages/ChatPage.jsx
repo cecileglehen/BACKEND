@@ -617,7 +617,7 @@ export default function ChatPage() {
                   deepActive={deepMode}
                   onToggleDeep={() => setDeepMode((v) => !v)}
                 />
-                <div className="mt-2">
+                <div className="mt-2 hidden sm:block">
                   <BrandPills
                     catalog={catalog}
                     selectedId={selectedManualModel?.id}
@@ -680,7 +680,7 @@ export default function ChatPage() {
                   deepActive={deepMode}
                   onToggleDeep={() => setDeepMode((v) => !v)}
                 />
-                <div className="mt-2">
+                <div className="mt-2 hidden sm:block">
                   <BrandPills
                     catalog={catalog}
                     selectedId={selectedManualModel?.id}
