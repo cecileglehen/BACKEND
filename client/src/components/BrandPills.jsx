@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 
 // Map brand name → fichier SVG + label affiché
 const BRAND_CONFIG = {
+  DELT:        { icon: "/logo-delt.svg",               label: "DELT" },
   OpenAI:      { icon: "/brands/openai.svg",           label: "GPT" },
   Anthropic:   { icon: "/brands/claude-color.svg",     label: "Claude" },
   Google:      { icon: "/brands/gemini-color.svg",     label: "Gemini" },
@@ -86,16 +87,20 @@ function familyModel(brand, models, isFree = false) {
   };
 }
 
-function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVideo = false, isMusic = false, openBrand, setOpenBrand }) {
+function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVideo = false, isMusic = false, openBrand, setOpenBrand, families }) {
+  const isChat = !isImage && !isVideo && !isMusic;
   return (
     <div className="flex flex-wrap items-center justify-center gap-2 max-w-3xl mx-auto">
       {brands.map(([brand, models]) => {
         const cfg = BRAND_CONFIG[brand];
         const label = cfg?.label || brand;
         const pick = isImage || isVideo || isMusic ? models[0] : familyModel(brand, models, isFree);
-        const selectedHere = selectedId === pick.id || models.some((m) => m.id === selectedId);
+        const selectedHere = selectedId === pick.id || models.some((m) => m.id === selectedId) || (typeof selectedId === "string" && selectedId.startsWith(`family:${encodeURIComponent(brand)}:`));
         const isLocked = isFree && !isImage && models.every((m) => m.tier !== "FREE" && m.tier !== "UNCENSORED" && !m.freeMonthlyTokens);
         const popKey = `${isMusic ? "mus" : isVideo ? "vid" : isImage ? "img" : "chat"}-${brand}`;
+        const brandFamilies = isChat ? (families?.[brand] || []) : [];
+        const hasFamilies = brandFamilies.length > 0;
+        const showDots = !isLocked && ((isImage || isVideo || isMusic) ? models.length > 1 : hasFamilies);
 
         return (
           <div key={popKey} className="relative">
@@ -111,7 +116,7 @@ function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVide
               <button
                 onClick={() => !isLocked && onSelect(pick)}
                 disabled={isLocked}
-                className={`flex items-center gap-1.5 py-1 text-xs disabled:cursor-not-allowed ${!isLocked && models.length > 1 && (isImage || isVideo || isMusic) ? "pl-2.5 pr-1" : "px-2.5"}`}
+                className={`flex items-center gap-1.5 py-1 text-xs disabled:cursor-not-allowed ${showDots ? "pl-2.5 pr-1" : "px-2.5"}`}
               >
                 <BrandIcon brand={brand} />
                 {isImage && <ImageBadge />}
@@ -120,11 +125,11 @@ function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVide
                 <span className="font-medium">{label}</span>
               </button>
 
-              {!isLocked && models.length > 1 && (isImage || isVideo || isMusic) && (
+              {showDots && (
                 <button
                   onClick={() => setOpenBrand(openBrand === popKey ? null : popKey)}
                   className={`pr-2 pl-1 py-1 ${selectedHere ? "text-white/70 hover:text-white" : "text-delt-muted hover:text-delt-text"}`}
-                  aria-label={`Choisir modèle ${brand}`}
+                  aria-label={`Choisir famille ${brand}`}
                 >
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
                     <circle cx="5" cy="12" r="1.6"/>
@@ -136,7 +141,64 @@ function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVide
               {isLocked && <span className="pr-2 text-[10px]">🔒</span>}
             </div>
 
-            {openBrand === popKey && (
+            {openBrand === popKey && isChat && hasFamilies && (
+              <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50 w-72 bg-white rounded-xl border border-delt-border shadow-lg overflow-hidden">
+                <div className="px-3 py-2 border-b border-delt-border flex items-center gap-2">
+                  <BrandIcon brand={brand} size={18} />
+                  <span className="text-sm font-semibold text-delt-text">{label}</span>
+                  <span className="text-[10px] text-delt-muted uppercase tracking-wider ml-auto">Familles</span>
+                </div>
+                <div className="px-3 py-2 text-[11px] text-delt-muted border-b border-delt-border bg-delt-surface/30 leading-snug">
+                  Choisis une <strong>famille</strong> — le router pick la version (nano/mini/full/pro) selon la difficulté de ta demande.
+                </div>
+                <div className="py-1 max-h-72 overflow-y-auto">
+                  <button
+                    onClick={() => { onSelect(pick); setOpenBrand(null); }}
+                    className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                      selectedId === pick.id ? "bg-indigo-50 text-delt-accent" : "text-delt-text hover:bg-delt-surface"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold">🤖 Auto (tout {label})</span>
+                      <span className="text-[9px] uppercase tracking-wider text-delt-muted">Router</span>
+                    </div>
+                    <div className="text-[10px] text-delt-muted mt-0.5">Le routeur choisit librement dans toutes les versions</div>
+                  </button>
+                  {brandFamilies.map((fam) => {
+                    const famId = `family:${encodeURIComponent(brand)}:${fam.id}`;
+                    const selFam = selectedId === famId;
+                    return (
+                      <button
+                        key={fam.id}
+                        onClick={() => {
+                          onSelect({
+                            id: famId,
+                            brand,
+                            display: fam.label,
+                            tier: "NORMAL",
+                            isFamily: true
+                          });
+                          setOpenBrand(null);
+                        }}
+                        className={`w-full text-left px-3 py-2 text-sm transition-colors border-t border-delt-border/40 ${
+                          selFam ? "bg-indigo-50 text-delt-accent" : "text-delt-text hover:bg-delt-surface"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold">{fam.label}</span>
+                          <span className="text-[9px] uppercase tracking-wider text-delt-muted">{fam.models.length} version{fam.models.length > 1 ? "s" : ""}</span>
+                        </div>
+                        <div className="text-[10px] text-delt-muted mt-0.5 truncate">
+                          {fam.models.map((m) => m.display).join(" · ")}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {openBrand === popKey && !isChat && (
               <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50 w-64 bg-white rounded-xl border border-delt-border shadow-lg overflow-hidden">
                 <div className="px-3 py-2 border-b border-delt-border flex items-center gap-2">
                   <BrandIcon brand={brand} size={18} />
@@ -244,6 +306,7 @@ export default function BrandPills({ catalog, selectedId, onSelect, plan, showCr
         isImage={false}
         openBrand={openBrand}
         setOpenBrand={setOpenBrand}
+        families={catalog.families}
       />
       {showCreative && imageBrands.length > 0 && (
         <>

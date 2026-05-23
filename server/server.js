@@ -22,7 +22,7 @@ import { checkThrottle } from "./lib/throttle.js";
 import { compressIfNeeded } from "./lib/context.js";
 import { createCodeSession, editCodeSession, getCodePreviewFile, getCodeZip } from "./lib/codegen.js";
 import { TIER_MODELS, estimateCostEur } from "./config/plans.js";
-import { brandFromAlias, CREATIVE, findModelForBrand, findModelInCatalog, isBrandAlias, normalizeTier, publicCatalog, supportsVision, pickVisionModelForTier } from "./config/models.js";
+import { brandFromAlias, CREATIVE, findModelForBrand, findModelForFamily, findModelInCatalog, familyFromAlias, isBrandAlias, isFamilyAlias, normalizeTier, publicCatalog, supportsVision, pickVisionModelForTier } from "./config/models.js";
 import { createSubscriptionLink, activateSubscription, handleWebhook, PAYPAL_PLAN_IDS } from "./lib/paypal.js";
 import { createClient } from "@supabase/supabase-js";
 import { routeMessage as groqRoute } from "./lib/router.js";
@@ -357,6 +357,11 @@ function buildProjectSystemMessage(project) {
 
 function resolveRequestedModel(modelId, tier) {
   if (!modelId) return null;
+  if (isFamilyAlias(modelId)) {
+    const parsed = familyFromAlias(modelId);
+    if (!parsed) return null;
+    return findModelForFamily(parsed.brand, parsed.family, tier);
+  }
   if (isBrandAlias(modelId)) {
     const brand = brandFromAlias(modelId);
     return findModelForBrand(brand, tier);

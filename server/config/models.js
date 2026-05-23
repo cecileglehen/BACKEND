@@ -231,6 +231,105 @@ export function brandFromAlias(modelId) {
   return decodeURIComponent(value.slice("brand:".length));
 }
 
+// ─── Familles de modèles ────────────────────────────────────────────────────
+// Permet de cibler "GPT-5.4" sans choisir entre nano/mini/full/pro — le router
+// pick la variante optimale de la famille en fonction du tier de l'user.
+
+// Définition des familles par marque (regex match sur l'id du modèle).
+const FAMILY_RULES = {
+  OpenAI: [
+    { id: "gpt-5.5",   label: "GPT-5.5",     test: (id) => /^openai\/gpt-5\.5/.test(id) },
+    { id: "gpt-5.4",   label: "GPT-5.4",     test: (id) => /^openai\/gpt-5\.4/.test(id) },
+    { id: "gpt-5.3",   label: "GPT-5.3",     test: (id) => /^openai\/gpt-5\.3/.test(id) },
+    { id: "gpt-5.1",   label: "GPT-5.1",     test: (id) => /^openai\/gpt-5\.1/.test(id) },
+    { id: "gpt-4o",    label: "GPT-4o",      test: (id) => /^openai\/gpt-4o/.test(id) }
+  ],
+  Anthropic: [
+    { id: "haiku",     label: "Claude Haiku",  test: (id) => /claude-haiku/.test(id) },
+    { id: "sonnet",    label: "Claude Sonnet", test: (id) => /claude-sonnet/.test(id) },
+    { id: "opus",      label: "Claude Opus",   test: (id) => /claude-opus/.test(id) }
+  ],
+  Google: [
+    { id: "gemini-3.5",label: "Gemini 3.5",  test: (id) => /gemini-3\.5/.test(id) },
+    { id: "gemini-3.1",label: "Gemini 3.1",  test: (id) => /gemini-3\.1/.test(id) },
+    { id: "gemini-3",  label: "Gemini 3",    test: (id) => /gemini-3(?!\.\d)/.test(id) },
+    { id: "gemini-2.5",label: "Gemini 2.5",  test: (id) => /gemini-2\.5/.test(id) }
+  ],
+  Mistral: [
+    { id: "small",     label: "Mistral Small", test: (id) => /mistral-small/.test(id) },
+    { id: "large",     label: "Mistral Large", test: (id) => /mistral-large/.test(id) }
+  ],
+  xAI: [
+    { id: "grok-4.3",  label: "Grok 4.3",    test: (id) => /grok-4\.3/.test(id) },
+    { id: "grok-4.20", label: "Grok 4.20",   test: (id) => /grok-4\.20/.test(id) }
+  ]
+};
+
+// Construit la liste des familles avec leurs modèles depuis le catalogue.
+// Renvoie { OpenAI: [{ id, label, models: [...] }], Anthropic: [...], ... }
+export function getModelFamilies() {
+  const result = {};
+  for (const [brand, rules] of Object.entries(FAMILY_RULES)) {
+    const families = [];
+    for (const rule of rules) {
+      const matchedModels = [];
+      for (const [tier, cat] of Object.entries(CATEGORIES)) {
+        for (const m of cat.models) {
+          if (rule.test(m.id)) {
+            matchedModels.push({ ...m, tier });
+          }
+        }
+      }
+      if (matchedModels.length > 0) {
+        families.push({ id: rule.id, label: rule.label, models: matchedModels });
+      }
+    }
+    if (families.length > 0) result[brand] = families;
+  }
+  return result;
+}
+
+export function isFamilyAlias(modelId) {
+  return /^family:/i.test(String(modelId || ""));
+}
+
+// "family:OpenAI:gpt-5.4" → { brand: "OpenAI", family: "gpt-5.4" }
+export function familyFromAlias(modelId) {
+  const value = String(modelId || "");
+  if (!isFamilyAlias(value)) return null;
+  const rest = value.slice("family:".length);
+  const sepIdx = rest.indexOf(":");
+  if (sepIdx === -1) return null;
+  return {
+    brand: decodeURIComponent(rest.slice(0, sepIdx)),
+    family: rest.slice(sepIdx + 1)
+  };
+}
+
+// Trouve le meilleur modèle d'une famille au tier demandé (ou le plus proche).
+export function findModelForFamily(brand, familyId, tier) {
+  const rules = FAMILY_RULES[brand];
+  if (!rules) return null;
+  const rule = rules.find((r) => r.id === familyId);
+  if (!rule) return null;
+
+  const wantedTier = normalizeTier(tier || "NANO");
+  const tierOrder = ["FREE", "PICO", "NANO", "MINI", "NORMAL", "EXPERT", "PRO"];
+  const wantedIndex = Math.max(0, tierOrder.indexOf(wantedTier));
+  const searchOrder = [
+    wantedTier,
+    ...tierOrder.slice(0, wantedIndex).reverse(),
+    ...tierOrder.slice(wantedIndex + 1)
+  ].filter((v, i, a) => v && a.indexOf(v) === i);
+
+  for (const key of searchOrder) {
+    const cat = CATEGORIES[key];
+    const model = cat?.models?.find((m) => rule.test(m.id) && !m.adult);
+    if (model) return { tier: key, model };
+  }
+  return null;
+}
+
 export function findModelForBrand(brand, tier) {
   const wantedBrand = String(brand || "").toLowerCase();
   const wantedTier = normalizeTier(tier || "NANO");
@@ -273,6 +372,7 @@ export function publicCatalog() {
       ])
     ),
     creative: CREATIVE,
+    families: getModelFamilies(),
     crPerEur: 100        // 1€ = 100 Cr (top-up rate)
   };
 }
