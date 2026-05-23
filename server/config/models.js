@@ -23,6 +23,7 @@ export const CATEGORIES = {
     levelRange: [1, 3],
     models: [
       { id: "inclusionai/ring-2.6-1t:free", brand: "InclusionAI", display: "Ring 2.6 1T", free: true, ctx: 262144 },
+      { id: "inclusionai/ling-2.6-flash",   brand: "InclusionAI", display: "Ling 2.6 Flash", free: true, ctx: 131072 },
       { id: "openai/gpt-oss-120b:free", brand: "OpenAI", display: "GPT OSS 120B", free: true, ctx: 131072 },
       { id: "google/gemma-4-31b-it:free", brand: "Google", display: "Gemma 4 31B", free: true, ctx: 262144 },
       { id: "arcee-ai/trinity-large-thinking:free", brand: "Arcee", display: "Trinity Large Thinking", free: true, ctx: 131072 },
@@ -289,6 +290,10 @@ const FAMILY_RULES = {
     { id: "grok-4.3",   label: "Grok 4.3",    test: (id) => /grok-4\.3/.test(id) },
     { id: "grok-4.20",  label: "Grok 4.20",   test: (id) => /grok-4\.20/.test(id) },
     { id: "grok-build", label: "Grok Agent",  test: (id) => /grok-build/.test(id) }
+  ],
+  InclusionAI: [
+    { id: "ring",       label: "Ring",        test: (id) => /^inclusionai\/ring/.test(id) },
+    { id: "ling",       label: "Ling",        test: (id) => /^inclusionai\/ling/.test(id) }
   ]
 };
 
