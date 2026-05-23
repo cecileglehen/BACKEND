@@ -78,11 +78,13 @@ export const CATEGORIES = {
       { id: "openai/gpt-5.1-chat",       brand: "OpenAI", display: "GPT-5.1 Chat",       price: { in: 1.00, out: 6.00 }, ctx: 400000, vision: true },
       { id: "openai/gpt-5.1-codex",      brand: "OpenAI", display: "GPT-5.1 Codex",      price: { in: 1.25, out: 10.00 }, ctx: 400000 },
       { id: "mistralai/mistral-large-2512", brand: "Mistral", display: "Mistral Large 3 2512", price: { in: 0.50, out: 1.50 }, ctx: 262144, vision: true },
+      { id: "mistralai/mistral-medium-3-5", brand: "Mistral", display: "Mistral Medium 3.5", price: { in: 0.40, out: 2.00 }, ctx: 131072, vision: true },
       { id: "meta-llama/llama-4-maverick", brand: "Meta", display: "Llama 4 Maverick", price: { in: 0.15, out: 0.60 }, ctx: 1048576, vision: true },
       { id: "google/gemini-3.5-flash", brand: "Google", display: "Gemini 3.5 Flash", price: { in: 0.30, out: 2.50 }, ctx: 1048576, vision: true },
       { id: "anthropic/claude-haiku-4.5", brand: "Anthropic", display: "Claude Haiku 4.5", price: { in: 1.00, out: 5.00 }, ctx: 200000, vision: true },
       { id: "anthropic/claude-haiku-latest", brand: "Anthropic", display: "Claude Haiku (latest)", price: { in: 1.00, out: 5.00 }, ctx: 200000, vision: true },
       { id: "x-ai/grok-4.20", brand: "xAI", display: "Grok 4.20", price: { in: 1.25, out: 2.50 }, ctx: 2000000, vision: true },
+      { id: "x-ai/grok-build-0.1", brand: "xAI", display: "Grok Agent", price: { in: 1.50, out: 3.50 }, ctx: 256000, tagline: "Agent xAI — actions multi-étapes" },
       { id: "x-ai/grok-4.3", brand: "xAI", display: "Grok 4.3", price: { in: 0.50, out: 2.00 }, ctx: 2000000, vision: true }
     ]
   },
@@ -270,12 +272,14 @@ const FAMILY_RULES = {
     { id: "gemini-2.5",label: "Gemini 2.5",  test: (id) => /gemini-2\.5/.test(id) }
   ],
   Mistral: [
-    { id: "small",     label: "Mistral Small", test: (id) => /mistral-small/.test(id) },
-    { id: "large",     label: "Mistral Large", test: (id) => /mistral-large/.test(id) }
+    { id: "small",     label: "Mistral Small",  test: (id) => /mistral-small/.test(id) },
+    { id: "medium",    label: "Mistral Medium", test: (id) => /mistral-medium/.test(id) },
+    { id: "large",     label: "Mistral Large",  test: (id) => /mistral-large/.test(id) }
   ],
   xAI: [
-    { id: "grok-4.3",  label: "Grok 4.3",    test: (id) => /grok-4\.3/.test(id) },
-    { id: "grok-4.20", label: "Grok 4.20",   test: (id) => /grok-4\.20/.test(id) }
+    { id: "grok-4.3",   label: "Grok 4.3",    test: (id) => /grok-4\.3/.test(id) },
+    { id: "grok-4.20",  label: "Grok 4.20",   test: (id) => /grok-4\.20/.test(id) },
+    { id: "grok-build", label: "Grok Agent",  test: (id) => /grok-build/.test(id) }
   ]
 };
 
