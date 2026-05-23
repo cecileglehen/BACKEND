@@ -90,10 +90,15 @@ export function useHistory() {
       return [{ id, title, ...projectPatch, messages, createdAt: Date.now(), updatedAt: Date.now() }, ...prev];
     });
 
-    // 3) envoi serveur en arrière-plan (non bloquant), avec rattachement projet si fourni
-    api.saveConversation(id, messages, projectId).catch((e) => {
-      console.error("[conversations/save]", e);
-    });
+    // 3) envoi serveur — SEULEMENT si aucun message n'est en streaming.
+    // Sinon les saves en rafale créent une race condition (un save "en retard"
+    // écrasait le contenu complet de l'IA après streaming).
+    const stillStreaming = messages.some((m) => m.streaming);
+    if (!stillStreaming) {
+      api.saveConversation(id, messages, projectId).catch((e) => {
+        console.error("[conversations/save]", e);
+      });
+    }
   };
 
   const deleteConversation = (id) => {
