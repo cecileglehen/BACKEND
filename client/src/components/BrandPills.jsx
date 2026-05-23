@@ -188,8 +188,9 @@ function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVide
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-semibold">{fam.label}</span>
-                          <span className="text-[9px] uppercase tracking-wider text-delt-muted">{fam.models.length} version{fam.models.length > 1 ? "s" : ""}</span>
+                          <span className="font-semibold">
+                            {fam.models.length === 1 ? fam.models[0].display : fam.label}
+                          </span>
                         </div>
                       </button>
                     );
