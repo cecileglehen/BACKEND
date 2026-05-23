@@ -96,7 +96,7 @@ export const api = {
     fetch(u("/api/chat"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ messages, tier, modelId, manual, ...(projectId && { projectId }) }) }).then(json),
 
   // Deep Search (SSE streaming)
-  deepSearch: ({ prompt, maxSources = 10, language = "fr", onInit, onStep, onSources, onDone, onError }) => {
+  deepSearch: ({ prompt, maxSources = 10, language = "fr", onInit, onStep, onSources, onReasoning, onDone, onError }) => {
     const ctrl = new AbortController();
     fetch(u("/api/deep-search"), {
       method: "POST",
@@ -125,6 +125,7 @@ export const api = {
             if (msg.type === "init")        onInit?.(msg);
             else if (msg.type === "step")    onStep?.(msg);
             else if (msg.type === "sources") onSources?.(msg);
+            else if (msg.type === "reasoning_graph") onReasoning?.(msg);
             else if (msg.type === "done")    onDone?.(msg.report);
             else if (msg.type === "error")   onError?.(new Error(msg.error));
           } catch { /* ignore */ }

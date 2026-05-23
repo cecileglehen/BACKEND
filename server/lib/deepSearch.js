@@ -7,6 +7,7 @@ import { llmRerank } from "./llmRerank.js";
 import { scoreAllSources } from "./sourceScoring.js";
 import { scoreAllClaims, reportConfidence } from "./claimScoring.js";
 import { classifyContent } from "./contentClassifier.js";
+import { detectTopicVelocity, weightsForTopic } from "./topicDetector.js";
 import { pageCache, searchCache } from "./pageCache.js";
 
 // ─── Modèles par étape ────────────────────────────────────────────────────────
@@ -302,9 +303,11 @@ export async function runDeepSearch({ userId, prompt, maxSources = MAX_PAGES_DEF
     }
   }
 
-  // ─── 10. SCORING DES SOURCES + CLAIMS ────────────────────────────────────
+  // ─── 10. SCORING SOURCES + CLAIMS (temporal-aware) ───────────────────────
   start("Scoring des sources");
-  sources = scoreAllSources(sources, graph);
+  const velocity = detectTopicVelocity(question);
+  const weights = weightsForTopic(velocity);
+  sources = scoreAllSources(sources, graph, weights);
   sources = scoreAllClaims(sources, graph);
   const finalConfidence = reportConfidence(sources, graph);
   done("Scoring des sources", {
@@ -312,12 +315,20 @@ export async function runDeepSearch({ userId, prompt, maxSources = MAX_PAGES_DEF
     high: sources.filter((s) => s.scoring?.tier === "high").length,
     low: sources.filter((s) => s.scoring?.tier === "low").length,
     confidence: finalConfidence.toFixed(2),
-    aggressiveHopUsed: sources.some((s) => s._hopAggressive)
+    aggressiveHopUsed: sources.some((s) => s._hopAggressive),
+    velocity,
+    freshnessWeight: weights.freshness
   });
+
+  // ─── 10b. REASONING GRAPH (visible) ──────────────────────────────────────
+  // Construit une représentation explicite "claim → sources" pour l'UI.
+  // Émis en SSE pour que le frontend puisse afficher comment ça pense.
+  const reasoningGraph = buildReasoningGraph(sources, graph);
+  emit({ type: "reasoning_graph", graph: reasoningGraph, confidence: finalConfidence, velocity });
 
   // ─── 11. SYNTHÈSE PONDÉRÉE (les claims des sources mieux scorées pèsent +) ─
   start("Synthèse pondérée");
-  const synthesis = await synthesize({ question, plan, sources, graph, language, signal, usage });
+  const synthesis = await synthesize({ question, plan, sources, graph, language, signal, usage, reasoningGraph, velocity, confidence: finalConfidence });
   done("Synthèse pondérée");
 
   // ─── Totals & report ──────────────────────────────────────────────────────
@@ -717,7 +728,7 @@ async function crossReference({ question, subQuestions, sources, language, signa
 }
 
 // ─── 6. SYNTHESIZE ──────────────────────────────────────────────────────────
-async function synthesize({ question, plan, sources, graph, language, signal, usage }) {
+async function synthesize({ question, plan, sources, graph, language, signal, usage, reasoningGraph, velocity, confidence }) {
   const sourceMap = sources.map((s) => ({
     id: s.sourceId,
     title: s.title,
@@ -743,12 +754,28 @@ async function synthesize({ question, plan, sources, graph, language, signal, us
           "- Hiérarchise par confiance : 'confidence: high' = consensus solide, 'low' = à prendre avec prudence.",
           "- Signale explicitement contradictions et gaps.",
           "- N'invente AUCUNE info hors du graphe.",
-          "Structure obligatoire en Markdown :",
+          "Structure OBLIGATOIRE en Markdown (dans cet ordre) :",
           "# Réponse courte",
+          "(2-4 phrases qui répondent direct, avec citations [id])",
+          "",
           "# Analyse détaillée",
-          "# Tableau comparatif (si critères de comparaison fournis)",
-          "# Points contradictoires ou non vérifiés",
-          "# Sources"
+          "(développement avec citations [id] partout)",
+          "",
+          "# Tableau comparatif",
+          "(si critères de comparaison applicables — sinon supprime cette section)",
+          "",
+          "# 🟡 Zones incertaines",
+          "(LISTE EXPLICITE — obligatoire si contradictions ou claims faiblement scorés.",
+          "Format : `- **Sujet** : description du désaccord, sources [1] vs [2,5]`.",
+          "Si TOUT est cohérent et confiance haute, écris : *Aucune zone d'incertitude majeure.*)",
+          "",
+          "# 🧠 Comment ça pense (reasoning graph)",
+          "(MAPPING claim → sources qui supportent — montre le raisonnement.",
+          "Format : `- Claim : ... → supportée par [1,3,7] · contredite par [2,5]`.",
+          "Maximum 5-8 lignes, prioriser les claims-clés.)",
+          "",
+          "# Sources",
+          "(liste numérotée avec scoring : `[1] Titre · score:88 · tier:high · type:benchmark · URL`)"
         ].join("\n")
       },
       {
@@ -770,7 +797,12 @@ async function synthesize({ question, plan, sources, graph, language, signal, us
           JSON.stringify(graph.contradictions, null, 2),
           "",
           "GAPS (sous-questions non couvertes) :",
-          JSON.stringify(graph.gaps, null, 2)
+          JSON.stringify(graph.gaps, null, 2),
+          "",
+          "REASONING GRAPH (claim → sources qui supportent) :",
+          JSON.stringify(reasoningGraph?.supports?.slice(0, 12) || [], null, 2),
+          "",
+          `MÉTA : velocity=${velocity || "normal"} · confidence=${(confidence ?? 0).toFixed(2)}`
         ].join("\n")
       }
     ]
@@ -813,6 +845,45 @@ function parseJson(content) {
     try { return JSON.parse(obj); } catch { /* continue */ }
   }
   return {};
+}
+
+// ─── Reasoning graph (rendu visible à l'utilisateur) ────────────────────────
+// Transforme les clusters + contradictions en une représentation
+//   { supports:    [{ claim, sources: [1,3,7], confidence, score }],
+//     contradictions: [{ a, b, note, sources: { a: [1,5], b: [2] } }],
+//     gaps:        [ "..." ] }
+function buildReasoningGraph(sources, graph) {
+  const supports = (graph?.clusters || [])
+    .filter((c) => (c.sources?.length || 0) >= 1)
+    .map((c) => ({
+      claim: String(c.repr || c.statement || c.text || "").slice(0, 300),
+      sources: c.sources || [],
+      confidence: c.confidence || "medium",
+      // Score moyen des sources qui supportent
+      avgSourceScore: (() => {
+        const scores = (c.sources || [])
+          .map((id) => sources.find((s) => s.sourceId === id)?.scoring?.score)
+          .filter((n) => Number.isFinite(n));
+        if (scores.length === 0) return null;
+        return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+      })()
+    }))
+    .sort((a, b) => (b.sources.length || 0) - (a.sources.length || 0));
+
+  const contradictions = (graph?.contradictions || []).map((c) => ({
+    a: c.a,
+    b: c.b,
+    note: c.note,
+    // Tente de retrouver les sources de chaque côté via les clusters
+    sourcesA: (graph?.clusters || []).find((cl) => Number(cl.id) === Number(c.a))?.sources || [],
+    sourcesB: (graph?.clusters || []).find((cl) => Number(cl.id) === Number(c.b))?.sources || []
+  }));
+
+  return {
+    supports,
+    contradictions,
+    gaps: graph?.gaps || []
+  };
 }
 
 // ─── Concurrence bornée ─────────────────────────────────────────────────────
