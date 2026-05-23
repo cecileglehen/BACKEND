@@ -13,6 +13,7 @@ const BRAND_LOGOS = {
   InclusionAI:"/brands/antgroup-color.svg",
   DeepSeek:   "/brands/deepseek-color.svg",
   Arcee:      "/brands/arcee-color.png",
+  Moonshot:   "/brands/moonshot-color.svg",
   DELT:       "/logo-delt.svg"
 };
 
