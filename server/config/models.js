@@ -71,6 +71,8 @@ export const CATEGORIES = {
     models: [
       { id: "openai/gpt-5.4-mini", brand: "OpenAI", display: "GPT-5.4 Mini", price: { in: 0.75, out: 4.50 }, ctx: 400000, vision: true },
       { id: "openai/gpt-5.1-codex-mini", brand: "OpenAI", display: "GPT-5.1 Codex Mini", price: { in: 0.25, out: 2.00 }, ctx: 400000 },
+      { id: "openai/gpt-5.1-chat",       brand: "OpenAI", display: "GPT-5.1 Chat",       price: { in: 1.00, out: 6.00 }, ctx: 400000, vision: true },
+      { id: "openai/gpt-5.1-codex",      brand: "OpenAI", display: "GPT-5.1 Codex",      price: { in: 1.25, out: 10.00 }, ctx: 400000 },
       { id: "mistralai/mistral-large-2512", brand: "Mistral", display: "Mistral Large 3 2512", price: { in: 0.50, out: 1.50 }, ctx: 262144, vision: true },
       { id: "meta-llama/llama-4-maverick", brand: "Meta", display: "Llama 4 Maverick", price: { in: 0.15, out: 0.60 }, ctx: 1048576, vision: true },
       { id: "google/gemini-3.5-flash", brand: "Google", display: "Gemini 3.5 Flash", price: { in: 0.30, out: 2.50 }, ctx: 1048576, vision: true },
@@ -90,6 +92,7 @@ export const CATEGORIES = {
       { id: "openai/gpt-5.2-codex", brand: "OpenAI", display: "GPT-5.2 Codex", price: { in: 1.50, out: 12.00 }, ctx: 400000 },
       { id: "openai/gpt-5.3-chat", brand: "OpenAI", display: "GPT-5.3 Chat", price: { in: 1.50, out: 9.00 }, ctx: 400000, vision: true },
       { id: "openai/gpt-5.3-codex", brand: "OpenAI", display: "GPT-5.3 Codex", price: { in: 1.75, out: 14.00 }, ctx: 400000 },
+      { id: "openai/gpt-5.1-codex-max", brand: "OpenAI", display: "GPT-5.1 Codex Max", price: { in: 2.00, out: 16.00 }, ctx: 400000 },
       { id: "mistralai/mistral-large", brand: "Mistral", display: "Mistral Large", price: { in: 2.00, out: 6.00 }, ctx: 128000, vision: true },
       { id: "anthropic/claude-sonnet-4-5", brand: "Anthropic", display: "Claude Sonnet 4.5", price: { in: 3.00, out: 15.00 }, ctx: 1000000, vision: true },
       { id: "perplexity/sonar", brand: "Perplexity", display: "Sonar Web Search", price: { in: 1.00, out: 1.00 }, ctx: 127072 }
