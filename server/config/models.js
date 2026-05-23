@@ -86,6 +86,8 @@ export const CATEGORIES = {
     levelRange: [7, 8],
     models: [
       { id: "openai/gpt-5.4", brand: "OpenAI", display: "GPT-5.4", price: { in: 2.50, out: 15.00 }, ctx: 400000, vision: true },
+      { id: "openai/gpt-5.2-chat",  brand: "OpenAI", display: "GPT-5.2 Chat",  price: { in: 1.25, out: 7.50 },  ctx: 400000, vision: true },
+      { id: "openai/gpt-5.2-codex", brand: "OpenAI", display: "GPT-5.2 Codex", price: { in: 1.50, out: 12.00 }, ctx: 400000 },
       { id: "openai/gpt-5.3-chat", brand: "OpenAI", display: "GPT-5.3 Chat", price: { in: 1.50, out: 9.00 }, ctx: 400000, vision: true },
       { id: "openai/gpt-5.3-codex", brand: "OpenAI", display: "GPT-5.3 Codex", price: { in: 1.75, out: 14.00 }, ctx: 400000 },
       { id: "mistralai/mistral-large", brand: "Mistral", display: "Mistral Large", price: { in: 2.00, out: 6.00 }, ctx: 128000, vision: true },
@@ -242,6 +244,7 @@ const FAMILY_RULES = {
     { id: "gpt-5.5",   label: "GPT-5.5",     test: (id) => /^openai\/gpt-5\.5/.test(id) },
     { id: "gpt-5.4",   label: "GPT-5.4",     test: (id) => /^openai\/gpt-5\.4/.test(id) },
     { id: "gpt-5.3",   label: "GPT-5.3",     test: (id) => /^openai\/gpt-5\.3/.test(id) },
+    { id: "gpt-5.2",   label: "GPT-5.2",     test: (id) => /^openai\/gpt-5\.2/.test(id) },
     { id: "gpt-5.1",   label: "GPT-5.1",     test: (id) => /^openai\/gpt-5\.1/.test(id) },
     { id: "gpt-4o",    label: "GPT-4o",      test: (id) => /^openai\/gpt-4o/.test(id) }
   ],
