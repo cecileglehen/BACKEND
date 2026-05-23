@@ -256,32 +256,37 @@ function DeepSearchBlock({ data, streaming }) {
             <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${showReasoning ? "rotate-90" : ""}`}>
               <polyline points="9 18 15 12 9 6"/>
             </svg>
-            🧠 Comment ça pense ({reasoning.supports?.length || 0} claims · {reasoning.contradictions?.length || 0} contradictions)
+            🧠 Comment ça pense
+            <span className="font-normal text-teal-600">
+              ({reasoning.supports?.length || 0} info{(reasoning.supports?.length || 0) > 1 ? "s" : ""}
+              {reasoning.contradictions?.length > 0 && ` · ${reasoning.contradictions.length} désaccord${reasoning.contradictions.length > 1 ? "s" : ""}`})
+            </span>
           </button>
           {showReasoning && (
             <div className="mt-2 space-y-1.5 text-[11px]">
-              {reasoning.supports?.slice(0, 8).map((node, i) => (
-                <div key={i} className="flex items-start gap-2 p-2 rounded bg-white/70 border border-teal-100">
-                  <span className={`flex-shrink-0 px-1.5 py-0.5 rounded font-bold text-[9px] ${
-                    node.confidence === "high" ? "bg-emerald-600 text-white" :
-                    node.confidence === "low"  ? "bg-amber-500 text-white" : "bg-slate-400 text-white"
-                  }`}>
-                    {node.confidence?.[0]?.toUpperCase() || "M"}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-teal-900">{node.claim}</div>
-                    <div className="text-teal-600 mt-0.5">
-                      → supportée par {(node.sources || []).map((id) => `[${id}]`).join(" ")}
-                      {node.avgSourceScore != null && ` · score moyen ${node.avgSourceScore}`}
+              {reasoning.supports?.slice(0, 8).map((node, i) => {
+                const confidenceLabel = node.confidence === "high" ? "Confirmée" : node.confidence === "low" ? "Incertaine" : "Probable";
+                const confidenceColor = node.confidence === "high" ? "bg-emerald-600" : node.confidence === "low" ? "bg-amber-500" : "bg-slate-400";
+                return (
+                  <div key={i} className="flex items-start gap-2 p-2 rounded bg-white/70 border border-teal-100">
+                    <span className={`flex-shrink-0 px-1.5 py-0.5 rounded font-semibold text-[9px] text-white ${confidenceColor}`}>
+                      {confidenceLabel}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-teal-900">{node.claim}</div>
+                      <div className="text-teal-600 mt-0.5">
+                        → sources {(node.sources || []).map((id) => `[${id}]`).join(" ")}
+                        {node.avgSourceScore != null && ` · fiabilité ${node.avgSourceScore}%`}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {reasoning.contradictions?.slice(0, 4).map((c, i) => (
                 <div key={`c-${i}`} className="flex items-start gap-2 p-2 rounded bg-rose-50 border border-rose-200">
                   <span className="flex-shrink-0 text-[10px] font-bold text-rose-700">⚠</span>
                   <div className="flex-1 text-rose-900">
-                    <strong>Contradiction</strong> : {c.note}
+                    <strong>Désaccord entre sources</strong> : {c.note}
                     <div className="text-rose-600 text-[10px] mt-0.5">
                       [{(c.sourcesA || []).join(",")}] ↔ [{(c.sourcesB || []).join(",")}]
                     </div>

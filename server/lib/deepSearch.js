@@ -28,17 +28,17 @@ const MAX_PAGES_DEFAULT = 12;
 const JINA_FALLBACK = "https://r.jina.ai/";
 
 const STAGES = [
-  "Génération des requêtes",
+  "Décomposition de la question",
   "Recherche web",
   "Lecture des sources",
-  "Embedding & global ranking",
-  "Dédoublonnage par clustering",
-  "Re-ranking LLM",
+  "Sélection des passages clés",
+  "Filtrage des doublons",
+  "Tri par pertinence",
   "Extraction des faits",
-  "Multi-hop reasoning",
-  "Croisement des sources",
-  "Scoring des sources",
-  "Synthèse pondérée"
+  "Recherche approfondie",
+  "Vérification des sources",
+  "Évaluation de fiabilité",
+  "Synthèse finale"
 ];
 
 // Petits utilitaires de domaine
@@ -66,9 +66,9 @@ export async function runDeepSearch({ userId, prompt, maxSources = MAX_PAGES_DEF
   emit({ type: "init", stages: STAGES });
 
   // ─── 1. PLAN ──────────────────────────────────────────────────────────────
-  start("Génération des requêtes");
+  start("Décomposition de la question");
   const plan = await runPlan({ question, language, signal, usage });
-  done("Génération des requêtes", { queries: plan.queries.length, subQuestions: plan.subQuestions.length });
+  done("Décomposition de la question", { queries: plan.queries.length, subQuestions: plan.subQuestions.length });
 
   // ─── 2. SEARCH (parallèle) ────────────────────────────────────────────────
   start("Recherche web");
@@ -98,7 +98,7 @@ export async function runDeepSearch({ userId, prompt, maxSources = MAX_PAGES_DEF
   // ─── 4. EMBEDDING & GLOBAL RANKING ────────────────────────────────────────
   // Au lieu de top-K par page (info-clé en position 6 perdue), on fait un
   // ranking GLOBAL : tous les chunks de toutes les pages → top 50 globaux.
-  start("Embedding & global ranking");
+  start("Sélection des passages clés");
   let questionEmbedding = null;
   try { questionEmbedding = await embedOne(question, signal); }
   catch (e) { console.warn("[deepsearch] question embedding fail:", e.message); }
@@ -120,16 +120,16 @@ export async function runDeepSearch({ userId, prompt, maxSources = MAX_PAGES_DEF
       .sort((a, b) => b.score - a.score)
       .slice(0, 50); // top 50 globaux
   }
-  done("Embedding & global ranking", { totalChunks: allChunks.length, bestScore: allChunks[0]?.score?.toFixed(2) });
+  done("Sélection des passages clés", { totalChunks: allChunks.length, bestScore: allChunks[0]?.score?.toFixed(2) });
 
   // ─── 5. CLUSTERING (anti-duplication) ─────────────────────────────────────
-  start("Dédoublonnage par clustering");
+  start("Filtrage des doublons");
   const clustered = clusterChunks(allChunks, 0.86);
   const dedupedCount = allChunks.length - clustered.length;
-  done("Dédoublonnage par clustering", { kept: clustered.length, duplicates: dedupedCount });
+  done("Filtrage des doublons", { kept: clustered.length, duplicates: dedupedCount });
 
   // ─── 6. LLM RE-RANK (top 50 → top 15) ─────────────────────────────────────
-  start("Re-ranking LLM");
+  start("Tri par pertinence");
   const reranked = await llmRerank({
     question,
     chunks: clustered,
@@ -137,7 +137,7 @@ export async function runDeepSearch({ userId, prompt, maxSources = MAX_PAGES_DEF
     keepCount: 15,
     minScore: 5
   });
-  done("Re-ranking LLM", { kept: reranked.length, topScore: reranked[0]?.llmScore ?? null });
+  done("Tri par pertinence", { kept: reranked.length, topScore: reranked[0]?.llmScore ?? null });
 
   // Regroupe les chunks survivants par source pour l'extraction
   const chunksBySource = new Map();
@@ -171,7 +171,7 @@ export async function runDeepSearch({ userId, prompt, maxSources = MAX_PAGES_DEF
   });
 
   // ─── 8. MULTI-HOP (1 itération de recherche ciblée sur les gaps) ──────────
-  start("Multi-hop reasoning");
+  start("Recherche approfondie");
   let hopAdded = 0;
   try {
     const partialGraph = await crossReference({ question, subQuestions: plan.subQuestions, sources, language, signal, usage });
@@ -219,12 +219,12 @@ export async function runDeepSearch({ userId, prompt, maxSources = MAX_PAGES_DEF
   } catch (e) {
     console.warn("[deepsearch] multi-hop fail:", e.message);
   }
-  done("Multi-hop reasoning", { gapsAddressed: hopAdded });
+  done("Recherche approfondie", { gapsAddressed: hopAdded });
 
   // ─── 9. CROSS-REFERENCE (1 appel LLM batch) ───────────────────────────────
-  start("Croisement des sources");
+  start("Vérification des sources");
   let graph = await crossReference({ question, subQuestions: plan.subQuestions, sources, language, signal, usage });
-  done("Croisement des sources", {
+  done("Vérification des sources", {
     consensus: graph.clusters.filter((c) => c.confidence === "high").length,
     contradictions: graph.contradictions.length,
     gaps: graph.gaps.length
@@ -304,13 +304,13 @@ export async function runDeepSearch({ userId, prompt, maxSources = MAX_PAGES_DEF
   }
 
   // ─── 10. SCORING SOURCES + CLAIMS (temporal-aware) ───────────────────────
-  start("Scoring des sources");
+  start("Évaluation de fiabilité");
   const velocity = detectTopicVelocity(question);
   const weights = weightsForTopic(velocity);
   sources = scoreAllSources(sources, graph, weights);
   sources = scoreAllClaims(sources, graph);
   const finalConfidence = reportConfidence(sources, graph);
-  done("Scoring des sources", {
+  done("Évaluation de fiabilité", {
     avg: Math.round(sources.reduce((n, s) => n + (s.scoring?.score || 0), 0) / Math.max(sources.length, 1)),
     high: sources.filter((s) => s.scoring?.tier === "high").length,
     low: sources.filter((s) => s.scoring?.tier === "low").length,
@@ -327,9 +327,9 @@ export async function runDeepSearch({ userId, prompt, maxSources = MAX_PAGES_DEF
   emit({ type: "reasoning_graph", graph: reasoningGraph, confidence: finalConfidence, velocity });
 
   // ─── 11. SYNTHÈSE PONDÉRÉE (les claims des sources mieux scorées pèsent +) ─
-  start("Synthèse pondérée");
+  start("Synthèse finale");
   const synthesis = await synthesize({ question, plan, sources, graph, language, signal, usage, reasoningGraph, velocity, confidence: finalConfidence });
-  done("Synthèse pondérée");
+  done("Synthèse finale");
 
   // ─── Totals & report ──────────────────────────────────────────────────────
   const totals = usage.reduce((acc, u) => ({
@@ -775,7 +775,7 @@ async function synthesize({ question, plan, sources, graph, language, signal, us
           "Maximum 5-8 lignes, prioriser les claims-clés.)",
           "",
           "# Sources",
-          "(liste numérotée avec scoring : `[1] Titre · score:88 · tier:high · type:benchmark · URL`)"
+          "(liste numérotée avec fiabilité : `[1] Titre · fiabilité 88% · source vérifiée · benchmark · URL`)"
         ].join("\n")
       },
       {
