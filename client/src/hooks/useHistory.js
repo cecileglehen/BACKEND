@@ -110,23 +110,24 @@ export function useHistory() {
     });
   };
 
-  // Renvoie d'abord le cache local, rafraîchit depuis le serveur en arrière-plan
-  const getMessages = async (id) => {
+  // Renvoie le cache local immédiatement + une promesse pour la version serveur.
+  // Le caller peut afficher le cache instantanément puis hot-swap quand le
+  // serveur répond — utile pour la sync cross-browser.
+  const getMessages = (id) => {
     const cachedLocal = loadMsgsLocal(id);
     const cachedMem = conversations.find((c) => c.id === id)?.messages ?? [];
     const initial = (cachedLocal && cachedLocal.length > 0) ? cachedLocal : cachedMem;
 
-    // Refresh depuis le serveur en arrière-plan (ne bloque pas)
-    api.getConversation(id)
+    const fresh = api.getConversation(id)
       .then((conversation) => {
-        if (conversation?.messages) {
-          saveMsgsLocal(id, conversation.messages);
-          setConversations((prev) => prev.map((c) => c.id === id ? { ...c, ...conversation } : c));
-        }
+        if (!conversation?.messages) return null;
+        saveMsgsLocal(id, conversation.messages);
+        setConversations((prev) => prev.map((c) => c.id === id ? { ...c, ...conversation } : c));
+        return conversation.messages;
       })
-      .catch(() => {});
+      .catch(() => null);
 
-    return initial;
+    return { initial, fresh };
   };
 
   return { conversations, activeId, setActiveId, newConversation, saveMessages, deleteConversation, getMessages };

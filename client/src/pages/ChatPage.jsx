@@ -60,7 +60,7 @@ export default function ChatPage() {
   const { user, refreshQuota, setCredits } = useAuth();
   const toast = useToast();
   const isFree = user?.plan === "FREE";
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // ── Catalog & sélection modèle ──────────────────────────────────────────
   const [catalog, setCatalog] = useState(null);
@@ -123,6 +123,30 @@ export default function ChatPage() {
   const sidebarAnim = useAnimatedMount(historyOpen, 450);
   const projectsAnim = useAnimatedMount(projectsOpen, 450);
   const scrollRef = useRef(null);
+  const activeIdRef = useRef(activeId);
+  useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
+
+  // ── URL sync : ?c=<convId> ──────────────────────────────────────────────
+  // 1) Au mount, si l'URL contient ?c=, ouvrir cette conv (refresh-safe)
+  useEffect(() => {
+    const urlConvId = searchParams.get("c");
+    if (urlConvId && urlConvId !== activeId) {
+      handleSelectConv(urlConvId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 2) Quand activeId change, refléter dans l'URL
+  useEffect(() => {
+    const urlConvId = searchParams.get("c");
+    if (activeId && urlConvId !== activeId) {
+      setSearchParams({ c: activeId }, { replace: true });
+    } else if (!activeId && urlConvId) {
+      setSearchParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [chat.messages, chat.busy]);
@@ -138,10 +162,20 @@ export default function ChatPage() {
     const conv = conversations.find((c) => c.id === id);
     if (conv?.projectId !== undefined) setActiveProjectId(conv.projectId || null);
     setActiveId(id);
-    chat.setMessages(await getMessages(id));
+    const { initial, fresh } = getMessages(id);
+    chat.setMessages(initial);
     chat.setError(null);
     setInput("");
     chat.setRouterInfo(null);
+
+    // Hot-swap quand la version serveur arrive (cross-browser sync).
+    // On vérifie que l'utilisateur est toujours sur la même conv pour ne pas
+    // écraser une autre conv ouverte entre-temps.
+    fresh.then((serverMessages) => {
+      if (!serverMessages) return;
+      if (id !== activeIdRef.current) return;
+      chat.setMessages(serverMessages);
+    });
   };
 
   const handleSelectProject = (id) => {
