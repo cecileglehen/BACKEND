@@ -605,6 +605,7 @@ export default function ChatPage() {
                   disabled={chat.busy}
                   autoMode={effectiveAutoMode}
                   manualLabel={selectedManualModel?.display}
+                  manualModel={selectedManualModel}
                   showAuto={true}
                   onOpenModels={() => setModelsOpen(true)}
                   attachments={attachments}
@@ -667,6 +668,7 @@ export default function ChatPage() {
                   disabled={chat.busy}
                   autoMode={effectiveAutoMode}
                   manualLabel={selectedManualModel?.display}
+                  manualModel={selectedManualModel}
                   showAuto={true}
                   onOpenModels={() => setModelsOpen(true)}
                   attachments={attachments}

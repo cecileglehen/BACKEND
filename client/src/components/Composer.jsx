@@ -1,6 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 
+const BRAND_LOGOS = {
+  OpenAI:     "/brands/openai.svg",
+  Anthropic:  "/brands/claude-color.svg",
+  Google:     "/brands/gemini-color.svg",
+  Mistral:    "/brands/mistral-color.svg",
+  xAI:        "/brands/grok.svg",
+  Perplexity: "/brands/perplexity-color.svg",
+  Meta:       "/brands/meta-color.svg",
+  Venice:     "/brands/venice-color.svg",
+  InclusionAI:"/brands/antgroup-color.svg",
+  DeepSeek:   "/brands/deepseek-color.svg",
+  Arcee:      "/brands/arcee-color.png",
+  DELT:       "/logo-delt.svg"
+};
+
 export default function Composer({
   value,
   onChange,
@@ -11,6 +26,7 @@ export default function Composer({
   onToggleAuto,
   onOpenModels,
   manualLabel,
+  manualModel,
   showAuto = true,
   attachments = [],
   onAttachmentsChange,
@@ -179,7 +195,7 @@ export default function Composer({
         type="file"
         multiple
         className="hidden"
-        accept=".pdf,.txt,.md,.csv,.json,.xml,.html,.css,.js,.ts,.jsx,.tsx,.py,.c,.cpp,.java,.go,.rs,.rb,.php,.sh,.yml,.yaml,.toml,.ini"
+        accept=".pdf,.txt,.md,.mdx,.rst,.tex,.csv,.tsv,.log,.json,.jsonc,.jsonl,.ndjson,.xml,.yaml,.yml,.toml,.ini,.env,.conf,.cfg,.properties,.editorconfig,.html,.htm,.css,.scss,.sass,.less,.js,.mjs,.cjs,.jsx,.ts,.tsx,.vue,.svelte,.astro,.py,.pyw,.rb,.php,.pl,.pm,.lua,.r,.jl,.c,.h,.cpp,.hpp,.cc,.hh,.cxx,.cs,.java,.kt,.kts,.scala,.go,.rs,.swift,.dart,.m,.mm,.sh,.bash,.zsh,.fish,.ps1,.bat,.cmd,.sql,.graphql,.gql,.proto,.prisma,.dockerfile,.makefile,.mk,.gradle,.sbt,.cmake,.nim,.zig,.v,.vb,.fs,.fsx,.ml,.mli,.ex,.exs,.elm,.erl,.hs,.clj,.cljs,.asm,.s,text/*,application/*"
         onChange={(e) => e.target.files?.length && handleFiles(Array.from(e.target.files), docInputRef)}
       />
 
@@ -199,7 +215,7 @@ export default function Composer({
       />
 
       <div className="flex items-center justify-between gap-2 mt-1">
-        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-wrap">
           {/* Attach — popover image / fichier */}
           <div ref={attachMenuRef} className="relative">
             <button
@@ -269,24 +285,36 @@ export default function Composer({
             )}
           </div>
 
-          {showAuto && (
-            <button
-              type="button"
-              onClick={onOpenModels}
-              className="flex items-center gap-1.5 h-9 px-2.5 sm:px-3 rounded-full border border-delt-border hover:bg-delt-surface transition-colors text-xs sm:text-sm text-delt-text min-w-0"
-              title="Choisir la famille de modèle"
-            >
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2l2.39 6.95L22 9.5l-5.5 4.55L18.18 22 12 18.27 5.82 22l1.68-7.95L2 9.5l7.61-.55L12 2z"/>
-              </svg>
-              <span className="font-medium truncate max-w-[6rem] sm:max-w-[10rem]">
-                {autoMode ? "Auto" : (manualLabel || "Modèle")}
-              </span>
-              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="6 9 12 15 18 9"/>
-              </svg>
-            </button>
-          )}
+          {showAuto && (() => {
+            const isFullAuto = autoMode && !manualModel;
+            const brand = !isFullAuto ? manualModel?.brand : null;
+            const brandLogo = brand ? BRAND_LOGOS[brand] : null;
+            const label = isFullAuto ? "Auto" : (manualLabel || "Modèle");
+            return (
+              <button
+                type="button"
+                onClick={onOpenModels}
+                className="flex items-center gap-1.5 h-9 px-2.5 sm:px-3 rounded-full border border-delt-border hover:bg-delt-surface transition-colors text-xs sm:text-sm text-delt-text min-w-0"
+                title="Choisir la famille de modèle"
+              >
+                {brandLogo ? (
+                  <img src={brandLogo} alt={brand} className="w-4 h-4 object-contain flex-shrink-0" />
+                ) : brand ? (
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-delt-text text-white text-[8px] font-bold flex-shrink-0">
+                    {brand.charAt(0)}
+                  </span>
+                ) : (
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2l2.39 6.95L22 9.5l-5.5 4.55L18.18 22 12 18.27 5.82 22l1.68-7.95L2 9.5l7.61-.55L12 2z"/>
+                  </svg>
+                )}
+                <span className="font-medium truncate max-w-[6rem] sm:max-w-[10rem]">{label}</span>
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+            );
+          })()}
 
           {onToggleDeep && (
             <button
