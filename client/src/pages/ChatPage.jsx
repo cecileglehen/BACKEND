@@ -40,17 +40,17 @@ function PencilIcon() {
 }
 
 const DEEP_STEPS = [
-  "Génération des requêtes",
+  "Décomposition de la question",
   "Recherche web",
   "Lecture des sources",
-  "Embedding & global ranking",
-  "Dédoublonnage par clustering",
-  "Re-ranking LLM",
+  "Sélection des passages clés",
+  "Filtrage des doublons",
+  "Tri par pertinence",
   "Extraction des faits",
-  "Multi-hop reasoning",
-  "Croisement des sources",
-  "Scoring des sources",
-  "Synthèse pondérée"
+  "Recherche approfondie",
+  "Vérification des sources",
+  "Évaluation de fiabilité",
+  "Synthèse finale"
 ];
 
 function initialDeepSteps() {
@@ -152,8 +152,27 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
 
+  // Auto-scroll uniquement si l'user est déjà tout en bas (100px de marge).
+  // Si l'user a scrollé vers le haut pendant le streaming, on n'écrase pas
+  // sa position — il peut lire tranquille pendant que l'IA continue d'écrire.
+  const isAtBottomRef = useRef(true);
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      isAtBottomRef.current = distFromBottom < 100;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    if (!isAtBottomRef.current) return; // user a scrollé up → on respecte
+    const el = scrollRef.current;
+    if (!el) return;
+    // "auto" (pas smooth) pendant le streaming → pas de saccades, pas de saut
+    el.scrollTo({ top: el.scrollHeight, behavior: chat.busy ? "auto" : "smooth" });
   }, [chat.messages, chat.busy]);
 
   useEffect(() => {
