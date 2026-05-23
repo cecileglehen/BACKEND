@@ -188,9 +188,6 @@ function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVide
                           <span className="font-semibold">{fam.label}</span>
                           <span className="text-[9px] uppercase tracking-wider text-delt-muted">{fam.models.length} version{fam.models.length > 1 ? "s" : ""}</span>
                         </div>
-                        <div className="text-[10px] text-delt-muted mt-0.5 truncate">
-                          {fam.models.map((m) => m.display).join(" · ")}
-                        </div>
                       </button>
                     );
                   })}
