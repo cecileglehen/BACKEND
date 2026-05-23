@@ -60,6 +60,7 @@ export const CATEGORIES = {
     models: [
       { id: "mistralai/mistral-small-2603", brand: "Mistral", display: "Mistral Small 4", price: { in: 0.15, out: 0.60 }, ctx: 262144, vision: true, featuredLabel: "Coup de coeur · 10K tokens offerts", freeMonthlyTokens: 10000 },
       { id: "openai/gpt-5.4-nano", brand: "OpenAI", display: "GPT-5.4 Nano", price: { in: 0.20, out: 1.25 }, ctx: 400000, vision: true },
+      { id: "openai/gpt-4.1-nano", brand: "OpenAI", display: "GPT-4.1 Nano", price: { in: 0.10, out: 0.40 }, ctx: 1047576, vision: true },
       { id: "openai/gpt-4o-mini", brand: "OpenAI", display: "GPT-4o Mini", price: { in: 0.15, out: 0.60 }, ctx: 128000, vision: true },
       { id: "google/gemini-2.5-flash", brand: "Google", display: "Gemini 2.5 Flash", price: { in: 0.30, out: 2.50 }, ctx: 1048576, vision: true }
     ]
@@ -70,6 +71,9 @@ export const CATEGORIES = {
     levelRange: [4, 6],
     models: [
       { id: "openai/gpt-5.4-mini", brand: "OpenAI", display: "GPT-5.4 Mini", price: { in: 0.75, out: 4.50 }, ctx: 400000, vision: true },
+      { id: "openai/gpt-4.1-mini",  brand: "OpenAI", display: "GPT-4.1 Mini",  price: { in: 0.40, out: 1.60 }, ctx: 1047576, vision: true },
+      { id: "openai/o3-mini",       brand: "OpenAI", display: "o3-mini",      price: { in: 1.10, out: 4.40 }, ctx: 200000 },
+      { id: "openai/o3-mini-high",  brand: "OpenAI", display: "o3-mini-high", price: { in: 1.10, out: 4.40 }, ctx: 200000 },
       { id: "openai/gpt-5.1-codex-mini", brand: "OpenAI", display: "GPT-5.1 Codex Mini", price: { in: 0.25, out: 2.00 }, ctx: 400000 },
       { id: "openai/gpt-5.1-chat",       brand: "OpenAI", display: "GPT-5.1 Chat",       price: { in: 1.00, out: 6.00 }, ctx: 400000, vision: true },
       { id: "openai/gpt-5.1-codex",      brand: "OpenAI", display: "GPT-5.1 Codex",      price: { in: 1.25, out: 10.00 }, ctx: 400000 },
@@ -88,6 +92,7 @@ export const CATEGORIES = {
     levelRange: [7, 8],
     models: [
       { id: "openai/gpt-5.4", brand: "OpenAI", display: "GPT-5.4", price: { in: 2.50, out: 15.00 }, ctx: 400000, vision: true },
+      { id: "openai/gpt-4.1",  brand: "OpenAI", display: "GPT-4.1", price: { in: 2.00, out: 8.00 }, ctx: 1047576, vision: true },
       { id: "openai/gpt-5.2-chat",  brand: "OpenAI", display: "GPT-5.2 Chat",  price: { in: 1.25, out: 7.50 },  ctx: 400000, vision: true },
       { id: "openai/gpt-5.2-codex", brand: "OpenAI", display: "GPT-5.2 Codex", price: { in: 1.50, out: 12.00 }, ctx: 400000 },
       { id: "openai/gpt-5.3-chat", brand: "OpenAI", display: "GPT-5.3 Chat", price: { in: 1.50, out: 9.00 }, ctx: 400000, vision: true },
@@ -249,7 +254,9 @@ const FAMILY_RULES = {
     { id: "gpt-5.3",   label: "GPT-5.3",     test: (id) => /^openai\/gpt-5\.3/.test(id) },
     { id: "gpt-5.2",   label: "GPT-5.2",     test: (id) => /^openai\/gpt-5\.2/.test(id) },
     { id: "gpt-5.1",   label: "GPT-5.1",     test: (id) => /^openai\/gpt-5\.1/.test(id) },
-    { id: "gpt-4o",    label: "GPT-4o",      test: (id) => /^openai\/gpt-4o/.test(id) }
+    { id: "gpt-4.1",   label: "GPT-4.1",     test: (id) => /^openai\/gpt-4\.1/.test(id) },
+    { id: "gpt-4o",    label: "GPT-4o",      test: (id) => /^openai\/gpt-4o/.test(id) },
+    { id: "o3",        label: "o3",          test: (id) => /^openai\/o3/.test(id) }
   ],
   Anthropic: [
     { id: "haiku",     label: "Claude Haiku",  test: (id) => /claude-haiku/.test(id) },
