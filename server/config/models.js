@@ -86,6 +86,7 @@ export const CATEGORIES = {
     levelRange: [7, 8],
     models: [
       { id: "openai/gpt-5.4", brand: "OpenAI", display: "GPT-5.4", price: { in: 2.50, out: 15.00 }, ctx: 400000, vision: true },
+      { id: "openai/gpt-5.3-chat", brand: "OpenAI", display: "GPT-5.3 Chat", price: { in: 1.50, out: 9.00 }, ctx: 400000, vision: true },
       { id: "openai/gpt-5.3-codex", brand: "OpenAI", display: "GPT-5.3 Codex", price: { in: 1.75, out: 14.00 }, ctx: 400000 },
       { id: "mistralai/mistral-large", brand: "Mistral", display: "Mistral Large", price: { in: 2.00, out: 6.00 }, ctx: 128000, vision: true },
       { id: "anthropic/claude-sonnet-4-5", brand: "Anthropic", display: "Claude Sonnet 4.5", price: { in: 3.00, out: 15.00 }, ctx: 1000000, vision: true },
