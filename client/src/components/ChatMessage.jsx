@@ -1,6 +1,35 @@
 import { useState, useRef, useEffect } from "react";
 import MessageRenderer from "./MessageRenderer.jsx";
 
+// Dérive la marque + le label depuis l'id OpenRouter du modèle.
+// Permet d'afficher le logo même si le catalog n'a pas la version complète.
+const ID_PREFIX_TO_BRAND = [
+  [/^openai\//i,           { brand: "OpenAI",      display: "GPT" }],
+  [/^anthropic\//i,        { brand: "Anthropic",   display: "Claude" }],
+  [/^google\//i,           { brand: "Google",      display: "Gemini" }],
+  [/^mistralai\//i,        { brand: "Mistral",     display: "Mistral" }],
+  [/^x-ai\//i,             { brand: "xAI",         display: "Grok" }],
+  [/^perplexity\//i,       { brand: "Perplexity",  display: "Perplexity" }],
+  [/^meta-llama\//i,       { brand: "Meta",        display: "Llama" }],
+  [/^cognitivecomputations\/dolphin/i, { brand: "Venice", display: "Venice" }],
+  [/^inclusionai\//i,      { brand: "InclusionAI", display: "Inclusion" }],
+  [/^deepseek\//i,         { brand: "DeepSeek",    display: "DeepSeek" }],
+  [/^arcee-ai\//i,         { brand: "Arcee",       display: "Arcee" }],
+  [/^delt\//i,             { brand: "DELT",        display: "DELT" }],
+  [/^bytedance\//i,        { brand: "ByteDance",   display: "Seedance" }],
+  [/^suno\//i,             { brand: "Suno",        display: "Suno" }],
+  [/flux/i,                { brand: "Flux",        display: "FLUX" }],
+  [/recraft/i,             { brand: "Recraft",     display: "Recraft" }]
+];
+
+function deriveBrandFromId(id) {
+  if (!id) return null;
+  for (const [re, info] of ID_PREFIX_TO_BRAND) {
+    if (re.test(id)) return info;
+  }
+  return null;
+}
+
 // Masque les blocs de commande %% (write_file, generate_image) du texte affiché.
 // Les blocs deviennent des cartes interactives ailleurs dans l'UI.
 // Pendant le streaming, un bloc peut être incomplet (pas encore de %%end) — on
@@ -328,11 +357,16 @@ export default function ChatMessage({ msg, models = [], onRemake, onChooseVarian
   const [hovered, setHovered] = useState(false);
   const [remakeOpen, setRemakeOpen] = useState(false);
 
-  // Si le message vient du serveur, msg.model n'a que `{ id }` — on enrichit
-  // avec la version complète depuis le catalog (pour avoir brand/display/logo).
-  const fullModel = !isUser && msg.model?.id && !msg.model?.brand
-    ? (models.find((m) => m.id === msg.model.id) || msg.model)
-    : msg.model;
+  // Si le message vient du serveur, msg.model n'a que `{ id }` (genre
+  // "openai/gpt-4o-mini") — on enrichit avec la marque dérivée du préfixe
+  // pour récupérer le logo et un display lisible.
+  const fullModel = (() => {
+    if (isUser || !msg.model) return msg.model;
+    if (msg.model.brand) return msg.model; // déjà enrichi
+    const derived = deriveBrandFromId(msg.model.id);
+    if (!derived) return msg.model;
+    return { ...msg.model, brand: derived.brand, display: msg.model.display || derived.display };
+  })();
   const brandLogo = !isUser && fullModel?.brand ? BRAND_LOGO[fullModel.brand] : null;
 
   // ─── Mode débat : timeline verticale d'agents ───
