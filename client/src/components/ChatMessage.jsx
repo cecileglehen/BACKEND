@@ -328,7 +328,12 @@ export default function ChatMessage({ msg, models = [], onRemake, onChooseVarian
   const [hovered, setHovered] = useState(false);
   const [remakeOpen, setRemakeOpen] = useState(false);
 
-  const brandLogo = !isUser && msg.model?.brand ? BRAND_LOGO[msg.model.brand] : null;
+  // Si le message vient du serveur, msg.model n'a que `{ id }` — on enrichit
+  // avec la version complète depuis le catalog (pour avoir brand/display/logo).
+  const fullModel = !isUser && msg.model?.id && !msg.model?.brand
+    ? (models.find((m) => m.id === msg.model.id) || msg.model)
+    : msg.model;
+  const brandLogo = !isUser && fullModel?.brand ? BRAND_LOGO[fullModel.brand] : null;
 
   // ─── Mode débat : timeline verticale d'agents ───
   if (!isUser && msg.debate && Array.isArray(msg.debate.agents)) {
@@ -428,7 +433,7 @@ export default function ChatMessage({ msg, models = [], onRemake, onChooseVarian
             : "bg-delt-panel border border-delt-border"
         }`}>
           {isUser ? "T" : brandLogo ? (
-            <img src={brandLogo} alt={msg.model?.brand ?? "AI"} className="w-4 h-4 object-contain" />
+            <img src={brandLogo} alt={fullModel?.brand ?? "AI"} className="w-4 h-4 object-contain" />
           ) : (
             <svg viewBox="0 0 24 24" width="12" height="12" fill="none">
               <path d="M12 4 L20 20 H4 Z" fill="#6366f1" />
@@ -458,9 +463,9 @@ export default function ChatMessage({ msg, models = [], onRemake, onChooseVarian
         )}
 
         {/* Meta modèle — juste le nom du modèle, plus de tier/tokens */}
-        {!isUser && msg.model?.display && (
+        {!isUser && fullModel?.display && (
           <div className="flex items-center gap-2 px-1">
-            <span className="text-xs font-medium text-delt-muted font-mono">{msg.model.display}</span>
+            <span className="text-xs font-medium text-delt-muted font-mono">{fullModel.display}</span>
           </div>
         )}
 
