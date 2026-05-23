@@ -43,10 +43,14 @@ const DEEP_STEPS = [
   "Génération des requêtes",
   "Recherche web",
   "Lecture des sources",
-  "Embedding & ranking",
+  "Embedding & global ranking",
+  "Dédoublonnage par clustering",
+  "Re-ranking LLM",
   "Extraction des faits",
+  "Multi-hop reasoning",
   "Croisement des sources",
-  "Synthèse finale"
+  "Scoring des sources",
+  "Synthèse pondérée"
 ];
 
 function initialDeepSteps() {

@@ -2,7 +2,10 @@ import { serperSearch } from "./serper.js";
 import { chatWithFallback } from "./openrouter.js";
 import { getDb } from "./db.js";
 import { TIER_MODELS, computeCreditFromCost } from "../config/plans.js";
-import { embedOne, rankPageChunks } from "./embeddings.js";
+import { embedOne, chunkAndScore, clusterChunks } from "./embeddings.js";
+import { llmRerank } from "./llmRerank.js";
+import { scoreAllSources } from "./sourceScoring.js";
+import { pageCache, searchCache } from "./pageCache.js";
 
 // ─── Modèles par étape ────────────────────────────────────────────────────────
 // PLAN/CLUSTER : raisonnement structuré → MINI
@@ -25,10 +28,14 @@ const STAGES = [
   "Génération des requêtes",
   "Recherche web",
   "Lecture des sources",
-  "Embedding & ranking",
+  "Embedding & global ranking",
+  "Dédoublonnage par clustering",
+  "Re-ranking LLM",
   "Extraction des faits",
+  "Multi-hop reasoning",
   "Croisement des sources",
-  "Synthèse finale"
+  "Scoring des sources",
+  "Synthèse pondérée"
 ];
 
 // Petits utilitaires de domaine
@@ -85,40 +92,73 @@ export async function runDeepSearch({ userId, prompt, maxSources = MAX_PAGES_DEF
   })).filter(Boolean);
   done("Lecture des sources", { pages: pages.length });
 
-  // ─── 4a. RANK CHUNKS via embeddings (avant extraction LLM) ────────────────
-  // On embed la question une seule fois, puis on découpe chaque page en chunks,
-  // on les embed, et on ne garde que les top-5 les plus proches de la question.
-  // Ça divise le tokens-in d'extractClaims par 4-6× tout en gardant le signal.
-  start("Embedding & ranking");
+  // ─── 4. EMBEDDING & GLOBAL RANKING ────────────────────────────────────────
+  // Au lieu de top-K par page (info-clé en position 6 perdue), on fait un
+  // ranking GLOBAL : tous les chunks de toutes les pages → top 50 globaux.
+  start("Embedding & global ranking");
   let questionEmbedding = null;
   try { questionEmbedding = await embedOne(question, signal); }
-  catch (e) { console.warn("[deepsearch] embedding fail, fallback full text:", e.message); }
+  catch (e) { console.warn("[deepsearch] question embedding fail:", e.message); }
 
-  const rankedPages = await mapLimit(pages, EXTRACT_CONCURRENCY, async (page) => {
-    if (!questionEmbedding) return page; // fallback : page complète
-    try {
-      const top = await rankPageChunks({
+  let allChunks = [];
+  if (questionEmbedding) {
+    const batches = await mapLimit(pages, EXTRACT_CONCURRENCY, (page, i) =>
+      chunkAndScore({
         pageText: page.text || page.content || "",
+        sourceId: i + 1,
+        sourceUrl: page.url,
+        sourceTitle: page.title,
         questionEmbedding,
-        topK: 5,
         signal
-      });
-      const focused = top.map((t, i) => `[Extrait ${i + 1} · pertinence ${(t.score * 100).toFixed(0)}%]\n${t.text}`).join("\n\n---\n\n");
-      return { ...page, text: focused || page.text, _ranked: true, _topScore: top[0]?.score ?? 0 };
-    } catch (e) {
-      return page; // fallback en cas d'erreur
-    }
-  });
-  const rankedCount = rankedPages.filter((p) => p?._ranked).length;
-  done("Embedding & ranking", { ranked: rankedCount, topScore: rankedPages.find((p) => p?._topScore)?._topScore?.toFixed(2) });
+      }).catch(() => [])
+    );
+    allChunks = batches.flat()
+      .filter((c) => c.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 50); // top 50 globaux
+  }
+  done("Embedding & global ranking", { totalChunks: allChunks.length, bestScore: allChunks[0]?.score?.toFixed(2) });
 
-  // ─── 4b. EXTRACT CLAIMS (modèle cheap, sur les chunks pertinents) ─────────
+  // ─── 5. CLUSTERING (anti-duplication) ─────────────────────────────────────
+  start("Dédoublonnage par clustering");
+  const clustered = clusterChunks(allChunks, 0.86);
+  const dedupedCount = allChunks.length - clustered.length;
+  done("Dédoublonnage par clustering", { kept: clustered.length, duplicates: dedupedCount });
+
+  // ─── 6. LLM RE-RANK (top 50 → top 15) ─────────────────────────────────────
+  start("Re-ranking LLM");
+  const reranked = await llmRerank({
+    question,
+    chunks: clustered,
+    signal,
+    keepCount: 15,
+    minScore: 5
+  });
+  done("Re-ranking LLM", { kept: reranked.length, topScore: reranked[0]?.llmScore ?? null });
+
+  // Regroupe les chunks survivants par source pour l'extraction
+  const chunksBySource = new Map();
+  for (const c of reranked) {
+    if (!chunksBySource.has(c.sourceId)) chunksBySource.set(c.sourceId, []);
+    chunksBySource.get(c.sourceId).push(c);
+  }
+  const focusedPages = [];
+  for (const [sourceId, chunks] of chunksBySource.entries()) {
+    const original = pages[sourceId - 1];
+    if (!original) continue;
+    const focused = chunks
+      .map((c, i) => `[Extrait ${i + 1} · pertinence ${c.llmScore}/10]\n${c.text}`)
+      .join("\n\n---\n\n");
+    focusedPages.push({ ...original, text: focused, _chunks: chunks });
+  }
+
+  // ─── 7. EXTRACT CLAIMS ────────────────────────────────────────────────────
   start("Extraction des faits");
-  const extracted = await mapLimit(rankedPages, EXTRACT_CONCURRENCY, (page) =>
+  const extracted = await mapLimit(focusedPages, EXTRACT_CONCURRENCY, (page) =>
     extractClaims({ question, page, language, signal, usage, subQuestions: plan.subQuestions })
       .catch(() => null)
   );
-  const sources = extracted
+  let sources = extracted
     .filter((x) => x && (x.claims?.length || x.summary))
     .map((x, i) => ({ sourceId: i + 1, ...x }));
   done("Extraction des faits", { sources: sources.length, claims: sources.reduce((n, s) => n + (s.claims?.length || 0), 0) });
@@ -127,7 +167,58 @@ export async function runDeepSearch({ userId, prompt, maxSources = MAX_PAGES_DEF
     sources: sources.map((s) => ({ index: s.sourceId, title: s.title, url: s.url, reliability: s.reliability, summary: s.summary }))
   });
 
-  // ─── 5. CROSS-REFERENCE (1 appel LLM batch) ───────────────────────────────
+  // ─── 8. MULTI-HOP (1 itération de recherche ciblée sur les gaps) ──────────
+  start("Multi-hop reasoning");
+  let hopAdded = 0;
+  try {
+    const partialGraph = await crossReference({ question, subQuestions: plan.subQuestions, sources, language, signal, usage });
+    const gaps = partialGraph.gaps || [];
+    if (gaps.length > 0 && gaps.length <= 4) {
+      // Pour chaque gap, lance 1 query Serper ciblée + scrape + extract
+      const gapQueries = gaps.slice(0, 3).map((g) => typeof g === "string" ? g : g.text || g.question || "").filter(Boolean);
+      const newBatches = await Promise.all(
+        gapQueries.map((q) =>
+          serperSearch(q, { num: 3, lang: language, country: language === "fr" ? "fr" : "us" }).catch(() => ({ results: [] }))
+        )
+      );
+      const newRanked = rankResults(newBatches.flatMap((b) => b.results || []), 5);
+      const newPages = (await mapLimit(newRanked, SCRAPE_CONCURRENCY, scrapeWithFallback)).filter(Boolean);
+      if (newPages.length > 0 && questionEmbedding) {
+        const newChunkBatches = await mapLimit(newPages, EXTRACT_CONCURRENCY, (page, i) =>
+          chunkAndScore({
+            pageText: page.text || "",
+            sourceId: 1000 + i,
+            sourceUrl: page.url,
+            sourceTitle: page.title,
+            questionEmbedding,
+            signal
+          }).catch(() => [])
+        );
+        const newChunks = newChunkBatches.flat().sort((a, b) => b.score - a.score).slice(0, 10);
+        const newReranked = await llmRerank({ question, chunks: newChunks, signal, keepCount: 5, minScore: 6 });
+        const newGrouped = new Map();
+        for (const c of newReranked) {
+          if (!newGrouped.has(c.sourceId)) newGrouped.set(c.sourceId, []);
+          newGrouped.get(c.sourceId).push(c);
+        }
+        for (const [sourceId, chunks] of newGrouped.entries()) {
+          const original = newPages[sourceId - 1000];
+          if (!original) continue;
+          const focused = chunks.map((c, i) => `[Hop · pertinence ${c.llmScore}/10]\n${c.text}`).join("\n\n");
+          const ext = await extractClaims({ question, page: { ...original, text: focused }, language, signal, usage, subQuestions: plan.subQuestions }).catch(() => null);
+          if (ext && (ext.claims?.length || ext.summary)) {
+            sources.push({ sourceId: sources.length + 1, ...ext, _hop: true });
+            hopAdded += 1;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[deepsearch] multi-hop fail:", e.message);
+  }
+  done("Multi-hop reasoning", { gapsAddressed: hopAdded });
+
+  // ─── 9. CROSS-REFERENCE (1 appel LLM batch) ───────────────────────────────
   start("Croisement des sources");
   const graph = await crossReference({ question, subQuestions: plan.subQuestions, sources, language, signal, usage });
   done("Croisement des sources", {
@@ -136,10 +227,19 @@ export async function runDeepSearch({ userId, prompt, maxSources = MAX_PAGES_DEF
     gaps: graph.gaps.length
   });
 
-  // ─── 6. SYNTHÈSE (modèle fort, reçoit le graphe pas les résumés bruts) ────
-  start("Synthèse finale");
+  // ─── 10. SCORING DES SOURCES (authority + freshness + cohérence + cit.) ────
+  start("Scoring des sources");
+  sources = scoreAllSources(sources, graph);
+  done("Scoring des sources", {
+    avg: Math.round(sources.reduce((n, s) => n + (s.scoring?.score || 0), 0) / Math.max(sources.length, 1)),
+    high: sources.filter((s) => s.scoring?.tier === "high").length,
+    low: sources.filter((s) => s.scoring?.tier === "low").length
+  });
+
+  // ─── 11. SYNTHÈSE PONDÉRÉE (les claims des sources mieux scorées pèsent +) ─
+  start("Synthèse pondérée");
   const synthesis = await synthesize({ question, plan, sources, graph, language, signal, usage });
-  done("Synthèse finale");
+  done("Synthèse pondérée");
 
   // ─── Totals & report ──────────────────────────────────────────────────────
   const totals = usage.reduce((acc, u) => ({
@@ -303,14 +403,26 @@ function normalizeUrl(url) {
 
 // ─── 3. SCRAPE ──────────────────────────────────────────────────────────────
 async function scrapeWithFallback(result) {
+  const cacheKey = result.url;
+  const cached = pageCache.get(cacheKey);
+  if (cached) return cached;
+
   const page = await scrapePage(result).catch(() => null);
-  if (page && (page.text || "").length >= 400) return page;
+  if (page && (page.text || "").length >= 400) {
+    pageCache.set(cacheKey, page);
+    return page;
+  }
   // Fallback Jina Reader pour pages JS/paywall
   const jina = await scrapeJina(result).catch(() => null);
-  if (jina && (jina.text || "").length >= 400) return jina;
+  if (jina && (jina.text || "").length >= 400) {
+    pageCache.set(cacheKey, jina);
+    return jina;
+  }
   // Dernier recours : snippet uniquement
   if (result.snippet) {
-    return { url: result.url, title: result.title || result.url, text: result.snippet, snippet: result.snippet };
+    const snip = { url: result.url, title: result.title || result.url, text: result.snippet, snippet: result.snippet };
+    pageCache.set(cacheKey, snip);
+    return snip;
   }
   return null;
 }
@@ -528,7 +640,15 @@ async function crossReference({ question, subQuestions, sources, language, signa
 
 // ─── 6. SYNTHESIZE ──────────────────────────────────────────────────────────
 async function synthesize({ question, plan, sources, graph, language, signal, usage }) {
-  const sourceMap = sources.map((s) => ({ id: s.sourceId, title: s.title, url: s.url, reliability: s.reliability }));
+  const sourceMap = sources.map((s) => ({
+    id: s.sourceId,
+    title: s.title,
+    url: s.url,
+    reliability: s.reliability,
+    score: s.scoring?.score,
+    tier: s.scoring?.tier,
+    hop: s._hop || false
+  }));
   const result = await modelText({
     modelId: MODEL_SYNTH,
     signal,
@@ -536,10 +656,11 @@ async function synthesize({ question, plan, sources, graph, language, signal, us
       {
         role: "system",
         content: [
-          "Tu es DELT Deep Search, synthèse finale.",
-          "Tu reçois un GRAPHE de claims déjà croisés (clusters de consensus + contradictions + gaps).",
+          "Tu es DELT Deep Search, synthèse finale pondérée.",
+          "Tu reçois un GRAPHE de claims déjà croisés (clusters de consensus + contradictions + gaps), ET un scoring quantitatif de chaque source (0-100).",
           "Règles strictes :",
           "- Cite chaque affirmation avec les ids des sources entre crochets [3] ou [2,5,7].",
+          "- PONDÈRE par le score : claims des sources `tier:high` (score ≥75) sont prioritaires. Si une info ne vient que de sources `tier:low`, mentionne le doute explicitement.",
           "- Hiérarchise par confiance : 'confidence: high' = consensus solide, 'low' = à prendre avec prudence.",
           "- Signale explicitement contradictions et gaps.",
           "- N'invente AUCUNE info hors du graphe.",
