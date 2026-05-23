@@ -365,6 +365,9 @@ export default function ChatPage() {
         onSources: ({ sources }) => {
           updateDeep(() => ({ sources: sources || [] }));
         },
+        onReasoning: ({ graph, confidence, velocity }) => {
+          updateDeep(() => ({ reasoningGraph: graph, confidence, velocity }));
+        },
         onDone: (result) => {
           chat.setMessages((prev) => prev.map((m) => {
             if (m._deepId !== deepId || !m.deepSearch) return m;

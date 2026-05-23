@@ -162,10 +162,21 @@ function DeepSearchBlock({ data, streaming }) {
   const steps = Array.isArray(data.steps) ? data.steps : [];
   const sources = Array.isArray(data.sources) ? data.sources : [];
   const active = steps.find((s) => s.status === "running")?.label;
+  const reasoning = data.reasoningGraph;
+  const confidence = data.confidence;
+  const velocity = data.velocity;
+  const [showReasoning, setShowReasoning] = useState(false);
 
   const hostname = (url) => {
     try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
   };
+
+  const confChip = (() => {
+    if (typeof confidence !== "number") return null;
+    const pct = Math.round(confidence * 100);
+    const color = pct >= 75 ? "bg-emerald-100 text-emerald-800" : pct >= 50 ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-800";
+    return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${color}`}>Confiance {pct}%</span>;
+  })();
 
   return (
     <div className="w-full rounded-xl border border-teal-100 bg-teal-50/50 px-3 py-2.5 text-sm">
@@ -177,7 +188,12 @@ function DeepSearchBlock({ data, streaming }) {
             <line x1="16.5" y1="16.5" x2="21" y2="21" />
           </svg>
           <div className="min-w-0">
-            <div className="text-xs font-bold text-teal-900 truncate">{data.title || "DELT Deep Search Beta"}</div>
+            <div className="text-xs font-bold text-teal-900 truncate flex items-center gap-2">
+              {data.title || "DELT Deep Search Beta"}
+              {confChip}
+              {velocity === "fast" && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700">⚡ Sujet rapide</span>}
+              {velocity === "slow" && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">🐢 Sujet stable</span>}
+            </div>
             <div className="text-[11px] text-teal-700 truncate">
               {streaming ? (active || "Recherche en cours") : `${sources.length} source${sources.length > 1 ? "s" : ""} analysée${sources.length > 1 ? "s" : ""}`}
             </div>
@@ -226,6 +242,54 @@ function DeepSearchBlock({ data, streaming }) {
               <span className="truncate max-w-[10rem]">{hostname(s.url)}</span>
             </a>
           ))}
+        </div>
+      )}
+
+      {/* Reasoning graph collapsible */}
+      {reasoning && (reasoning.supports?.length > 0 || reasoning.contradictions?.length > 0) && (
+        <div className="mt-3 border-t border-teal-100 pt-2">
+          <button
+            type="button"
+            onClick={() => setShowReasoning((v) => !v)}
+            className="flex items-center gap-1.5 text-[11px] font-semibold text-teal-800 hover:text-teal-900"
+          >
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${showReasoning ? "rotate-90" : ""}`}>
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+            🧠 Comment ça pense ({reasoning.supports?.length || 0} claims · {reasoning.contradictions?.length || 0} contradictions)
+          </button>
+          {showReasoning && (
+            <div className="mt-2 space-y-1.5 text-[11px]">
+              {reasoning.supports?.slice(0, 8).map((node, i) => (
+                <div key={i} className="flex items-start gap-2 p-2 rounded bg-white/70 border border-teal-100">
+                  <span className={`flex-shrink-0 px-1.5 py-0.5 rounded font-bold text-[9px] ${
+                    node.confidence === "high" ? "bg-emerald-600 text-white" :
+                    node.confidence === "low"  ? "bg-amber-500 text-white" : "bg-slate-400 text-white"
+                  }`}>
+                    {node.confidence?.[0]?.toUpperCase() || "M"}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-teal-900">{node.claim}</div>
+                    <div className="text-teal-600 mt-0.5">
+                      → supportée par {(node.sources || []).map((id) => `[${id}]`).join(" ")}
+                      {node.avgSourceScore != null && ` · score moyen ${node.avgSourceScore}`}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {reasoning.contradictions?.slice(0, 4).map((c, i) => (
+                <div key={`c-${i}`} className="flex items-start gap-2 p-2 rounded bg-rose-50 border border-rose-200">
+                  <span className="flex-shrink-0 text-[10px] font-bold text-rose-700">⚠</span>
+                  <div className="flex-1 text-rose-900">
+                    <strong>Contradiction</strong> : {c.note}
+                    <div className="text-rose-600 text-[10px] mt-0.5">
+                      [{(c.sourcesA || []).join(",")}] ↔ [{(c.sourcesB || []).join(",")}]
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -69,8 +69,8 @@ function citationScore(page) {
 }
 
 // Score global pondéré [0-100] + multiplicateur de type de contenu
-export function scoreSource(source, graph) {
-  const weights = { authority: 0.35, freshness: 0.15, coherence: 0.35, citations: 0.15 };
+export function scoreSource(source, graph, customWeights = null) {
+  const weights = customWeights || { authority: 0.35, freshness: 0.15, coherence: 0.35, citations: 0.15 };
   const dims = {
     authority: domainAuthority(source.url),
     freshness: freshnessScore(source),
@@ -95,7 +95,7 @@ export function scoreSource(source, graph) {
 }
 
 // Applique scoreSource à toutes les sources et trie par score descendant.
-export function scoreAllSources(sources, graph) {
-  return sources.map((s) => ({ ...s, scoring: scoreSource(s, graph) }))
+export function scoreAllSources(sources, graph, customWeights = null) {
+  return sources.map((s) => ({ ...s, scoring: scoreSource(s, graph, customWeights) }))
     .sort((a, b) => b.scoring.score - a.scoring.score);
 }
