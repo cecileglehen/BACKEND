@@ -4,9 +4,81 @@
 //
 // Coût : $0.02 / 1M tokens → quasi-gratuit à l'échelle de Delt AI.
 
+import crypto from "node:crypto";
+import { getDb } from "./db.js";
+
 const OR_URL = "https://openrouter.ai/api/v1/embeddings";
 const MODEL = "openai/text-embedding-3-small";
 const BATCH = 96; // OpenAI accepte jusqu'à 2048 inputs, on reste prudent
+
+// ─── Cache pgvector (DB Supabase) ────────────────────────────────────────────
+// Stocke chaque embedding pour ne jamais le recalculer. Lookup par hash SHA1
+// du texte. Si pgvector n'est pas dispo ou table absente, fallback transparent.
+
+let pgvectorReady = null;
+async function ensurePgvectorTable() {
+  if (pgvectorReady !== null) return pgvectorReady;
+  try {
+    const db = getDb();
+    await db.query(`CREATE EXTENSION IF NOT EXISTS vector`);
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS embedding_cache (
+        text_hash CHAR(40) PRIMARY KEY,
+        embedding vector(1536) NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    pgvectorReady = true;
+  } catch (e) {
+    console.warn("[embeddings] pgvector indisponible, cache désactivé:", e.message);
+    pgvectorReady = false;
+  }
+  return pgvectorReady;
+}
+
+function hashText(text) {
+  return crypto.createHash("sha1").update(text).digest("hex");
+}
+
+async function cacheGet(hashes) {
+  if (!(await ensurePgvectorTable())) return new Map();
+  try {
+    const db = getDb();
+    const { rows } = await db.query(
+      `SELECT text_hash, embedding FROM embedding_cache WHERE text_hash = ANY($1::char(40)[])`,
+      [hashes]
+    );
+    const map = new Map();
+    for (const r of rows) {
+      // pgvector renvoie une string "[0.1, 0.2, ...]" — parse en array
+      const vec = typeof r.embedding === "string"
+        ? JSON.parse(r.embedding)
+        : r.embedding;
+      map.set(r.text_hash, vec);
+    }
+    return map;
+  } catch (e) {
+    return new Map();
+  }
+}
+
+async function cacheSet(entries) {
+  if (entries.length === 0) return;
+  if (!(await ensurePgvectorTable())) return;
+  try {
+    const db = getDb();
+    const hashes = entries.map((e) => e.hash);
+    const vectors = entries.map((e) => `[${e.vector.join(",")}]`);
+    await db.query(
+      `INSERT INTO embedding_cache (text_hash, embedding)
+       SELECT * FROM UNNEST($1::char(40)[], $2::vector(1536)[])
+       ON CONFLICT (text_hash) DO NOTHING`,
+      [hashes, vectors]
+    );
+  } catch (e) {
+    // Silently fail — cache n'est pas critique
+  }
+}
 
 function headers() {
   const key = (process.env.OPENROUTER_API_KEY || "").trim();
@@ -35,14 +107,27 @@ export async function embedOne(text, signal) {
   return data?.data?.[0]?.embedding || null;
 }
 
-// Embed plusieurs textes en parallèle (par batches).
+// Embed plusieurs textes en parallèle (par batches), avec cache pgvector.
 // Retourne un tableau de vecteurs alignés avec l'ordre d'entrée.
 export async function embedMany(texts, signal) {
   const inputs = texts.map((t) => String(t || "").slice(0, 8000));
+  const hashes = inputs.map(hashText);
   const results = new Array(inputs.length);
 
-  for (let i = 0; i < inputs.length; i += BATCH) {
-    const slice = inputs.slice(i, i + BATCH);
+  // Lookup cache
+  const cached = await cacheGet(hashes);
+  const toFetchIdx = [];
+  for (let i = 0; i < inputs.length; i += 1) {
+    const hit = cached.get(hashes[i]);
+    if (hit) results[i] = hit;
+    else toFetchIdx.push(i);
+  }
+
+  // Appel API uniquement sur les cache miss
+  const toFetchInputs = toFetchIdx.map((i) => inputs[i]);
+  const newEntries = [];
+  for (let i = 0; i < toFetchInputs.length; i += BATCH) {
+    const slice = toFetchInputs.slice(i, i + BATCH);
     const res = await fetch(OR_URL, {
       method: "POST",
       signal,
@@ -56,11 +141,51 @@ export async function embedMany(texts, signal) {
     const data = await res.json();
     const items = data?.data || [];
     for (let j = 0; j < items.length; j += 1) {
-      results[i + j] = items[j].embedding;
+      const targetIdx = toFetchIdx[i + j];
+      results[targetIdx] = items[j].embedding;
+      newEntries.push({ hash: hashes[targetIdx], vector: items[j].embedding });
     }
   }
 
+  // Persist new embeddings dans le cache (fire and forget)
+  if (newEntries.length > 0) cacheSet(newEntries).catch(() => {});
+
   return results;
+}
+
+// ─── Clustering greedy : dédoublonne les chunks quasi-identiques ─────────────
+// Pour chaque chunk, on l'assigne au cluster existant le plus proche si la
+// similarité dépasse `threshold`, sinon on crée un nouveau cluster.
+// Retourne 1 représentant par cluster (celui de plus haut score).
+export function clusterChunks(scoredChunks, threshold = 0.86) {
+  if (scoredChunks.length === 0) return [];
+  const clusters = []; // { centroid: vec, members: [{chunk, score}] }
+
+  for (const item of scoredChunks) {
+    if (!item.vector) continue;
+    let bestIdx = -1;
+    let bestSim = threshold;
+    for (let i = 0; i < clusters.length; i += 1) {
+      const sim = cosine(clusters[i].centroid, item.vector);
+      if (sim > bestSim) { bestSim = sim; bestIdx = i; }
+    }
+    if (bestIdx >= 0) {
+      clusters[bestIdx].members.push(item);
+    } else {
+      clusters.push({ centroid: item.vector, members: [item] });
+    }
+  }
+
+  // 1 représentant par cluster = celui avec le meilleur score
+  return clusters.map((c) => {
+    c.members.sort((a, b) => (b.score || 0) - (a.score || 0));
+    const rep = c.members[0];
+    return {
+      ...rep,
+      clusterSize: c.members.length,
+      duplicates: c.members.length - 1
+    };
+  });
 }
 
 // Découpe un texte en chunks d'environ `targetTokens` tokens (1 token ≈ 4 chars).
@@ -125,16 +250,29 @@ export function cosine(a, b) {
   return dot / (Math.sqrt(na) * Math.sqrt(nb));
 }
 
-// Pour un page (texte long), retourne les top-K chunks les plus pertinents
-// pour la question. Évite d'envoyer toute la page au LLM d'extraction.
+// Pour une page : retourne tous ses chunks scorés contre la question
+// (avec leurs vecteurs pour clustering ultérieur).
+export async function chunkAndScore({ pageText, sourceId, sourceUrl, sourceTitle, questionEmbedding, signal }) {
+  const chunks = chunkText(pageText, 350, 40);
+  if (chunks.length === 0) return [];
+
+  const vectors = await embedMany(chunks, signal);
+  return chunks.map((text, i) => ({
+    text,
+    vector: vectors[i],
+    score: vectors[i] ? cosine(questionEmbedding, vectors[i]) : 0,
+    sourceId, sourceUrl, sourceTitle,
+    indexInPage: i
+  }));
+}
+
+// Legacy : rank par page (gardé pour rétrocompat éventuelle, plus utilisé).
 export async function rankPageChunks({ pageText, questionEmbedding, topK = 5, signal }) {
   const chunks = chunkText(pageText, 350, 40);
   if (chunks.length === 0) return [];
   if (chunks.length <= topK) {
-    // Pas assez de chunks pour mériter un embedding, on prend tout
     return chunks.map((text, i) => ({ text, score: 1, index: i }));
   }
-
   const chunkEmbeddings = await embedMany(chunks, signal);
   const scored = chunks.map((text, i) => ({
     text,
