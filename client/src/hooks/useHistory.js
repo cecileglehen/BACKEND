@@ -113,6 +113,8 @@ export function useHistory() {
   // Renvoie le cache local immédiatement + une promesse pour la version serveur.
   // Le caller peut afficher le cache instantanément puis hot-swap quand le
   // serveur répond — utile pour la sync cross-browser.
+  // Promesse résout avec { messages, notFound } pour gérer le cas où la conv
+  // n'existe pas ou n'appartient pas à l'utilisateur (404).
   const getMessages = (id) => {
     const cachedLocal = loadMsgsLocal(id);
     const cachedMem = conversations.find((c) => c.id === id)?.messages ?? [];
@@ -120,12 +122,22 @@ export function useHistory() {
 
     const fresh = api.getConversation(id)
       .then((conversation) => {
-        if (!conversation?.messages) return null;
+        if (!conversation?.messages) return { messages: null, notFound: false };
         saveMsgsLocal(id, conversation.messages);
         setConversations((prev) => prev.map((c) => c.id === id ? { ...c, ...conversation } : c));
-        return conversation.messages;
+        return { messages: conversation.messages, notFound: false };
       })
-      .catch(() => null);
+      .catch((e) => {
+        // 404 / 403 = conv n'existe pas OU n'appartient pas à cet user.
+        // On purge le cache local (sécurité : éviter qu'un cache résiduel
+        // d'un ancien user montre du contenu à un nouveau user du browser).
+        if (e?.status === 404 || e?.status === 403) {
+          dropMsgsLocal(id);
+          setConversations((prev) => prev.filter((c) => c.id !== id));
+          return { messages: null, notFound: true };
+        }
+        return { messages: null, notFound: false };
+      });
 
     return { initial, fresh };
   };
