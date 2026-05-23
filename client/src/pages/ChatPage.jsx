@@ -43,8 +43,9 @@ const DEEP_STEPS = [
   "Génération des requêtes",
   "Recherche web",
   "Lecture des sources",
-  "Analyse source par source",
-  "Comparaison",
+  "Embedding & ranking",
+  "Extraction des faits",
+  "Croisement des sources",
   "Synthèse finale"
 ];
 

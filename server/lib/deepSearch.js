@@ -2,6 +2,7 @@ import { serperSearch } from "./serper.js";
 import { chatWithFallback } from "./openrouter.js";
 import { getDb } from "./db.js";
 import { TIER_MODELS, computeCreditFromCost } from "../config/plans.js";
+import { embedOne, rankPageChunks } from "./embeddings.js";
 
 // ─── Modèles par étape ────────────────────────────────────────────────────────
 // PLAN/CLUSTER : raisonnement structuré → MINI
@@ -24,6 +25,7 @@ const STAGES = [
   "Génération des requêtes",
   "Recherche web",
   "Lecture des sources",
+  "Embedding & ranking",
   "Extraction des faits",
   "Croisement des sources",
   "Synthèse finale"
@@ -83,9 +85,36 @@ export async function runDeepSearch({ userId, prompt, maxSources = MAX_PAGES_DEF
   })).filter(Boolean);
   done("Lecture des sources", { pages: pages.length });
 
-  // ─── 4. EXTRACT CLAIMS (parallèle, modèle cheap) ──────────────────────────
+  // ─── 4a. RANK CHUNKS via embeddings (avant extraction LLM) ────────────────
+  // On embed la question une seule fois, puis on découpe chaque page en chunks,
+  // on les embed, et on ne garde que les top-5 les plus proches de la question.
+  // Ça divise le tokens-in d'extractClaims par 4-6× tout en gardant le signal.
+  start("Embedding & ranking");
+  let questionEmbedding = null;
+  try { questionEmbedding = await embedOne(question, signal); }
+  catch (e) { console.warn("[deepsearch] embedding fail, fallback full text:", e.message); }
+
+  const rankedPages = await mapLimit(pages, EXTRACT_CONCURRENCY, async (page) => {
+    if (!questionEmbedding) return page; // fallback : page complète
+    try {
+      const top = await rankPageChunks({
+        pageText: page.text || page.content || "",
+        questionEmbedding,
+        topK: 5,
+        signal
+      });
+      const focused = top.map((t, i) => `[Extrait ${i + 1} · pertinence ${(t.score * 100).toFixed(0)}%]\n${t.text}`).join("\n\n---\n\n");
+      return { ...page, text: focused || page.text, _ranked: true, _topScore: top[0]?.score ?? 0 };
+    } catch (e) {
+      return page; // fallback en cas d'erreur
+    }
+  });
+  const rankedCount = rankedPages.filter((p) => p?._ranked).length;
+  done("Embedding & ranking", { ranked: rankedCount, topScore: rankedPages.find((p) => p?._topScore)?._topScore?.toFixed(2) });
+
+  // ─── 4b. EXTRACT CLAIMS (modèle cheap, sur les chunks pertinents) ─────────
   start("Extraction des faits");
-  const extracted = await mapLimit(pages, EXTRACT_CONCURRENCY, (page) =>
+  const extracted = await mapLimit(rankedPages, EXTRACT_CONCURRENCY, (page) =>
     extractClaims({ question, page, language, signal, usage, subQuestions: plan.subQuestions })
       .catch(() => null)
   );
