@@ -54,6 +54,8 @@ export const CATEGORIES = {
       { id: "google/gemini-2.5-flash-lite", brand: "Google", display: "Gemini 2.5 Flash Lite", price: { in: 0.10, out: 0.40 }, ctx: 1048576, vision: true, tagline: "Ultra rapide & ultra cheap" },
       { id: "amazon/nova-micro-v1", brand: "Nova", display: "Nova Micro", price: { in: 0.035, out: 0.14 }, ctx: 128000 },
       { id: "amazon/nova-2-lite-v1", brand: "Nova", display: "Nova 2 Lite", price: { in: 0.06, out: 0.24 }, ctx: 300000, vision: true },
+      { id: "qwen/qwen3.5-flash-02-23", brand: "Qwen", display: "Qwen 3.5 Flash", price: { in: 0.10, out: 0.30 }, ctx: 1000000 },
+      { id: "qwen/qwen3-coder-flash",   brand: "Qwen", display: "Qwen3 Coder Flash", price: { in: 0.15, out: 0.40 }, ctx: 1000000, tagline: "Code rapide" },
       { id: "deepseek/deepseek-v4-flash", brand: "DeepSeek", display: "DeepSeek V4 Flash", price: { in: 0.10, out: 0.30 }, ctx: 163840, tagline: "Meilleur rapport qualité/prix" }
     ]
   },
@@ -76,6 +78,10 @@ export const CATEGORIES = {
     models: [
       { id: "openai/gpt-5.4-mini", brand: "OpenAI", display: "GPT-5.4 Mini", price: { in: 0.75, out: 4.50 }, ctx: 400000, vision: true },
       { id: "amazon/nova-pro-v1", brand: "Nova", display: "Nova Pro", price: { in: 0.80, out: 3.20 }, ctx: 300000, vision: true },
+      { id: "qwen/qwen3.5-plus-20260420", brand: "Qwen", display: "Qwen 3.5 Plus", price: { in: 0.40, out: 1.60 }, ctx: 1000000 },
+      { id: "qwen/qwen3.6-plus",          brand: "Qwen", display: "Qwen 3.6 Plus", price: { in: 0.50, out: 2.00 }, ctx: 1000000 },
+      { id: "qwen/qwen3.5-122b-a10b",     brand: "Qwen", display: "Qwen 3.5 122B-A10B", price: { in: 0.30, out: 1.20 }, ctx: 262144, tagline: "MoE 122B (10B actifs)" },
+      { id: "qwen/qwen3-coder-plus",      brand: "Qwen", display: "Qwen3 Coder Plus", price: { in: 0.80, out: 3.20 }, ctx: 1000000, tagline: "Spécialisé code" },
       { id: "openai/gpt-4.1-mini",  brand: "OpenAI", display: "GPT-4.1 Mini",  price: { in: 0.40, out: 1.60 }, ctx: 1047576, vision: true },
       { id: "openai/o3-mini",       brand: "OpenAI", display: "o3-mini",      price: { in: 1.10, out: 4.40 }, ctx: 200000 },
       { id: "openai/o3-mini-high",  brand: "OpenAI", display: "o3-mini-high", price: { in: 1.10, out: 4.40 }, ctx: 200000 },
@@ -100,6 +106,8 @@ export const CATEGORIES = {
     models: [
       { id: "openai/gpt-5.4", brand: "OpenAI", display: "GPT-5.4", price: { in: 2.50, out: 15.00 }, ctx: 400000, vision: true },
       { id: "amazon/nova-premier-v1", brand: "Nova", display: "Nova Premier", price: { in: 2.50, out: 12.50 }, ctx: 1000000, vision: true },
+      { id: "qwen/qwen3.6-max-preview", brand: "Qwen", display: "Qwen 3.6 Max", price: { in: 2.00, out: 6.00 }, ctx: 1000000 },
+      { id: "qwen/qwen3.7-max",         brand: "Qwen", display: "Qwen 3.7 Max", price: { in: 2.50, out: 10.00 }, ctx: 1000000 },
       { id: "openai/gpt-4.1",  brand: "OpenAI", display: "GPT-4.1", price: { in: 2.00, out: 8.00 }, ctx: 1047576, vision: true },
       { id: "openai/gpt-5.2-chat",  brand: "OpenAI", display: "GPT-5.2 Chat",  price: { in: 1.25, out: 7.50 },  ctx: 400000, vision: true },
       { id: "openai/gpt-5.2-codex", brand: "OpenAI", display: "GPT-5.2 Codex", price: { in: 1.50, out: 12.00 }, ctx: 400000 },
@@ -117,6 +125,8 @@ export const CATEGORIES = {
     levelRange: [9, 10],
     models: [
       { id: "openai/gpt-5.5", brand: "OpenAI", display: "GPT-5.5", price: { in: 5.00, out: 30.00 }, ctx: 400000, vision: true },
+      { id: "qwen/qwen3-max-thinking",         brand: "Qwen", display: "Qwen3 Max Thinking", price: { in: 3.00, out: 15.00 }, ctx: 1000000, tagline: "Raisonnement profond" },
+      { id: "qwen/qwen3-vl-235b-a22b-thinking",brand: "Qwen", display: "Qwen3 VL 235B Thinking", price: { in: 2.50, out: 12.00 }, ctx: 256000, vision: true, tagline: "Vision + raisonnement, MoE 235B" },
       { id: "anthropic/claude-opus-4-5", brand: "Anthropic", display: "Claude Opus 4.5", price: { in: 5.00, out: 25.00 }, ctx: 1000000, vision: true },
       { id: "x-ai/grok-4.20-multi-agent", brand: "xAI", display: "Grok 4.20 Multi-Agent", price: { in: 2.00, out: 6.00 }, ctx: 2000000, vision: true },
       { id: "perplexity/sonar-deep-research", brand: "Perplexity", display: "Sonar Deep Research", price: { in: 2.00, out: 8.00 }, ctx: 128000 }
@@ -308,6 +318,14 @@ const FAMILY_RULES = {
     { id: "nova-lite",  label: "Nova Lite",     test: (id) => /^amazon\/nova-(2-)?lite/.test(id) },
     { id: "nova-pro",   label: "Nova Pro",      test: (id) => /^amazon\/nova-pro/.test(id) },
     { id: "nova-premier",label: "Nova Premier", test: (id) => /^amazon\/nova-premier/.test(id) }
+  ],
+  Qwen: [
+    { id: "qwen-3.7",      label: "Qwen 3.7",       test: (id) => /^qwen\/qwen3\.7/.test(id) },
+    { id: "qwen-3.6",      label: "Qwen 3.6",       test: (id) => /^qwen\/qwen3\.6/.test(id) },
+    { id: "qwen-3.5",      label: "Qwen 3.5",       test: (id) => /^qwen\/qwen3\.5/.test(id) },
+    { id: "qwen-coder",    label: "Qwen Coder",     test: (id) => /^qwen\/qwen3-coder/.test(id) },
+    { id: "qwen-max",      label: "Qwen Max",       test: (id) => /^qwen\/qwen3-max/.test(id) },
+    { id: "qwen-vl",       label: "Qwen VL",        test: (id) => /^qwen\/qwen3-vl/.test(id) }
   ]
 };
 

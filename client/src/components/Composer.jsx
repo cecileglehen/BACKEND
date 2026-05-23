@@ -15,6 +15,7 @@ const BRAND_LOGOS = {
   Arcee:      "/brands/arcee-color.png",
   Moonshot:   "/brands/moonshot-color.svg",
   Nova:       "/brands/nova-color.svg",
+  Qwen:       "/brands/qwen-color.svg",
   DELT:       "/logo-delt.svg"
 };
 
