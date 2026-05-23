@@ -17,6 +17,7 @@ const BRAND_CONFIG = {
   ByteDance:   { icon: "/brands/bytedance-color.svg",  label: "Seedance" },
   Arcee:       { icon: "/brands/arcee-color.png",      label: "Arcee" },
   Moonshot:    { icon: "/brands/moonshot-color.svg",   label: "Kimi" },
+  Nova:        { icon: "/brands/nova-color.svg",       label: "Nova" },
   DeepSeek:    { icon: "/brands/deepseek-color.svg",   label: "DeepSeek" },
   Suno:        { icon: null,                           label: "Suno" }
 };

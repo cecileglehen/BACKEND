@@ -14,6 +14,7 @@ const BRAND_LOGOS = {
   DeepSeek:   "/brands/deepseek-color.svg",
   Arcee:      "/brands/arcee-color.png",
   Moonshot:   "/brands/moonshot-color.svg",
+  Nova:       "/brands/nova-color.svg",
   DELT:       "/logo-delt.svg"
 };
 

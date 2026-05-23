@@ -52,6 +52,8 @@ export const CATEGORIES = {
     levelRange: [1, 2],
     models: [
       { id: "google/gemini-2.5-flash-lite", brand: "Google", display: "Gemini 2.5 Flash Lite", price: { in: 0.10, out: 0.40 }, ctx: 1048576, vision: true, tagline: "Ultra rapide & ultra cheap" },
+      { id: "amazon/nova-micro-v1", brand: "Nova", display: "Nova Micro", price: { in: 0.035, out: 0.14 }, ctx: 128000 },
+      { id: "amazon/nova-2-lite-v1", brand: "Nova", display: "Nova 2 Lite", price: { in: 0.06, out: 0.24 }, ctx: 300000, vision: true },
       { id: "deepseek/deepseek-v4-flash", brand: "DeepSeek", display: "DeepSeek V4 Flash", price: { in: 0.10, out: 0.30 }, ctx: 163840, tagline: "Meilleur rapport qualité/prix" }
     ]
   },
@@ -73,6 +75,7 @@ export const CATEGORIES = {
     levelRange: [4, 6],
     models: [
       { id: "openai/gpt-5.4-mini", brand: "OpenAI", display: "GPT-5.4 Mini", price: { in: 0.75, out: 4.50 }, ctx: 400000, vision: true },
+      { id: "amazon/nova-pro-v1", brand: "Nova", display: "Nova Pro", price: { in: 0.80, out: 3.20 }, ctx: 300000, vision: true },
       { id: "openai/gpt-4.1-mini",  brand: "OpenAI", display: "GPT-4.1 Mini",  price: { in: 0.40, out: 1.60 }, ctx: 1047576, vision: true },
       { id: "openai/o3-mini",       brand: "OpenAI", display: "o3-mini",      price: { in: 1.10, out: 4.40 }, ctx: 200000 },
       { id: "openai/o3-mini-high",  brand: "OpenAI", display: "o3-mini-high", price: { in: 1.10, out: 4.40 }, ctx: 200000 },
@@ -96,6 +99,7 @@ export const CATEGORIES = {
     levelRange: [7, 8],
     models: [
       { id: "openai/gpt-5.4", brand: "OpenAI", display: "GPT-5.4", price: { in: 2.50, out: 15.00 }, ctx: 400000, vision: true },
+      { id: "amazon/nova-premier-v1", brand: "Nova", display: "Nova Premier", price: { in: 2.50, out: 12.50 }, ctx: 1000000, vision: true },
       { id: "openai/gpt-4.1",  brand: "OpenAI", display: "GPT-4.1", price: { in: 2.00, out: 8.00 }, ctx: 1047576, vision: true },
       { id: "openai/gpt-5.2-chat",  brand: "OpenAI", display: "GPT-5.2 Chat",  price: { in: 1.25, out: 7.50 },  ctx: 400000, vision: true },
       { id: "openai/gpt-5.2-codex", brand: "OpenAI", display: "GPT-5.2 Codex", price: { in: 1.50, out: 12.00 }, ctx: 400000 },
@@ -298,6 +302,12 @@ const FAMILY_RULES = {
   ],
   Moonshot: [
     { id: "kimi",       label: "Kimi",        test: (id) => /^moonshotai\/kimi/.test(id) }
+  ],
+  Nova: [
+    { id: "nova-micro", label: "Nova Micro",    test: (id) => /^amazon\/nova-micro/.test(id) },
+    { id: "nova-lite",  label: "Nova Lite",     test: (id) => /^amazon\/nova-(2-)?lite/.test(id) },
+    { id: "nova-pro",   label: "Nova Pro",      test: (id) => /^amazon\/nova-pro/.test(id) },
+    { id: "nova-premier",label: "Nova Premier", test: (id) => /^amazon\/nova-premier/.test(id) }
   ]
 };
 
