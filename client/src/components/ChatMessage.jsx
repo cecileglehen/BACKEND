@@ -588,6 +588,41 @@ export default function ChatMessage({ msg, models = [], onRemake, onChooseVarian
           </div>
         )}
 
+        {/* Tool calls (Gmail, Drive, Notion…) */}
+        {!isUser && msg.toolCalls?.length > 0 && (
+          <div className="flex flex-wrap gap-2 px-1">
+            {msg.toolCalls.map((tc, i) => {
+              const friendly = (tc.name || "").toLowerCase().split("_")[0];
+              const action = (tc.name || "").toLowerCase().split("_").slice(1).join(" ") || "action";
+              const isError = tc.status === "error";
+              return (
+                <div
+                  key={tc.id || i}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs ${
+                    tc.status === "pending"
+                      ? "bg-blue-50 border-blue-200 text-blue-700"
+                      : isError
+                      ? "bg-red-50 border-red-200 text-red-700"
+                      : "bg-emerald-50 border-emerald-200 text-emerald-700"
+                  }`}
+                >
+                  {tc.status === "pending" ? (
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="animate-spin" style={{ animationDuration: "1.2s" }}>
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                    </svg>
+                  ) : isError ? (
+                    <span>⚠</span>
+                  ) : (
+                    <span>✓</span>
+                  )}
+                  <span className="font-semibold capitalize">{friendly}</span>
+                  <span className="text-[10px] opacity-80">· {action}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {/* Artifacts (fichiers générés via %%write_file) */}
         {!isUser && msg.artifacts?.length > 0 && (
           <div className="flex flex-wrap gap-2 px-1">
