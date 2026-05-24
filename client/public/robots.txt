@@ -1,6 +1,37 @@
 User-agent: *
 Allow: /
+Allow: /notre-modele
+Allow: /billing
+Allow: /intro
+Allow: /code
+Allow: /studio
+Allow: /terms
+Allow: /privacy
+
+# Pages privées / techniques — pas d'index
 Disallow: /api/
 Disallow: /v1/
+Disallow: /settings
+Disallow: /privacy-settings
+Disallow: /docs
+Disallow: /subscribe/
+Disallow: /thanks
+Disallow: /goodbye
+
+# Évite l'indexation des URLs avec params (conversations privées : ?c=...)
+Disallow: /*?
+
+# Crawlers IA spam — laisse passer ceux des vrais moteurs
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
 
 Sitemap: https://deltai.fr/sitemap.xml
