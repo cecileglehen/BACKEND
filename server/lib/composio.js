@@ -1,25 +1,25 @@
-// Wrapper Composio : OAuth handler + executor d'actions.
+// Wrapper Composio (SDK v0.10+) — OAuth handler + executor d'actions.
 //
 // Setup :
 //   - Compte sur https://app.composio.dev → API key dans .env COMPOSIO_API_KEY
-//   - Chaque user Delt AI = 1 entity Composio (entityId = userId Postgres)
-//   - Apps gérés : Gmail, Drive, Calendar, Slack, Notion, GitHub, Linear,
-//     Trello, Discord, Stripe — la liste s'enrichit via APPS_AVAILABLE.
+//   - Chaque user Delt AI = 1 entity Composio (userId Postgres = entityId)
+//   - SDK : @composio/core + @composio/openai-agents (Tool Router pattern)
 
-import { Composio } from "composio-core";
+import { Composio } from "@composio/core";
+import { OpenAIAgentsProvider } from "@composio/openai-agents";
 import { getDb } from "./db.js";
 
 const APPS_AVAILABLE = [
-  { app: "gmail",        label: "Gmail",         logo: "/brands/gmail.svg",     category: "Email" },
-  { app: "googledrive",  label: "Google Drive",  logo: "/brands/drive.svg",     category: "Stockage" },
-  { app: "googlecalendar",label:"Google Calendar",logo: "/brands/calendar.svg", category: "Agenda" },
-  { app: "slack",        label: "Slack",         logo: "/brands/slack.svg",     category: "Communication" },
-  { app: "notion",       label: "Notion",        logo: "/brands/notion.svg",    category: "Productivité" },
-  { app: "github",       label: "GitHub",        logo: "/brands/github.svg",    category: "Dev" },
-  { app: "linear",       label: "Linear",        logo: "/brands/linear.svg",    category: "Dev" },
-  { app: "trello",       label: "Trello",        logo: "/brands/trello.svg",    category: "Projet" },
-  { app: "discord",      label: "Discord",       logo: "/brands/discord.svg",   category: "Communication" },
-  { app: "stripe",       label: "Stripe",        logo: "/brands/stripe.svg",    category: "Paiement" }
+  { app: "gmail",         label: "Gmail",          logo: "/brands/gmail.svg",     category: "Email" },
+  { app: "googledrive",   label: "Google Drive",   logo: "/brands/drive.svg",     category: "Stockage" },
+  { app: "googlecalendar",label: "Google Calendar",logo: "/brands/calendar.svg",  category: "Agenda" },
+  { app: "slack",         label: "Slack",          logo: "/brands/slack.svg",     category: "Communication" },
+  { app: "notion",        label: "Notion",         logo: "/brands/notion.svg",    category: "Productivité" },
+  { app: "github",        label: "GitHub",         logo: "/brands/github.svg",    category: "Dev" },
+  { app: "linear",        label: "Linear",         logo: "/brands/linear.svg",    category: "Dev" },
+  { app: "trello",        label: "Trello",         logo: "/brands/trello.svg",    category: "Projet" },
+  { app: "discord",       label: "Discord",        logo: "/brands/discord.svg",   category: "Communication" },
+  { app: "stripe",        label: "Stripe",         logo: "/brands/stripe.svg",    category: "Paiement" }
 ];
 
 let _client = null;
@@ -27,7 +27,10 @@ function client() {
   if (_client) return _client;
   const apiKey = (process.env.COMPOSIO_API_KEY || "").trim();
   if (!apiKey) throw new Error("COMPOSIO_API_KEY manquante (compte sur app.composio.dev)");
-  _client = new Composio({ apiKey });
+  _client = new Composio({
+    apiKey,
+    provider: new OpenAIAgentsProvider()
+  });
   return _client;
 }
 
@@ -52,25 +55,21 @@ export async function listUserIntegrations(userId) {
 }
 
 // Initie une connexion OAuth pour une app donnée → renvoie l'URL où rediriger
-// l'utilisateur. Composio appelle un callback config dans son dashboard, on
-// reçoit ensuite un webhook (ou on poll le status).
+// l'utilisateur. Composio gère le flow OAuth + stockage des tokens.
 export async function initiateConnection({ userId, app, redirectUrl }) {
   const co = client();
   const entityId = String(userId);
-  const entity = await co.getEntity(entityId);
-  const connectionRequest = await entity.initiateConnection({
-    appName: app,
-    redirectUri: redirectUrl
+  const connection = await co.connectedAccounts.initiate(entityId, {
+    toolkit: app,
+    callbackUrl: redirectUrl
   });
   return {
-    redirectUrl: connectionRequest.redirectUrl,
-    connectionId: connectionRequest.connectedAccountId,
-    status: connectionRequest.connectionStatus || "INITIATED"
+    redirectUrl: connection.redirectUrl || connection.redirectUri || connection.url,
+    connectionId: connection.id || connection.connectionId || connection.connectedAccountId,
+    status: connection.status || "INITIATED"
   };
 }
 
-// À appeler après que l'utilisateur revient du flow OAuth, pour persister
-// la connexion en DB.
 export async function confirmConnection({ userId, app, connectionId }) {
   const db = getDb();
   await db.query(
@@ -94,7 +93,7 @@ export async function revokeIntegration({ userId, app }) {
   if (rows[0]?.connection_id) {
     try {
       const co = client();
-      await co.connectedAccounts.delete({ connectedAccountId: rows[0].connection_id });
+      await co.connectedAccounts.delete(rows[0].connection_id);
     } catch (e) {
       console.warn("[composio] revoke API fail:", e.message);
     }
@@ -106,31 +105,24 @@ export async function revokeIntegration({ userId, app }) {
   );
 }
 
-// Liste des tools disponibles pour cet user (toutes apps connectées confondues).
-// Format OpenAI-compatible → directement injectable dans messages[].
-export async function getToolsForUser(userId) {
+// Renvoie une session Tool Router pour cet user (utilisée pour le tool calling).
+// Le pattern @composio/core v0.10 : composio.create(entityId) → session, puis
+// session.tools() renvoie les tools au format OpenAI Agents.
+export async function getSessionForUser(userId) {
   const co = client();
   const entityId = String(userId);
-  const integrations = await listUserIntegrations(userId);
-  const connectedApps = integrations.filter((i) => i.connected).map((i) => i.app);
-  if (connectedApps.length === 0) return [];
+  return co.create(entityId);
+}
+
+// Récupère les tools formatés OpenAI-compatible (utilisable directement dans
+// messages[].tools du chat OpenRouter).
+export async function getToolsForUser(userId) {
   try {
-    const tools = await co.tools.get({ entityId, apps: connectedApps, limit: 50 });
+    const session = await getSessionForUser(userId);
+    const tools = await session.tools();
     return tools || [];
   } catch (e) {
     console.warn("[composio] getTools fail:", e.message);
     return [];
   }
-}
-
-// Exécute un tool call. `action` = nom Composio (ex "GMAIL_SEND_EMAIL"),
-// `params` = arguments fournis par le LLM.
-export async function executeAction({ userId, action, params }) {
-  const co = client();
-  const entityId = String(userId);
-  const result = await co.actions.execute({
-    actionName: action,
-    requestBody: { entityId, input: params || {} }
-  });
-  return result;
 }
