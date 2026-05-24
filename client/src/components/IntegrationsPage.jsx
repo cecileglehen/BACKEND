@@ -16,6 +16,12 @@ const BRAND_COLORS = {
   stripe:         "#635BFF"
 };
 
+// Logos couleur officiels (PNG/SVG natifs). Si présent → on l'affiche tel quel
+// au lieu du mask monochrome avec couleur appliquée.
+const COLOR_LOGOS = {
+  gmail: "/brands/gmail-color.png"
+};
+
 export default function IntegrationsPage() {
   const toast = useToast();
   const [items, setItems] = useState([]);
@@ -104,22 +110,30 @@ export default function IntegrationsPage() {
                     it.connected ? "border-emerald-300 bg-emerald-50/40" : "border-delt-border bg-white"
                   }`}
                 >
-                  <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-white border border-delt-border flex items-center justify-center">
-                    <div
-                      className="w-6 h-6"
-                      title={it.label}
-                      style={{
-                        WebkitMaskImage: `url(/brands/${it.app}.svg)`,
-                        WebkitMaskSize: "contain",
-                        WebkitMaskRepeat: "no-repeat",
-                        WebkitMaskPosition: "center",
-                        maskImage: `url(/brands/${it.app}.svg)`,
-                        maskSize: "contain",
-                        maskRepeat: "no-repeat",
-                        maskPosition: "center",
-                        backgroundColor: BRAND_COLORS[it.app] || "#0F172A"
-                      }}
-                    />
+                  <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-white border border-delt-border flex items-center justify-center overflow-hidden">
+                    {COLOR_LOGOS[it.app] ? (
+                      <img
+                        src={COLOR_LOGOS[it.app]}
+                        alt={it.label}
+                        className="w-7 h-7 object-contain"
+                      />
+                    ) : (
+                      <div
+                        className="w-6 h-6"
+                        title={it.label}
+                        style={{
+                          WebkitMaskImage: `url(/brands/${it.app}.svg)`,
+                          WebkitMaskSize: "contain",
+                          WebkitMaskRepeat: "no-repeat",
+                          WebkitMaskPosition: "center",
+                          maskImage: `url(/brands/${it.app}.svg)`,
+                          maskSize: "contain",
+                          maskRepeat: "no-repeat",
+                          maskPosition: "center",
+                          backgroundColor: BRAND_COLORS[it.app] || "#0F172A"
+                        }}
+                      />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-sm text-delt-text truncate">{it.label}</div>
