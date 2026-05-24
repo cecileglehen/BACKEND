@@ -5,15 +5,17 @@ import PrivacySettingsPage from "./PrivacySettingsPage.jsx";
 import UsagePage from "./UsagePage.jsx";
 import ModelPreferencesPage from "./ModelPreferencesPage.jsx";
 import MemoryPage from "./MemoryPage.jsx";
+import IntegrationsPage from "./IntegrationsPage.jsx";
 
 const SECTIONS = [
-  { id: "account", label: "Compte" },
-  { id: "memory",  label: "Mémoire" },
-  { id: "models",  label: "Modèles" },
-  { id: "usage",   label: "Utilisation" },
-  { id: "api",     label: "API" },
-  { id: "docs",    label: "Docs" },
-  { id: "privacy", label: "Confidentialite" }
+  { id: "account",      label: "Compte" },
+  { id: "memory",       label: "Mémoire" },
+  { id: "models",       label: "Modèles" },
+  { id: "integrations", label: "Intégrations" },
+  { id: "usage",        label: "Utilisation" },
+  { id: "api",          label: "API" },
+  { id: "docs",         label: "Docs" },
+  { id: "privacy",      label: "Confidentialite" }
 ];
 
 export default function SettingsPage({ user, initialSection = "account", onDeleted }) {
@@ -52,6 +54,8 @@ export default function SettingsPage({ user, initialSection = "account", onDelet
             <ModelPreferencesPage user={user} />
           ) : section === "memory" ? (
             <MemoryPage />
+          ) : section === "integrations" ? (
+            <IntegrationsPage />
           ) : section === "privacy" ? (
             <PrivacySettingsPage onDeleted={onDeleted} />
           ) : (

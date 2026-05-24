@@ -14,6 +14,7 @@ import { register, login, signToken, requireAuth, refreshUser, verifyToken } fro
 import { routeMessage } from "./lib/router.js";
 import { chatWithFallback, streamChat } from "./lib/openrouter.js";
 import { getBaseSkillPrompt, parseSkillBlocks } from "./lib/skills.js";
+import { listAvailableApps, listUserIntegrations, initiateConnection, confirmConnection, revokeIntegration } from "./lib/composio.js";
 import { recordUsage, logUsage, quotaSnapshot, resolveTier } from "./lib/windows.js";
 import { getCredits, deductCredits, hasEnoughCredits, grantPlanCredits, resetMonthlyCredits, getApiCredits, transferCredits, getFreeNanoTokens, deductFreeNanoTokens, FREE_NANO_MODEL_ID } from "./lib/credits.js";
 import { computeCreditCost, computeCreditFromCost, FREE_TIER_ONLY_PLANS } from "./config/plans.js";
@@ -1653,6 +1654,46 @@ app.post("/api/music", requireAuth, async (req, res) => {
     });
   } catch (e) {
     console.error("[music]", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── Intégrations Composio (Gmail, Drive, Notion, …) ────────────────────────
+
+app.get("/api/integrations", requireAuth, async (req, res) => {
+  try {
+    const items = await listUserIntegrations(req.user.id);
+    res.json({ integrations: items });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/integrations/connect/:app", requireAuth, async (req, res) => {
+  try {
+    const app = String(req.params.app || "").toLowerCase();
+    const validApps = listAvailableApps().map((a) => a.app);
+    if (!validApps.includes(app)) return res.status(400).json({ error: "App non supportée" });
+
+    const origin = req.headers.origin || "https://deltai.fr";
+    const redirectUrl = `${origin}/settings?integration=${app}&status=success`;
+    const result = await initiateConnection({ userId: req.user.id, app, redirectUrl });
+    // Persiste d'avance la connexion en pending (Composio confirme via webhook OU
+    // l'utilisateur revient avec le connectionId déjà actif)
+    await confirmConnection({ userId: req.user.id, app, connectionId: result.connectionId });
+    res.json({ redirectUrl: result.redirectUrl, connectionId: result.connectionId });
+  } catch (e) {
+    console.error("[integrations/connect]", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/integrations/:app", requireAuth, async (req, res) => {
+  try {
+    const app = String(req.params.app || "").toLowerCase();
+    await revokeIntegration({ userId: req.user.id, app });
+    res.json({ ok: true });
+  } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
