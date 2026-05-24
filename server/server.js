@@ -1423,6 +1423,28 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
           const parsed = parseInlineToolCalls(msg.content);
           if (parsed.length > 0) {
             console.log(`[composio] ${parsed.length} <tool_call> XML parsés depuis le content (fallback Qwen/Hermes)`);
+            // Fuzzy resolve : Qwen invente souvent des noms (ex:
+            // "google_calendar_events_list" alors que Composio attend
+            // "GOOGLECALENDAR_EVENTS_LIST"). On match contre la liste réelle
+            // en normalisant (uppercase, suppression _/- non-alphanum).
+            const norm = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+            const toolMap = new Map(composioTools.map((t) => [norm(t?.function?.name || t?.name), t?.function?.name || t?.name]));
+            for (const tc of parsed) {
+              const requested = tc.function.name;
+              const exact = toolMap.get(norm(requested));
+              if (exact) {
+                if (exact !== requested) console.log(`[composio] fuzzy match: "${requested}" → "${exact}"`);
+                tc.function.name = exact;
+                continue;
+              }
+              // Pas de match exact → essai par préfixe (ex: "calendar_list" → "GOOGLECALENDAR_EVENTS_LIST")
+              const reqNorm = norm(requested);
+              const candidate = [...toolMap.entries()].find(([n]) => n.includes(reqNorm) || reqNorm.includes(n));
+              if (candidate) {
+                console.log(`[composio] fuzzy match (partiel): "${requested}" → "${candidate[1]}"`);
+                tc.function.name = candidate[1];
+              }
+            }
             toolCalls = parsed;
           }
         }
