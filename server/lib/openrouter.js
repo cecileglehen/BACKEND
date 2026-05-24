@@ -291,6 +291,10 @@ function stripReasoningEcho(content, reasoning) {
     .replace(/<\|channel\|>[^<]*?<\|message\|>/g, "")
     .replace(/<\|[a-z_]+\|>/gi, "")
     .replace(/to=functions\.[A-Z0-9_]+\s*[\s\S]*?\{[\s\S]*?\}\s*/gi, "")
+    // <tool_call>, <toolcall>, <function_call> XML utilisés par Qwen/Hermes
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, "")
+    .replace(/<toolcall>[\s\S]*?<\/toolcall>/gi, "")
+    .replace(/<function_call>[\s\S]*?<\/function_call>/gi, "")
     .replace(/^\s*(commentary|analysis)\s*\n/gim, "")
     // Spam/garbage tokens : suites CJK ou cyrillique aléatoires de 2+ chars
     // (souvent injectées entre tool calls par OpenRouter sur certains modèles)
