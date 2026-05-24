@@ -12,6 +12,7 @@ import SettingsRoute from "./pages/SettingsRoute.jsx";
 import OurModelRoute from "./pages/OurModelRoute.jsx";
 import ThanksRoute from "./pages/ThanksRoute.jsx";
 import GoodbyeRoute from "./pages/GoodbyeRoute.jsx";
+import IntroRoute from "./pages/IntroRoute.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 
 export default function App() {
@@ -20,9 +21,10 @@ export default function App() {
       <ToastProvider>
         <AuthProvider>
           <Routes>
-          {/* Pages légales : pas d'auth requise */}
-          <Route path="/terms"   element={<LegalPage type="terms" />} />
-          <Route path="/privacy" element={<LegalPage type="privacy" />} />
+          {/* Pages publiques (indexables Google sans auth) */}
+          <Route path="/terms"        element={<LegalPage type="terms" />} />
+          <Route path="/privacy"      element={<LegalPage type="privacy" />} />
+          <Route path="/notre-modele" element={<OurModelRoute />} />
 
           {/* Tout le reste passe par AuthGate + Navbar */}
           <Route path="*" element={<AppShell />} />
@@ -45,6 +47,7 @@ function AppShell() {
           <Route path="/notre-modele"      element={<OurModelRoute />} />
           <Route path="/thanks"            element={<ThanksRoute />} />
           <Route path="/goodbye"           element={<GoodbyeRoute />} />
+          <Route path="/intro"             element={<IntroRoute />} />
           <Route path="/billing"           element={<PricingRoute />} />
           <Route path="/subscribe/success" element={<PricingRoute />} />
           <Route path="/settings"          element={<SettingsRoute />} />
