@@ -1277,18 +1277,18 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
     if (enabledToolSet.size > 0) {
       try {
         const allTools = await getToolsForUser(user.id);
-        console.log(`[composio] ${allTools.length} tools total pour user ${user.id}, ${enabledToolSet.size} apps activées:`, [...enabledToolSet]);
-        // Filtre permissif : match si le nom du tool CONTIENT le slug de l'app
-        // (Composio nomme genre GMAIL_FETCH_MAILS, GOOGLEDRIVE_DOWNLOAD…)
+        console.log(`[composio] ${allTools.length} tools chargés pour user ${user.id} · apps activées:`, [...enabledToolSet]);
+        // Composio renvoie déjà uniquement les tools des apps connectées —
+        // mais on filtre une 2e fois côté UI (au cas où user déactive Slack
+        // pour ce chat mais Slack est toujours connecté dans Settings).
         composioTools = allTools.filter((t) => {
           const name = (t?.function?.name || t?.name || "").toLowerCase();
           for (const app of enabledToolSet) {
-            const slug = app.toLowerCase();
-            if (name.startsWith(slug)) return true;
+            if (name.startsWith(app.toLowerCase())) return true;
           }
           return false;
         });
-        console.log(`[composio] ${composioTools.length} tools filtrés pour ces apps. Sample names:`, composioTools.slice(0, 3).map((t) => t?.function?.name || t?.name));
+        console.log(`[composio] ${composioTools.length} tools après filtrage UI · sample:`, composioTools.slice(0, 3).map((t) => t?.function?.name || t?.name));
       } catch (e) {
         console.warn("[composio] getTools fail:", e.message);
       }

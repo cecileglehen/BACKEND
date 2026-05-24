@@ -6,7 +6,9 @@
 //   - SDK : @composio/core + @composio/openai-agents (Tool Router pattern)
 
 import { Composio } from "@composio/core";
-import { OpenAIAgentsProvider } from "@composio/openai-agents";
+// OpenAIProvider = format Chat Completions standard (compatible OpenRouter).
+// L'autre provider OpenAIAgentsProvider produit un format différent (Agents SDK).
+import { OpenAIProvider } from "@composio/openai";
 import { getDb } from "./db.js";
 
 const APPS_AVAILABLE = [
@@ -29,7 +31,7 @@ function client() {
   if (!apiKey) throw new Error("COMPOSIO_API_KEY manquante (compte sur app.composio.dev)");
   _client = new Composio({
     apiKey,
-    provider: new OpenAIAgentsProvider()
+    provider: new OpenAIProvider()
   });
   return _client;
 }
@@ -135,58 +137,33 @@ export async function revokeIntegration({ userId, app }) {
   );
 }
 
-// Renvoie une session Tool Router pour cet user (utilisée pour le tool calling).
-// Le pattern @composio/core v0.10 : composio.create(entityId) → session.
-export async function getSessionForUser(userId) {
-  const co = client();
-  const entityId = String(userId);
-  return co.create(entityId);
-}
-
-// Récupère les tools au format OpenAI function-calling pour cet user.
-// Renvoie [] si pas d'intégrations actives ou si la lib échoue.
-const sessionCache = new Map();
-const SESSION_TTL = 5 * 60 * 1000; // 5min
-
-async function cachedSession(userId) {
-  const key = String(userId);
-  const hit = sessionCache.get(key);
-  if (hit && Date.now() - hit.t < SESSION_TTL) return hit.s;
-  const s = await getSessionForUser(userId);
-  sessionCache.set(key, { s, t: Date.now() });
-  return s;
-}
-
+// Récupère les tools au format Chat Completions pour cet user, filtrés par
+// les apps connectées (toolkits Composio).
 export async function getToolsForUser(userId) {
-  // Skip si pas d'intégrations
   const integrations = await listUserIntegrations(userId);
-  if (!integrations.some((i) => i.connected)) return [];
+  const connectedApps = integrations.filter((i) => i.connected).map((i) => i.app);
+  if (connectedApps.length === 0) return [];
   try {
-    const session = await cachedSession(userId);
-    const tools = await session.tools();
-    return Array.isArray(tools) ? tools : [];
+    const co = client();
+    const tools = await co.tools.get(String(userId), { toolkits: connectedApps });
+    if (!tools) return [];
+    // co.tools.get peut renvoyer un array ou un object { name: tool }
+    if (Array.isArray(tools)) return tools;
+    return Object.values(tools);
   } catch (e) {
     console.warn("[composio] getTools fail:", e.message);
     return [];
   }
 }
 
-// Exécute un tool call émis par le LLM. Le nom est généralement préfixé
-// "GMAIL_SEND_EMAIL" ou similaire, et args est un objet JSON.
+// Exécute un tool call émis par le LLM.
 export async function executeToolCall({ userId, toolName, args }) {
   try {
-    const session = await cachedSession(userId);
-    // Pattern Tool Router : session a un .execute() ou similar
-    if (typeof session.execute === "function") {
-      return await session.execute({ toolSlug: toolName, arguments: args });
-    }
-    // Fallback : utilisation directe de l'API client
     const co = client();
-    const entityId = String(userId);
-    if (co.tools?.execute) {
-      return await co.tools.execute(toolName, { entityId, arguments: args });
-    }
-    throw new Error("Méthode d'exécution Composio introuvable");
+    return await co.tools.execute(toolName, {
+      userId: String(userId),
+      arguments: args || {}
+    });
   } catch (e) {
     return { error: e.message || String(e) };
   }
