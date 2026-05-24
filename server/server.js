@@ -353,6 +353,29 @@ function parseInlineToolCalls(content) {
       let payload = (m[1] || "").trim();
       // Certains modèles wrappent en ```json ... ```
       payload = payload.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+
+      // Variante Llama 3.1/4 : <function=NAME><parameter=K>V</parameter>...</function>
+      // (au lieu de JSON pur)
+      const llamaMatch = payload.match(/<function\s*=\s*([^>\s]+)\s*>([\s\S]*?)<\/function>/i);
+      if (llamaMatch) {
+        const name = llamaMatch[1].trim();
+        const paramsBlock = llamaMatch[2];
+        const args = {};
+        const paramRe = /<parameter\s*=\s*([^>\s]+)\s*>\s*([\s\S]*?)\s*<\/parameter>/gi;
+        let pm;
+        while ((pm = paramRe.exec(paramsBlock)) !== null) {
+          args[pm[1].trim()] = pm[2].trim();
+        }
+        if (name) {
+          results.push({
+            id: `inline_${Date.now()}_${results.length}`,
+            type: "function",
+            function: { name, arguments: JSON.stringify(args) }
+          });
+        }
+        continue;
+      }
+
       try {
         const obj = JSON.parse(payload);
         const name = obj.name || obj.tool || obj.function?.name;
