@@ -54,17 +54,47 @@ export async function listUserIntegrations(userId) {
   }));
 }
 
+// Cache des authConfigId par toolkit (1 auth config par app, réutilisée pour
+// tous les users). En prod, on les crée une fois la première fois qu'un user
+// se connecte à cette app — Composio gère l'OAuth Google/Slack/etc. à notre
+// place (mode use_composio_managed_auth).
+const authConfigCache = new Map();
+
+async function ensureAuthConfig(co, toolkit) {
+  const cached = authConfigCache.get(toolkit);
+  if (cached) return cached;
+  // 1. Lookup existing
+  try {
+    const list = await co.authConfigs.list({ toolkit });
+    const existing = list?.items?.[0];
+    if (existing?.id) {
+      authConfigCache.set(toolkit, existing.id);
+      return existing.id;
+    }
+  } catch (e) {
+    console.warn(`[composio] authConfigs.list(${toolkit}) fail:`, e.message);
+  }
+  // 2. Create avec OAuth managé par Composio
+  const created = await co.authConfigs.create(toolkit, { type: "use_composio_managed_auth" });
+  if (!created?.id) throw new Error(`Impossible de créer authConfig pour ${toolkit}`);
+  authConfigCache.set(toolkit, created.id);
+  console.log(`[composio] authConfig créé pour ${toolkit}: ${created.id}`);
+  return created.id;
+}
+
 // Initie une connexion OAuth pour une app donnée → renvoie l'URL où rediriger
 // l'utilisateur. Composio gère le flow OAuth + stockage des tokens.
 export async function initiateConnection({ userId, app, redirectUrl }) {
   const co = client();
   const entityId = String(userId);
-  const connection = await co.connectedAccounts.initiate(entityId, {
-    toolkit: app,
+  const authConfigId = await ensureAuthConfig(co, app);
+  // Note : .initiate() est DEPRECATED pour les auth configs managées par
+  // Composio (depuis fin 2025). On utilise .link() qui est la nouvelle API.
+  const connection = await co.connectedAccounts.link(entityId, authConfigId, {
     callbackUrl: redirectUrl
   });
   return {
-    redirectUrl: connection.redirectUrl || connection.redirectUri || connection.url,
+    redirectUrl: connection.redirectUrl || connection.redirectUri || connection.url || null,
     connectionId: connection.id || connection.connectionId || connection.connectedAccountId,
     status: connection.status || "INITIATED"
   };

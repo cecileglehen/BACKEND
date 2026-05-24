@@ -2,6 +2,20 @@ import { useEffect, useState } from "react";
 import { api } from "../lib/api.js";
 import { useToast } from "../contexts/ToastContext.jsx";
 
+// Couleurs officielles de chaque marque (simpleicons brand colors)
+const BRAND_COLORS = {
+  gmail:          "#EA4335",
+  googledrive:    "#4285F4",
+  googlecalendar: "#4285F4",
+  slack:          "#4A154B",
+  notion:         "#000000",
+  github:         "#181717",
+  linear:         "#5E6AD2",
+  trello:         "#0079BF",
+  discord:        "#5865F2",
+  stripe:         "#635BFF"
+};
+
 export default function IntegrationsPage() {
   const toast = useToast();
   const [items, setItems] = useState([]);
@@ -90,8 +104,22 @@ export default function IntegrationsPage() {
                     it.connected ? "border-emerald-300 bg-emerald-50/40" : "border-delt-border bg-white"
                   }`}
                 >
-                  <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-white border border-delt-border flex items-center justify-center text-lg font-bold text-delt-text">
-                    {it.label.charAt(0)}
+                  <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-white border border-delt-border flex items-center justify-center">
+                    <div
+                      className="w-6 h-6"
+                      title={it.label}
+                      style={{
+                        WebkitMaskImage: `url(/brands/${it.app}.svg)`,
+                        WebkitMaskSize: "contain",
+                        WebkitMaskRepeat: "no-repeat",
+                        WebkitMaskPosition: "center",
+                        maskImage: `url(/brands/${it.app}.svg)`,
+                        maskSize: "contain",
+                        maskRepeat: "no-repeat",
+                        maskPosition: "center",
+                        backgroundColor: BRAND_COLORS[it.app] || "#0F172A"
+                      }}
+                    />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-sm text-delt-text truncate">{it.label}</div>
