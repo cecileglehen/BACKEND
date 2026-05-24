@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 import { ToastProvider } from "./contexts/ToastContext.jsx";
+import { I18nProvider } from "./lib/i18n.jsx";
 import AuthGate from "./pages/AuthGate.jsx";
 import Navbar from "./components/Navbar.jsx";
 import ChatPage from "./pages/ChatPage.jsx";
@@ -18,9 +19,10 @@ import ErrorBoundary from "./components/ErrorBoundary.jsx";
 export default function App() {
   return (
     <ErrorBoundary>
-      <ToastProvider>
-        <AuthProvider>
-          <Routes>
+      <I18nProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <Routes>
           {/* Pages publiques (indexables Google sans auth) */}
           <Route path="/terms"        element={<LegalPage type="terms" />} />
           <Route path="/privacy"      element={<LegalPage type="privacy" />} />
@@ -28,9 +30,10 @@ export default function App() {
 
           {/* Tout le reste passe par AuthGate + Navbar */}
           <Route path="*" element={<AppShell />} />
-          </Routes>
-        </AuthProvider>
-      </ToastProvider>
+            </Routes>
+          </AuthProvider>
+        </ToastProvider>
+      </I18nProvider>
     </ErrorBoundary>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import { useT } from "../lib/i18n.jsx";
 
 const SECTIONS = [
   {
@@ -115,12 +116,13 @@ const SECTIONS = [
 
 export default function IntroRoute() {
   const { user } = useAuth();
+  const tr = useT();
   const [open, setOpen] = useState(null);
   const [show, setShow] = useState(false);
 
   useEffect(() => {
-    const t = setTimeout(() => setShow(true), 50);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setShow(true), 50);
+    return () => clearTimeout(timer);
   }, []);
 
   return (
@@ -129,13 +131,11 @@ export default function IntroRoute() {
 
         <div className={`text-center mb-12 transition-all duration-700 ${show ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold uppercase tracking-wider mb-5">
-            🎉 Bienvenue {user?.plan && user.plan !== "FREE" ? `dans ${user.plan}` : ""}
+            {tr("intro.welcome", { plan: user?.plan && user.plan !== "FREE" ? user.plan : "" })}
           </div>
-          <h1 className="text-4xl sm:text-6xl font-extrabold text-delt-text tracking-tight leading-tight">
-            Tout Delt AI<br />en 5 minutes
-          </h1>
+          <h1 className="text-4xl sm:text-6xl font-extrabold text-delt-text tracking-tight leading-tight" dangerouslySetInnerHTML={{ __html: tr("intro.title") }} />
           <p className="mt-5 text-base sm:text-lg text-delt-muted max-w-xl mx-auto leading-relaxed">
-            Un guide complet de toutes les fonctionnalités. Clique sur chaque section pour découvrir.
+            {tr("intro.subtitle")}
           </p>
         </div>
 
@@ -194,15 +194,15 @@ export default function IntroRoute() {
         </div>
 
         <div className="rounded-3xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white p-8 sm:p-10 text-center shadow-xl mb-10">
-          <h2 className="text-2xl sm:text-3xl font-extrabold mb-3">Prêt à commencer ?</h2>
+          <h2 className="text-2xl sm:text-3xl font-extrabold mb-3">{tr("intro.cta_title")}</h2>
           <p className="text-indigo-50 text-sm sm:text-base mb-6 max-w-md mx-auto">
-            Tu as tout entre les mains. À toi de jouer.
+            {tr("intro.cta_sub")}
           </p>
           <a
             href="/"
             className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-white text-indigo-700 font-bold hover:bg-indigo-50 transition-colors shadow-md"
           >
-            Aller au chat
+            {tr("intro.cta_button")}
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M5 12h14M13 5l7 7-7 7"/>
             </svg>
@@ -210,7 +210,7 @@ export default function IntroRoute() {
         </div>
 
         <p className="text-center text-xs text-delt-muted">
-          Besoin d'aide ? <a href="/settings" className="text-indigo-600 hover:underline">Paramètres</a> · <a href="/notre-modele" className="text-indigo-600 hover:underline">Notre modèle</a> · <a href="/billing" className="text-indigo-600 hover:underline">Tarifs</a>
+          {tr("intro.help_prefix")} <a href="/settings" className="text-indigo-600 hover:underline">{tr("intro.help_settings")}</a> · <a href="/notre-modele" className="text-indigo-600 hover:underline">{tr("intro.help_ourmodel")}</a> · <a href="/billing" className="text-indigo-600 hover:underline">{tr("intro.help_pricing")}</a>
         </p>
 
       </div>
