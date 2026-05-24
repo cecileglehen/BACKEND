@@ -1383,7 +1383,7 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
     // de laisser hallucinier des résultats.
     // Modèles connus pour halluciner les tool_calls en texte au lieu d'utiliser
     // le vrai format function-calling : tous les nano/mini/flash/free + gemma.
-    const POOR_TOOL_MODELS = /:free|free$|delt\/|flash-lite|deepseek-v[34]-flash|gemini-2\.5-flash-lite|gemma-|-nano(?:$|\b)|gpt-4o-mini|gpt-4\.1-nano|gpt-5\.[0-9]+-nano|gemini-.*-flash(?:$|\b|-lite)/i;
+    const POOR_TOOL_MODELS = /:free|free$|delt\/|flash-lite|deepseek-v[34]-flash|gemini-2\.5-flash-lite|gemma-|-nano(?:$|\b)|gpt-4o-mini|gpt-4\.1-nano|gpt-5\.[0-9]+-nano/i;
     if (composioTools.length > 0 && POOR_TOOL_MODELS.test(modelInfo.id)) {
       console.log(`[composio] model ${modelInfo.id} not reliable for tools, disabling`);
       composioTools = [];
