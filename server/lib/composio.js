@@ -170,9 +170,15 @@ const TOOL_EXEC_TIMEOUT_MS = 30000;
 export async function executeToolCall({ userId, toolName, args }) {
   try {
     const co = client();
+    // BREAKING CHANGE Composio oct 2025 : il FAUT passer version OU
+    // dangerouslySkipVersionCheck par appel. Le toolkitVersions au SDK init
+    // n'est pas pris en compte par @composio/core 0.10. On passe les deux
+    // par sécurité (le SDK peut renommer le flag entre versions mineures).
     const exec = co.tools.execute(toolName, {
       userId: String(userId),
-      arguments: args || {}
+      arguments: args || {},
+      version: "latest",
+      dangerouslySkipVersionCheck: true
     });
     const timeout = new Promise((_, reject) =>
       setTimeout(() => reject(new Error(`Tool ${toolName} timeout après ${TOOL_EXEC_TIMEOUT_MS / 1000}s`)), TOOL_EXEC_TIMEOUT_MS)
