@@ -1101,7 +1101,8 @@ app.post("/api/chat", requireAuth, async (req, res) => {
 
 app.post("/api/chat/stream", requireAuth, async (req, res) => {
   try {
-    const { messages, tier: reqTier, modelId, manual = false, projectId } = req.body ?? {};
+    const { messages, tier: reqTier, modelId, manual = false, projectId, enabledTools } = req.body ?? {};
+    const enabledToolSet = new Set(Array.isArray(enabledTools) ? enabledTools : []);
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: "messages requis" });
     }
@@ -1270,14 +1271,46 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
     }
 
     // ─── Tool calling Composio (Gmail, Drive, etc.) ─────────────────────────
-    // Si l'user a des intégrations connectées, on récupère ses tools et on
-    // exécute la boucle de tool-calling AVANT de stream la réponse finale.
+    // Tools chargés UNIQUEMENT si l'user a coché les apps dans le composer.
+    // Cette permission explicite par chat évite que l'IA "voit" toutes les
+    // apps connectées sans contrôle de l'utilisateur.
     let composioTools = [];
     let toolCallsExecuted = 0;
-    try {
-      composioTools = await getToolsForUser(user.id);
-    } catch (e) {
-      console.warn("[composio] getTools fail:", e.message);
+    if (enabledToolSet.size > 0) {
+      try {
+        const allTools = await getToolsForUser(user.id);
+        // Filtre par préfixe app activée (ex: enabled "gmail" → tools "GMAIL_*")
+        composioTools = allTools.filter((t) => {
+          const name = (t?.function?.name || t?.name || "").toLowerCase();
+          for (const app of enabledToolSet) {
+            const appPrefix = app.toLowerCase();
+            if (name.startsWith(appPrefix + "_") || name.startsWith(appPrefix.replace("google", "google_"))) return true;
+          }
+          return false;
+        });
+      } catch (e) {
+        console.warn("[composio] getTools fail:", e.message);
+      }
+    }
+
+    // Système prompt de permission explicite : sans ça, Gemini/Claude refusent
+    // d'accéder à Gmail/Drive pour "raisons de vie privée" même si on leur a
+    // donné les tools. On lève le doute en disant explicitement que l'user a
+    // coché ces apps dans son composer.
+    if (enabledToolSet.size > 0) {
+      const appNames = [...enabledToolSet].map((a) => {
+        const labels = { gmail: "Gmail", googledrive: "Google Drive", googlecalendar: "Google Calendar", slack: "Slack", notion: "Notion", github: "GitHub", linear: "Linear", trello: "Trello", discord: "Discord", stripe: "Stripe" };
+        return labels[a] || a;
+      });
+      compressed = [{
+        role: "system",
+        content: [
+          `L'utilisateur t'a EXPLICITEMENT autorisé à accéder aux services suivants dans ce chat : ${appNames.join(", ")}.`,
+          "Tu as son consentement plein et entier (case cochée dans le composer Delt AI). Ce sont SES propres comptes auxquels il t'a donné accès via OAuth.",
+          "Tu DOIS utiliser les tools correspondants quand c'est pertinent — n'oppose JAMAIS de refus type \"je n'ai pas accès\" ou \"raisons de vie privée\".",
+          "Si une action est sensible (envoyer un mail, supprimer un fichier), demande confirmation à l'utilisateur AVANT d'appeler le tool."
+        ].join(" ")
+      }, ...compressed];
     }
 
     if (composioTools.length > 0) {

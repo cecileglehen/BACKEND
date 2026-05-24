@@ -30,6 +30,9 @@ export default function Composer({
   onOpenModels,
   manualLabel,
   manualModel,
+  integrations = [],
+  enabledIntegrations,
+  onToggleIntegration,
   showAuto = true,
   attachments = [],
   onAttachmentsChange,
@@ -319,6 +322,15 @@ export default function Composer({
             );
           })()}
 
+          {/* Outils / intégrations connectées (gear) */}
+          {integrations.length > 0 && integrations.some((i) => i.connected) && (
+            <ToolsButton
+              integrations={integrations}
+              enabledIntegrations={enabledIntegrations}
+              onToggle={onToggleIntegration}
+            />
+          )}
+
           {onToggleDeep && (
             <button
               type="button"
@@ -439,6 +451,124 @@ export default function Composer({
 
       {uploadError && (
         <div className="text-[11px] text-red-600 mt-1.5 px-1">{uploadError}</div>
+      )}
+    </div>
+  );
+}
+
+// ─── Bouton "Outils" : icône gear + popover avec toggles intégrations ───────
+const INTEG_BRAND_COLORS = {
+  gmail: "#EA4335", googledrive: "#4285F4", googlecalendar: "#4285F4",
+  slack: "#4A154B", notion: "#000", github: "#181717", linear: "#5E6AD2",
+  trello: "#0079BF", discord: "#5865F2", stripe: "#635BFF"
+};
+const INTEG_COLOR_LOGOS = {
+  gmail: "/brands/gmail-color.png",
+  googledrive: "/brands/googledrive-color.png",
+  googlecalendar: "/brands/googlecalendar-color.png",
+  slack: "/brands/slack-color.png"
+};
+
+function ToolsButton({ integrations, enabledIntegrations, onToggle }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const connected = integrations.filter((i) => i.connected);
+  const activeCount = connected.filter((i) => enabledIntegrations?.has(i.app)).length;
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener("pointerdown", onClick);
+    return () => document.removeEventListener("pointerdown", onClick);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`flex items-center gap-1 h-9 px-2.5 rounded-full border transition-colors text-xs sm:text-sm min-w-0 ${
+          activeCount > 0
+            ? "border-blue-300 bg-blue-50 text-blue-700"
+            : "border-delt-border text-delt-muted hover:text-delt-text hover:bg-delt-surface"
+        }`}
+        title="Outils connectés"
+      >
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        {activeCount > 0 && (
+          <span className="text-[10px] font-bold bg-blue-600 text-white rounded-full w-4 h-4 flex items-center justify-center">{activeCount}</span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute bottom-full mb-2 right-0 z-50 w-72 bg-white rounded-xl border border-delt-border shadow-xl overflow-hidden">
+          <div className="px-3 py-2.5 border-b border-delt-border bg-delt-surface/40">
+            <div className="text-xs font-bold text-delt-text uppercase tracking-wider">Outils connectés</div>
+            <div className="text-[11px] text-delt-muted mt-0.5">Active ce que l'IA peut utiliser dans ce chat</div>
+          </div>
+          {connected.length === 0 ? (
+            <div className="px-4 py-6 text-center">
+              <div className="text-sm text-delt-muted">Aucune intégration connectée</div>
+              <a href="/settings" className="text-xs text-blue-600 font-semibold hover:underline mt-2 inline-block">Connecter une app →</a>
+            </div>
+          ) : (
+            <div className="py-1 max-h-80 overflow-y-auto">
+              {connected.map((it) => {
+                const active = enabledIntegrations?.has(it.app);
+                return (
+                  <button
+                    key={it.app}
+                    onClick={() => onToggle(it.app)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-delt-surface transition-colors text-left"
+                  >
+                    <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-white border border-delt-border flex items-center justify-center overflow-hidden">
+                      {INTEG_COLOR_LOGOS[it.app] ? (
+                        <img src={INTEG_COLOR_LOGOS[it.app]} alt={it.label} className="w-5 h-5 object-contain" />
+                      ) : (
+                        <div
+                          className="w-5 h-5"
+                          style={{
+                            WebkitMaskImage: `url(/brands/${it.app}.svg)`,
+                            WebkitMaskSize: "contain",
+                            WebkitMaskRepeat: "no-repeat",
+                            maskImage: `url(/brands/${it.app}.svg)`,
+                            maskSize: "contain",
+                            maskRepeat: "no-repeat",
+                            backgroundColor: INTEG_BRAND_COLORS[it.app] || "#0F172A"
+                          }}
+                        />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-delt-text truncate">{it.label}</div>
+                      <div className="text-[10px] text-delt-muted">
+                        {active ? "✓ Autorisé pour ce chat" : "Inactif"}
+                      </div>
+                    </div>
+                    {/* Toggle switch */}
+                    <div
+                      className={`relative w-10 h-5 rounded-full transition-colors ${
+                        active ? "bg-blue-600" : "bg-delt-border"
+                      }`}
+                    >
+                      <div
+                        className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${
+                          active ? "left-[22px]" : "left-0.5"
+                        }`}
+                      />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <div className="px-3 py-2 border-t border-delt-border bg-delt-surface/30 text-[10px] text-delt-muted text-center">
+            Apps activées → l'IA peut les appeler dans ce chat
+          </div>
+        </div>
       )}
     </div>
   );
