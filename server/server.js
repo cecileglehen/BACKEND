@@ -1379,7 +1379,15 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
           try { args = JSON.parse(tc.function?.arguments || tc.arguments || "{}"); } catch {}
           res.write(`data: ${JSON.stringify({ type: "tool_call", id: tc.id, name, args })}\n\n`);
           const result = await executeToolCall({ userId: user.id, toolName: name, args });
-          res.write(`data: ${JSON.stringify({ type: "tool_result", id: tc.id, name, ok: !result?.error, preview: JSON.stringify(result).slice(0, 200) })}\n\n`);
+          const ok = !result?.error;
+          res.write(`data: ${JSON.stringify({
+            type: "tool_result",
+            id: tc.id,
+            name,
+            ok,
+            error: ok ? null : (result.error || "Erreur inconnue"),
+            preview: JSON.stringify(result).slice(0, 400)
+          })}\n\n`);
           return { tool_call_id: tc.id, role: "tool", name, content: JSON.stringify(result).slice(0, 8000) };
         }));
         compressed.push(...results);

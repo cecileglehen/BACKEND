@@ -90,7 +90,12 @@ export function useChatStream({ projectId, enabledTools, onCreditsUsed, onAgeGat
           next.toolCalls.push({ id: info.id, name: info.name, args: info.args, status: "pending" });
         } else if (info.type === "tool_result") {
           const idx = next.toolCalls.findIndex((t) => t.id === info.id);
-          if (idx >= 0) next.toolCalls[idx] = { ...next.toolCalls[idx], status: info.ok ? "done" : "error", preview: info.preview };
+          if (idx >= 0) next.toolCalls[idx] = {
+            ...next.toolCalls[idx],
+            status: info.ok ? "done" : "error",
+            preview: info.preview,
+            error: info.error || null
+          };
         }
         return next;
       }),

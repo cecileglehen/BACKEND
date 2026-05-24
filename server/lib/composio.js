@@ -31,7 +31,15 @@ function client() {
   if (!apiKey) throw new Error("COMPOSIO_API_KEY manquante (compte sur app.composio.dev)");
   _client = new Composio({
     apiKey,
-    provider: new OpenAIProvider()
+    provider: new OpenAIProvider(),
+    // BREAKING CHANGE Composio (oct 2025) : tools.execute() throw
+    // "Toolkit version not specified" sans ce setting. "latest" = toujours
+    // la dernière version dispo de chaque toolkit (Gmail, Drive, etc.).
+    // Si on veut pin pour stabilité prod : remplacer "latest" par "20251027_00".
+    toolkitVersions: APPS_AVAILABLE.reduce((acc, a) => {
+      acc[a.app] = "latest";
+      return acc;
+    }, {})
   });
   return _client;
 }
@@ -171,6 +179,16 @@ export async function executeToolCall({ userId, toolName, args }) {
     );
     return await Promise.race([exec, timeout]);
   } catch (e) {
-    return { error: e.message || String(e) };
+    // Extraction explicite : Composio peut renvoyer e.message, e.error,
+    // e.response.data.message, etc. selon la couche qui throw.
+    const detail =
+      e?.response?.data?.message ||
+      e?.response?.data?.error ||
+      e?.body?.message ||
+      e?.error?.message ||
+      e?.message ||
+      String(e);
+    console.warn(`[composio] executeToolCall(${toolName}) fail:`, detail);
+    return { error: detail, tool: toolName };
   }
 }
