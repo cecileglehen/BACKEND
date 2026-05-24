@@ -333,19 +333,36 @@ app.delete("/api/privacy/account", requireAuth, async (req, res) => {
 
 // ─── Quota snapshot ──────────────────────────────────────────────────────────
 
-// Injecte la date du jour pour éviter les hallucinations type "nous sommes
-// en 2024" alors que l'utilisateur partage un article 2026. La cutoff de
-// connaissance du modèle est figée, mais la conscience temporelle non.
+// Injecte la date + l'heure (arrondie à 10 min) en heure de Paris pour éviter
+// les hallucinations type "nous sommes en 2024" alors que l'utilisateur
+// partage un article 2026. La cutoff de connaissance du modèle est figée,
+// mais la conscience temporelle non.
 function buildDatePrompt() {
   const now = new Date();
-  const isoDate = now.toISOString().slice(0, 10);
+  // Conversion fuseau Europe/Paris via Intl
+  const parts = new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit",
+    weekday: "long",
+    hour12: false
+  }).formatToParts(now).reduce((acc, p) => { acc[p.type] = p.value; return acc; }, {});
+
+  const isoDate = `${parts.year}-${parts.month}-${parts.day}`;
   const months = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
-  const dayName = ["dimanche","lundi","mardi","mercredi","jeudi","vendredi","samedi"][now.getUTCDay()];
-  const humanDate = `${dayName} ${now.getUTCDate()} ${months[now.getUTCMonth()]} ${now.getUTCFullYear()}`;
+  const monthName = months[Number(parts.month) - 1];
+  const humanDate = `${parts.weekday} ${parts.day} ${monthName} ${parts.year}`;
+
+  // Heure arrondie à la dizaine de minutes inférieure (10:23 → 10:20)
+  const hh = parts.hour;
+  const mm = String(Math.floor(Number(parts.minute) / 10) * 10).padStart(2, "0");
+  const humanTime = `${hh}h${mm}`;
+
   return [
-    `Date du jour : ${isoDate} (${humanDate}, fuseau UTC).`,
-    `Tu DOIS utiliser cette date pour interpréter "récent", "actuel", "maintenant", "cette année".`,
-    `Si un article, prix, événement, ou actu est daté de cette année ou de l'année passée, traite-le comme RÉCENT — ne dis JAMAIS "nous sommes en 2024" ou un autre déni temporel. Ta connaissance interne peut être antérieure à cette date : c'est normal, la date du jour ci-dessus est la vérité.`
+    `Date du jour : ${isoDate} — ${humanDate}.`,
+    `Heure actuelle : ~${humanTime} (heure de Paris).`,
+    `Tu DOIS utiliser ces infos pour interpréter "récent", "actuel", "maintenant", "ce matin", "ce soir", "cette année".`,
+    `Si un article, prix, événement, ou actu est daté de cette année ou de l'année passée, traite-le comme RÉCENT — ne dis JAMAIS "nous sommes en 2024" ou un autre déni temporel. Ta connaissance interne peut être antérieure : c'est normal, la date du jour ci-dessus est la vérité.`
   ].join("\n");
 }
 
