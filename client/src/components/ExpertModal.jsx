@@ -2,12 +2,12 @@ export default function ExpertModal({ open, level, onChoice, onClose }) {
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/30 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="card shadow-pop max-w-md w-full p-6 animate-fadeIn"
+        className="bg-white shadow-pop w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl p-6 animate-slideUp"
       >
         <div className="mb-1">
           <span className="text-xs font-semibold uppercase tracking-wider text-delt-gold">

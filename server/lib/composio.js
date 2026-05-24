@@ -157,13 +157,19 @@ export async function getToolsForUser(userId) {
 }
 
 // Exécute un tool call émis par le LLM.
+// Timeout 30s pour éviter que Gmail/Drive ne hang indéfiniment et bloque le SSE.
+const TOOL_EXEC_TIMEOUT_MS = 30000;
 export async function executeToolCall({ userId, toolName, args }) {
   try {
     const co = client();
-    return await co.tools.execute(toolName, {
+    const exec = co.tools.execute(toolName, {
       userId: String(userId),
       arguments: args || {}
     });
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Tool ${toolName} timeout après ${TOOL_EXEC_TIMEOUT_MS / 1000}s`)), TOOL_EXEC_TIMEOUT_MS)
+    );
+    return await Promise.race([exec, timeout]);
   } catch (e) {
     return { error: e.message || String(e) };
   }

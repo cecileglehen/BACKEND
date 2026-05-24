@@ -1195,6 +1195,15 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
     res.flushHeaders();
     res.write(`data: ${JSON.stringify({ type: "meta", tier: inTier, model: modelInfo, visionSwap })}\n\n`);
 
+    // Heartbeat anti-timeout proxies (Render/Cloudflare/navigateur ferment les
+    // SSE inactives ~30-60s). CRITIQUE pendant la boucle Composio non-streamée
+    // (Gmail peut prendre 20-30s par tool call).
+    const heartbeat = setInterval(() => {
+      try { res.write(": ping\n\n"); } catch {}
+    }, 15000);
+    res.on("close", () => clearInterval(heartbeat));
+    res.on("finish", () => clearInterval(heartbeat));
+
     let compressed = await compressIfNeeded(messages);
 
     // ─── Injection system prompt projet (en premier) ────────────────────────
@@ -1339,6 +1348,8 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
       const MAX_TOOL_ROUNDS = 5;
       let round = 0;
       while (round < MAX_TOOL_ROUNDS) {
+        // Notifie l'UI : l'IA réfléchit (round non-streamé jusqu'à 15s)
+        res.write(`data: ${JSON.stringify({ type: "tool_thinking", round: round + 1 })}\n\n`);
         let toolResp;
         try {
           toolResp = await chatWithTools({
@@ -1349,6 +1360,7 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
           });
         } catch (e) {
           console.warn("[composio] chatWithTools fail:", e.message);
+          res.write(`data: ${JSON.stringify({ type: "tool_error", error: e.message })}\n\n`);
           break;
         }
         const msg = toolResp?.message;
