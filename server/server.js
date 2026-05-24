@@ -1350,19 +1350,15 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
     let toolCallsExecuted = 0;
     if (enabledToolSet.size > 0) {
       try {
-        const allTools = await getToolsForUser(user.id);
-        console.log(`[composio] ${allTools.length} tools chargés pour user ${user.id} · apps activées:`, [...enabledToolSet]);
-        // Composio renvoie déjà uniquement les tools des apps connectées —
-        // mais on filtre une 2e fois côté UI (au cas où user déactive Slack
-        // pour ce chat mais Slack est toujours connecté dans Settings).
-        composioTools = allTools.filter((t) => {
-          const name = (t?.function?.name || t?.name || "").toLowerCase();
-          for (const app of enabledToolSet) {
-            if (name.startsWith(app.toLowerCase())) return true;
-          }
-          return false;
-        });
-        console.log(`[composio] ${composioTools.length} tools après filtrage UI · sample:`, composioTools.slice(0, 3).map((t) => t?.function?.name || t?.name));
+        // appsOverride : on demande à Composio uniquement les apps cochées
+        // dans le composer (25 tools / app, fetchés en parallèle).
+        composioTools = await getToolsForUser(user.id, [...enabledToolSet]);
+        const byApp = composioTools.reduce((acc, t) => {
+          const slug = (t?.function?.name || "").split("_")[0].toLowerCase();
+          acc[slug] = (acc[slug] || 0) + 1;
+          return acc;
+        }, {});
+        console.log(`[composio] ${composioTools.length} tools chargés pour user ${user.id} · répartition:`, byApp);
       } catch (e) {
         console.warn("[composio] getTools fail:", e.message);
       }
