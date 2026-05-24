@@ -19,7 +19,10 @@ const BRAND_COLORS = {
 // Logos couleur officiels (PNG/SVG natifs). Si présent → on l'affiche tel quel
 // au lieu du mask monochrome avec couleur appliquée.
 const COLOR_LOGOS = {
-  gmail: "/brands/gmail-color.png"
+  gmail:          "/brands/gmail-color.png",
+  googledrive:    "/brands/googledrive-color.png",
+  googlecalendar: "/brands/googlecalendar-color.png",
+  slack:          "/brands/slack-color.png"
 };
 
 export default function IntegrationsPage() {
