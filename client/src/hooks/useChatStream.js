@@ -11,7 +11,7 @@ const stripForLLM = (list) => list.map(({ role, content, attachments: a }) => {
  * Centralise toute la logique de streaming chat / image / video / merge / remake / parallel.
  * Retourne l'API consommée par ChatPage.
  */
-export function useChatStream({ projectId, onCreditsUsed, onAgeGate }) {
+export function useChatStream({ projectId, enabledTools, onCreditsUsed, onAgeGate }) {
   const [messages, setMessages] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -71,6 +71,7 @@ export function useChatStream({ projectId, onCreditsUsed, onAgeGate }) {
       modelId: model?.id,
       manual: !!model,
       projectId: projectId ?? undefined,
+      enabledTools: enabledTools ? [...enabledTools] : undefined,
       onMeta: (meta) => applyUpdate((m) => ({ ...m, tier: meta.tier, model: meta.model })),
       onThinking: (delta) => applyUpdate((m) => ({ ...m, reasoning: (m.reasoning || "") + delta, thinking: true })),
       onWebsearch: (info) => applyUpdate((m) => ({
@@ -122,7 +123,7 @@ export function useChatStream({ projectId, onCreditsUsed, onAgeGate }) {
         setRouterInfo(null);
       }
     });
-  }, [projectId, onCreditsUsed, onAgeGate]);
+  }, [projectId, enabledTools, onCreditsUsed, onAgeGate]);
 
   // Image
   const generateImage = useCallback(async (prompt, model) => {

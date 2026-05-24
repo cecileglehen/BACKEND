@@ -105,6 +105,7 @@ export default function ChatPage() {
 
   const chat = useChatStream({
     projectId: activeProjectId,
+    enabledTools: enabledIntegrations,
     onCreditsUsed,
     onAgeGate: (resume) => {
       setPendingVeniceSend(() => resume);
@@ -124,6 +125,36 @@ export default function ChatPage() {
   const [debateSetupOpen, setDebateSetupOpen] = useState(false);
   const [openArtifact, setOpenArtifact] = useState(null);
   const [deepMode, setDeepMode] = useState(false);
+  const [pillsCollapsed, setPillsCollapsed] = useState(() => localStorage.getItem("delt-pills-collapsed") === "1");
+  const [integrations, setIntegrations] = useState([]); // [{ app, label, connected, ... }]
+  const [enabledIntegrations, setEnabledIntegrations] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("delt-enabled-integrations") || "[]")); }
+    catch { return new Set(); }
+  });
+
+  useEffect(() => {
+    localStorage.setItem("delt-pills-collapsed", pillsCollapsed ? "1" : "0");
+  }, [pillsCollapsed]);
+
+  useEffect(() => {
+    localStorage.setItem("delt-enabled-integrations", JSON.stringify([...enabledIntegrations]));
+  }, [enabledIntegrations]);
+
+  // Charge la liste des intégrations au mount (pour le panel du composer)
+  useEffect(() => {
+    api.listIntegrations()
+      .then(({ integrations }) => setIntegrations(integrations || []))
+      .catch(() => {});
+  }, []);
+
+  const toggleIntegration = (app) => {
+    setEnabledIntegrations((prev) => {
+      const next = new Set(prev);
+      if (next.has(app)) next.delete(app);
+      else next.add(app);
+      return next;
+    });
+  };
 
   const sidebarAnim = useAnimatedMount(historyOpen, 450);
   const projectsAnim = useAnimatedMount(projectsOpen, 450);
@@ -640,6 +671,9 @@ export default function ChatPage() {
                   autoMode={effectiveAutoMode}
                   manualLabel={selectedManualModel?.display}
                   manualModel={selectedManualModel}
+                  integrations={integrations}
+                  enabledIntegrations={enabledIntegrations}
+                  onToggleIntegration={toggleIntegration}
                   showAuto={true}
                   onOpenModels={() => setModelsOpen(true)}
                   attachments={attachments}
@@ -652,13 +686,25 @@ export default function ChatPage() {
                   onToggleDeep={() => setDeepMode((v) => !v)}
                 />
                 <div className="mt-2 hidden sm:block">
-                  <BrandPills
-                    catalog={catalog}
-                    selectedId={selectedManualModel?.id}
-                    onSelect={handleSelectBrand}
-                    plan={user.plan}
-                    showCreative={false}
-                  />
+                  <div className="flex justify-end max-w-3xl mx-auto -mb-1">
+                    <button
+                      type="button"
+                      onClick={() => setPillsCollapsed((v) => !v)}
+                      className="text-[10px] uppercase tracking-wider text-delt-muted hover:text-delt-text px-2 py-1 rounded-md hover:bg-delt-surface transition-colors flex items-center gap-1"
+                      title={pillsCollapsed ? "Afficher les modèles" : "Masquer les modèles"}
+                    >
+                      {pillsCollapsed ? "+ Modèles" : "− Masquer"}
+                    </button>
+                  </div>
+                  {!pillsCollapsed && (
+                    <BrandPills
+                      catalog={catalog}
+                      selectedId={selectedManualModel?.id}
+                      onSelect={handleSelectBrand}
+                      plan={user.plan}
+                      showCreative={false}
+                    />
+                  )}
                 </div>
               </div>
             </div>
@@ -703,6 +749,9 @@ export default function ChatPage() {
                   autoMode={effectiveAutoMode}
                   manualLabel={selectedManualModel?.display}
                   manualModel={selectedManualModel}
+                  integrations={integrations}
+                  enabledIntegrations={enabledIntegrations}
+                  onToggleIntegration={toggleIntegration}
                   showAuto={true}
                   onOpenModels={() => setModelsOpen(true)}
                   attachments={attachments}
@@ -715,13 +764,25 @@ export default function ChatPage() {
                   onToggleDeep={() => setDeepMode((v) => !v)}
                 />
                 <div className="mt-2 hidden sm:block">
-                  <BrandPills
-                    catalog={catalog}
-                    selectedId={selectedManualModel?.id}
-                    onSelect={handleSelectBrand}
-                    plan={user.plan}
-                    showCreative={false}
-                  />
+                  <div className="flex justify-end max-w-3xl mx-auto -mb-1">
+                    <button
+                      type="button"
+                      onClick={() => setPillsCollapsed((v) => !v)}
+                      className="text-[10px] uppercase tracking-wider text-delt-muted hover:text-delt-text px-2 py-1 rounded-md hover:bg-delt-surface transition-colors flex items-center gap-1"
+                      title={pillsCollapsed ? "Afficher les modèles" : "Masquer les modèles"}
+                    >
+                      {pillsCollapsed ? "+ Modèles" : "− Masquer"}
+                    </button>
+                  </div>
+                  {!pillsCollapsed && (
+                    <BrandPills
+                      catalog={catalog}
+                      selectedId={selectedManualModel?.id}
+                      onSelect={handleSelectBrand}
+                      plan={user.plan}
+                      showCreative={false}
+                    />
+                  )}
                 </div>
               </div>
             </div>

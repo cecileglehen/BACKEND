@@ -136,12 +136,12 @@ export const api = {
   },
 
   // Chat streaming SSE
-  chatStream: ({ messages, tier, modelId, manual, projectId, onDelta, onThinking, onMeta, onDone, onError, onWebsearch, onArtifact, onImage, onTool }) => {
+  chatStream: ({ messages, tier, modelId, manual, projectId, enabledTools, onDelta, onThinking, onMeta, onDone, onError, onWebsearch, onArtifact, onImage, onTool }) => {
     const ctrl = new AbortController();
     fetch(u("/api/chat/stream"), {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ messages, tier, modelId, manual, ...(projectId && { projectId }) }),
+      body: JSON.stringify({ messages, tier, modelId, manual, ...(projectId && { projectId }), ...(enabledTools && { enabledTools }) }),
       signal: ctrl.signal
     }).then(async (res) => {
       if (!res.ok) {
