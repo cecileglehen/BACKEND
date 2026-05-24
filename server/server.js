@@ -1400,17 +1400,14 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
 
     // Modèles peu fiables pour le tool-calling → on désactive plutôt que
     // de laisser hallucinier des résultats.
-    // Modèles connus pour halluciner les tool_calls en texte au lieu d'utiliser
-    // le vrai format function-calling : tous les nano/mini/flash/free + gemma.
-    const POOR_TOOL_MODELS = /:free|free$|delt\/|flash-lite|deepseek-v[34]-flash|gemini-2\.5-flash-lite|gemma-|-nano(?:$|\b)|gpt-4o-mini|gpt-4\.1-nano|gpt-5\.[0-9]+-nano/i;
-    if (composioTools.length > 0 && POOR_TOOL_MODELS.test(modelInfo.id)) {
-      console.log(`[composio] model ${modelInfo.id} not reliable for tools, disabling`);
+    // Blacklist minimale : uniquement les modèles SANS support function-
+    // calling du tout (DELT 33M custom, Gemma open). Les autres modèles
+    // ont le droit d'essayer — même Flash/Nano. Le prompt anti-hallu en
+    // aval gère les cas où ils sortent du JSON au lieu d'un tool_call.
+    const NO_TOOL_SUPPORT = /^delt\/|gemma-/i;
+    if (composioTools.length > 0 && NO_TOOL_SUPPORT.test(modelInfo.id)) {
+      console.log(`[composio] model ${modelInfo.id} sans support function-calling, tools désactivés silencieusement`);
       composioTools = [];
-      // Avertit l'IA et l'user
-      compressed.unshift({
-        role: "system",
-        content: "⚠ Le modèle sélectionné ne supporte pas les intégrations connectées. Demande à l'utilisateur de passer sur GPT-4o, Claude Sonnet/Opus, Gemini 3 Pro ou Mistral Large pour utiliser Gmail/Drive/etc."
-      });
     }
 
     if (composioTools.length > 0) {
