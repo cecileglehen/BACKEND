@@ -1272,45 +1272,67 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
 
     // ─── Tool calling Composio (Gmail, Drive, etc.) ─────────────────────────
     // Tools chargés UNIQUEMENT si l'user a coché les apps dans le composer.
-    // Cette permission explicite par chat évite que l'IA "voit" toutes les
-    // apps connectées sans contrôle de l'utilisateur.
     let composioTools = [];
     let toolCallsExecuted = 0;
     if (enabledToolSet.size > 0) {
       try {
         const allTools = await getToolsForUser(user.id);
-        // Filtre par préfixe app activée (ex: enabled "gmail" → tools "GMAIL_*")
+        console.log(`[composio] ${allTools.length} tools total pour user ${user.id}, ${enabledToolSet.size} apps activées:`, [...enabledToolSet]);
+        // Filtre permissif : match si le nom du tool CONTIENT le slug de l'app
+        // (Composio nomme genre GMAIL_FETCH_MAILS, GOOGLEDRIVE_DOWNLOAD…)
         composioTools = allTools.filter((t) => {
           const name = (t?.function?.name || t?.name || "").toLowerCase();
           for (const app of enabledToolSet) {
-            const appPrefix = app.toLowerCase();
-            if (name.startsWith(appPrefix + "_") || name.startsWith(appPrefix.replace("google", "google_"))) return true;
+            const slug = app.toLowerCase();
+            if (name.startsWith(slug)) return true;
           }
           return false;
         });
+        console.log(`[composio] ${composioTools.length} tools filtrés pour ces apps. Sample names:`, composioTools.slice(0, 3).map((t) => t?.function?.name || t?.name));
       } catch (e) {
         console.warn("[composio] getTools fail:", e.message);
       }
     }
 
-    // Système prompt de permission explicite : sans ça, Gemini/Claude refusent
-    // d'accéder à Gmail/Drive pour "raisons de vie privée" même si on leur a
-    // donné les tools. On lève le doute en disant explicitement que l'user a
-    // coché ces apps dans son composer.
+    // Système prompt : permission explicite + ANTI-HALLUCINATION FORTE.
+    // Le risque #1 quand on file des tools à un modèle faible (FREE/Flash) :
+    // il invente des données au lieu d'appeler le tool. On encadre fermement.
     if (enabledToolSet.size > 0) {
-      const appNames = [...enabledToolSet].map((a) => {
-        const labels = { gmail: "Gmail", googledrive: "Google Drive", googlecalendar: "Google Calendar", slack: "Slack", notion: "Notion", github: "GitHub", linear: "Linear", trello: "Trello", discord: "Discord", stripe: "Stripe" };
-        return labels[a] || a;
-      });
+      const labels = { gmail: "Gmail", googledrive: "Google Drive", googlecalendar: "Google Calendar", slack: "Slack", notion: "Notion", github: "GitHub", linear: "Linear", trello: "Trello", discord: "Discord", stripe: "Stripe" };
+      const appNames = [...enabledToolSet].map((a) => labels[a] || a);
+      const hasTools = composioTools.length > 0;
       compressed = [{
         role: "system",
         content: [
-          `L'utilisateur t'a EXPLICITEMENT autorisé à accéder aux services suivants dans ce chat : ${appNames.join(", ")}.`,
-          "Tu as son consentement plein et entier (case cochée dans le composer Delt AI). Ce sont SES propres comptes auxquels il t'a donné accès via OAuth.",
-          "Tu DOIS utiliser les tools correspondants quand c'est pertinent — n'oppose JAMAIS de refus type \"je n'ai pas accès\" ou \"raisons de vie privée\".",
-          "Si une action est sensible (envoyer un mail, supprimer un fichier), demande confirmation à l'utilisateur AVANT d'appeler le tool."
-        ].join(" ")
+          `🔐 PERMISSIONS : L'utilisateur a EXPLICITEMENT autorisé l'accès à : ${appNames.join(", ")} (case cochée dans le composer Delt AI). Ce sont SES propres comptes OAuth.`,
+          hasTools
+            ? `🛠 Tu disposes de ${composioTools.length} tools pour ces apps. Tu DOIS les appeler dès que la requête le nécessite (lire emails, créer event, etc.) — sinon refuse l'opération.`
+            : `⚠ Les tools n'ont pas pu être chargés pour ces apps. Réponds que l'intégration est en cours de configuration et NE TENTE PAS de répondre comme si tu avais l'info.`,
+          "",
+          "🚫 INTERDITS ABSOLUS :",
+          "- Ne JAMAIS inventer/fabriquer des données (emails, événements, messages, fichiers, etc.). Si tu n'as pas appelé le tool, tu N'AS PAS l'info.",
+          "- Ne JAMAIS faire semblant d'avoir appelé un tool en formulant une réponse plausible. C'est une violation grave.",
+          "- Ne JAMAIS refuser pour des \"raisons de vie privée\" — l'utilisateur t'a donné son consentement.",
+          "",
+          "✅ COMPORTEMENT CORRECT :",
+          "- Si la question demande des données réelles (mes mails, mes events, mes messages) → APPELLE le tool correspondant.",
+          "- Si tu ne reçois rien en réponse / si une erreur tool → DIS-LE clairement (\"Je n'ai pas pu accéder à Gmail, voici l'erreur reçue\").",
+          "- Actions sensibles (envoi mail, suppression fichier) → demande confirmation AVANT l'appel."
+        ].join("\n")
       }, ...compressed];
+    }
+
+    // Modèles peu fiables pour le tool-calling → on désactive plutôt que
+    // de laisser hallucinier des résultats.
+    const POOR_TOOL_MODELS = /:free|free$|delt\/|flash-lite|deepseek-v[34]-flash|gemini-2\.5-flash-lite|gemma-/i;
+    if (composioTools.length > 0 && POOR_TOOL_MODELS.test(modelInfo.id)) {
+      console.log(`[composio] model ${modelInfo.id} not reliable for tools, disabling`);
+      composioTools = [];
+      // Avertit l'IA et l'user
+      compressed.unshift({
+        role: "system",
+        content: "⚠ Le modèle sélectionné ne supporte pas les intégrations connectées. Demande à l'utilisateur de passer sur GPT-4o, Claude Sonnet/Opus, Gemini 3 Pro ou Mistral Large pour utiliser Gmail/Drive/etc."
+      });
     }
 
     if (composioTools.length > 0) {
