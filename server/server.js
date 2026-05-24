@@ -332,6 +332,48 @@ app.delete("/api/privacy/account", requireAuth, async (req, res) => {
   }
 });
 
+// Parser fallback : extrait des tool_calls structurés depuis un content textuel
+// contenant des balises <tool_call>{"name":"...","arguments":{...}}</tool_call>
+// (format utilisé par Qwen, Hermes, certains Llama fine-tunes).
+// Retourne un array au format OpenAI tool_calls (id, type, function.{name,arguments}).
+function parseInlineToolCalls(content) {
+  if (!content || typeof content !== "string") return [];
+  const results = [];
+  // Variantes : <tool_call>...</tool_call>, <toolcall>...</toolcall>,
+  // <function_call>...</function_call>, et fences ```tool_call ... ```
+  const patterns = [
+    /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi,
+    /<toolcall>\s*([\s\S]*?)\s*<\/toolcall>/gi,
+    /<function_call>\s*([\s\S]*?)\s*<\/function_call>/gi,
+    /```(?:tool_call|json)?\s*(\{[\s\S]*?"name"[\s\S]*?\})\s*```/gi
+  ];
+  for (const re of patterns) {
+    let m;
+    while ((m = re.exec(content)) !== null) {
+      let payload = (m[1] || "").trim();
+      // Certains modèles wrappent en ```json ... ```
+      payload = payload.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+      try {
+        const obj = JSON.parse(payload);
+        const name = obj.name || obj.tool || obj.function?.name;
+        const args = obj.arguments ?? obj.args ?? obj.parameters ?? obj.function?.arguments ?? {};
+        if (!name) continue;
+        results.push({
+          id: `inline_${Date.now()}_${results.length}`,
+          type: "function",
+          function: {
+            name,
+            arguments: typeof args === "string" ? args : JSON.stringify(args)
+          }
+        });
+      } catch {
+        // payload pas JSON valide → on ignore
+      }
+    }
+  }
+  return results;
+}
+
 // ─── Quota snapshot ──────────────────────────────────────────────────────────
 
 // Injecte la date + l'heure (arrondie à 10 min) en heure de Paris pour éviter
@@ -1372,14 +1414,28 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
           break;
         }
         const msg = toolResp?.message;
-        const toolCalls = msg?.tool_calls;
+        let toolCalls = msg?.tool_calls;
+        // Fallback : Qwen / Hermes / certains modèles n'utilisent PAS le format
+        // tool_calls OpenAI structuré, mais émettent des balises XML
+        // <tool_call>{"name":"...","arguments":{...}}</tool_call> dans le content.
+        // On les parse et on les convertit en tool_calls standards.
+        if ((!Array.isArray(toolCalls) || toolCalls.length === 0) && typeof msg?.content === "string") {
+          const parsed = parseInlineToolCalls(msg.content);
+          if (parsed.length > 0) {
+            console.log(`[composio] ${parsed.length} <tool_call> XML parsés depuis le content (fallback Qwen/Hermes)`);
+            toolCalls = parsed;
+          }
+        }
         if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
           // L'IA ne demande plus de tool → on sort de la boucle.
           // Le messages array reste tel quel pour le streaming final.
           break;
         }
         // Ajoute le message assistant (avec les tool_calls) à l'historique
-        compressed.push({ role: "assistant", content: msg.content || "", tool_calls: toolCalls });
+        // On nettoie les balises <tool_call> du content si présentes (sinon
+        // l'IA le ré-émet boucle après boucle).
+        const cleanContent = (msg.content || "").replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, "").replace(/<toolcall>[\s\S]*?<\/toolcall>/gi, "").trim();
+        compressed.push({ role: "assistant", content: cleanContent, tool_calls: toolCalls });
         // Exécute chaque tool en parallèle
         const results = await Promise.all(toolCalls.map(async (tc) => {
           const name = tc.function?.name || tc.name;
