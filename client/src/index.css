@@ -13,6 +13,48 @@ html, body, #root {
 body {
   background: #ffffff;
   color: #0f172a;
+  /* iOS : empêche le bounce / la sélection lors d'un long-press accidentel sur les fonds */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: none;
+}
+
+/* iOS Safari : empêche le zoom auto au focus des inputs (font-size doit être ≥ 16px) */
+@media (max-width: 640px) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
+/* Safe-area iOS : padding pour notch + home indicator */
+.safe-pb {
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+}
+.safe-pt {
+  padding-top: env(safe-area-inset-top);
+}
+.safe-px {
+  padding-left: max(0.5rem, env(safe-area-inset-left));
+  padding-right: max(0.5rem, env(safe-area-inset-right));
+}
+
+/* Mobile : zone scrollable horizontale pour pills/onglets */
+.mobile-hscroll {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  scroll-snap-type: x proximity;
+}
+.mobile-hscroll::-webkit-scrollbar { display: none; }
+.mobile-hscroll > * { scroll-snap-align: start; flex-shrink: 0; }
+
+/* Touch targets : taille mini Apple HIG = 44px ; Material = 48px → 44px */
+@media (hover: none) and (pointer: coarse) {
+  button, [role="button"], a {
+    min-height: 36px;
+  }
 }
 
 /* Scrollbar clean */

@@ -25,10 +25,15 @@ export default function PricingRoute() {
           await refreshUser();
           await refreshQuota();
           toast.success(`Abonnement ${plan} activé !`);
+          navigate("/intro", { replace: true });
         })
-        .catch((e) => toast.error("Erreur : " + e.message));
+        .catch((e) => {
+          toast.error("Erreur : " + e.message);
+          navigate("/billing", { replace: true });
+        });
+    } else {
+      navigate("/billing", { replace: true });
     }
-    navigate("/billing", { replace: true });
   }, [user, location, navigate, refreshUser, refreshQuota, toast]);
 
   return (
@@ -40,6 +45,7 @@ export default function PricingRoute() {
             await refreshUser();
             await refreshQuota();
             toast.success(`Abonnement ${plan} activé ! Tes crédits sont crédités.`);
+            navigate("/intro");
           } catch (e) {
             toast.error(e.message);
           }
