@@ -21,6 +21,7 @@ import ProjectsSidebar from "../components/ProjectsSidebar.jsx";
 import ProjectSettingsModal from "../components/ProjectSettingsModal.jsx";
 import ManualModelSelector from "../components/ManualModelSelector.jsx";
 import ArtifactViewer from "../components/ArtifactViewer.jsx";
+import { useT } from "../lib/i18n.jsx";
 
 function HamburgerIcon() {
   return (
@@ -64,6 +65,7 @@ function isBrandFamily(model) {
 export default function ChatPage() {
   const { user, refreshQuota, setCredits } = useAuth();
   const toast = useToast();
+  const t = useT();
   const isFree = user?.plan === "FREE";
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -561,7 +563,7 @@ export default function ChatPage() {
         className={`w-9 h-9 rounded-full flex items-center justify-center text-delt-muted flex-shrink-0 transition-colors ${
           inline ? "hover:bg-delt-surface" : "bg-white/95 border border-delt-border hover:bg-delt-surface"
         }`}
-        aria-label="Historique"
+        aria-label={t("sidebar.history")}
       >
         <HamburgerIcon />
       </button>
@@ -590,7 +592,7 @@ export default function ChatPage() {
           />
           <div className={`absolute left-0 top-0 bottom-0 w-[min(18rem,86vw)] bg-white border-r border-delt-border z-30 flex flex-col shadow-lg ${sidebarAnim.closing ? "animate-slideOutLeft" : "animate-slideInLeft"}`}>
             <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-widest text-delt-muted">Historique</span>
+              <span className="text-xs font-semibold uppercase tracking-widest text-delt-muted">{t("sidebar.history")}</span>
               <button onClick={() => setHistoryOpen(false)} className="text-delt-muted hover:text-delt-text text-lg leading-none">✕</button>
             </div>
             <div className="flex-1 min-h-0">

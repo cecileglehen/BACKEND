@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useT } from "../lib/i18n.jsx";
 import { api, getToken } from "../lib/api.js";
 
 const MODELS = [
@@ -131,6 +132,7 @@ function SvgIcon({ name, size = 14, stroke = "currentColor" }) {
 }
 
 export default function CodeStudio() {
+  const t = useT();
   const [prompt, setPrompt]                 = useState("");
   const [busy, setBusy]                     = useState(false);
   const [editing, setEditing]               = useState(false);
@@ -255,9 +257,9 @@ export default function CodeStudio() {
               <polyline points="8 6 2 12 8 18"/>
             </svg>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-delt-text tracking-tight">Code Studio</h1>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-delt-text tracking-tight">{t("code.title")}</h1>
           <p className="text-sm sm:text-base text-delt-muted max-w-lg mx-auto">
-            Décris un projet, l'IA génère tous les fichiers, t'offre une preview et un ZIP prêt à télécharger.
+            {t("code.description")}
           </p>
         </div>
 
@@ -295,11 +297,11 @@ export default function CodeStudio() {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) generate();
             }}
             rows={5}
-            placeholder="Décris ton projet : langage, fichiers attendus, style, contraintes…"
+            placeholder={t("code.project_placeholder")}
             className="w-full text-sm outline-none resize-none placeholder:text-delt-muted bg-transparent"
           />
           <div className="flex items-center justify-between gap-3 mt-2">
-            <span className="text-[11px] text-delt-muted hidden sm:block">⌘+Entrée pour générer</span>
+            <span className="text-[11px] text-delt-muted hidden sm:block">{t("code.cmd_enter")}</span>
             <button
               onClick={generate}
               disabled={busy || !prompt.trim()}
@@ -311,11 +313,11 @@ export default function CodeStudio() {
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" className="animate-spin">
                     <path d="M21 12a9 9 0 1 1-6.2-8.55"/>
                   </svg>
-                  Génération…
+                  {t("code.generating")}
                 </>
               ) : (
                 <>
-                  Générer
+                  {t("code.generate")}
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                     <line x1="5" y1="12" x2="19" y2="12"/>
                     <polyline points="12 5 19 12 12 19"/>
@@ -329,7 +331,7 @@ export default function CodeStudio() {
         {/* Examples */}
         <div>
           <div className="text-xs font-semibold uppercase tracking-widest text-delt-muted mb-3 text-center">
-            Inspire-toi
+            {t("code.inspire")}
           </div>
           <div className="flex justify-center gap-1.5 mb-4 flex-wrap">
             {EXAMPLE_CATEGORIES.map((cat) => (
@@ -386,10 +388,10 @@ export default function CodeStudio() {
               <line x1="19" y1="12" x2="5" y2="12"/>
               <polyline points="12 19 5 12 12 5"/>
             </svg>
-            Nouveau projet
+            {t("code.new_project")}
           </button>
           <div className="min-w-0">
-            <div className="text-xs font-semibold uppercase tracking-wider text-delt-muted">Projet</div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-delt-muted">{t("code.project")}</div>
             <h2 className="text-sm sm:text-base font-bold text-delt-text truncate">{session.summary}</h2>
           </div>
         </div>
@@ -541,7 +543,7 @@ export default function CodeStudio() {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) applyEdit();
           }}
           rows={1}
-          placeholder="Ajoute une section tarifs, corrige le responsive, change les couleurs en violet…"
+          placeholder={t("code.edit_placeholder")}
           className="flex-1 min-w-0 text-sm outline-none resize-none bg-transparent placeholder:text-delt-muted py-1.5 max-h-24"
         />
         <button

@@ -1,17 +1,23 @@
 import { useState } from "react";
+import { useT } from "../lib/i18n.jsx";
 
-function timeAgo(ts) {
-  const diff = Date.now() - ts;
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return "À l'instant";
-  if (m < 60) return `Il y a ${m} min`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `Il y a ${h}h`;
-  const d = Math.floor(h / 24);
-  return `Il y a ${d}j`;
+function useTimeAgo() {
+  const t = useT();
+  return (ts) => {
+    const diff = Date.now() - ts;
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return t("sidebar.time_just_now");
+    if (m < 60) return t("sidebar.time_min", { n: m });
+    const h = Math.floor(m / 60);
+    if (h < 24) return t("sidebar.time_hour", { n: h });
+    const d = Math.floor(h / 24);
+    return t("sidebar.time_day", { n: d });
+  };
 }
 
 export default function ConversationList({ conversations, activeId, onSelect, onNew, onDelete }) {
+  const t = useT();
+  const timeAgo = useTimeAgo();
   const [hovered, setHovered] = useState(null);
 
   return (
@@ -25,7 +31,7 @@ export default function ConversationList({ conversations, activeId, onSelect, on
           <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
             <path d="M8 3v10M3 8h10" />
           </svg>
-          Nouvelle conversation
+          {t("sidebar.new_conv")}
         </button>
       </div>
 
@@ -33,7 +39,7 @@ export default function ConversationList({ conversations, activeId, onSelect, on
       <div className="flex-1 overflow-y-auto px-2 pb-3 space-y-0.5">
         {conversations.length === 0 ? (
           <div className="text-xs text-delt-muted text-center py-8 px-3">
-            Aucune conversation. Envoie ton premier message.
+            {t("sidebar.empty")}
           </div>
         ) : (
           conversations.map((conv) => {
@@ -48,7 +54,6 @@ export default function ConversationList({ conversations, activeId, onSelect, on
                 onMouseLeave={() => setHovered(null)}
                 onClick={() => onSelect(conv.id)}
               >
-                {/* Icône */}
                 <svg className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-delt-muted" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M14 2H2a1 1 0 00-1 1v9a1 1 0 001 1h3l3 2 3-2h3a1 1 0 001-1V3a1 1 0 00-1-1z" />
                 </svg>
@@ -62,12 +67,11 @@ export default function ConversationList({ conversations, activeId, onSelect, on
                   </div>
                 </div>
 
-                {/* Bouton supprimer */}
                 {(hovered === conv.id || active) && (
                   <button
                     onClick={(e) => { e.stopPropagation(); onDelete(conv.id); }}
                     className="flex-shrink-0 p-0.5 rounded text-delt-muted hover:text-red-500 transition-colors cursor-pointer"
-                    title="Supprimer"
+                    title={t("sidebar.delete")}
                   >
                     <svg viewBox="0 0 14 14" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                       <path d="M2 2l10 10M12 2L2 12" />

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api.js";
 import MusicComposer from "./MusicComposer.jsx";
+import { useT } from "../lib/i18n.jsx";
 
 const STYLE_PRESETS = [
   { label: "Aucun",         prompt: "" },
@@ -64,6 +65,7 @@ function TabButton({ active, onClick, icon, label, sub }) {
 }
 
 function ImageTab({ catalog, onCreditsUsed }) {
+  const t = useT();
   const [prompt, setPrompt]       = useState("");
   const [modelId, setModelId]     = useState("fal-ai/flux-1/schnell");
   const [style, setStyle]         = useState(STYLE_PRESETS[0].label);
@@ -132,7 +134,7 @@ function ImageTab({ catalog, onCreditsUsed }) {
           value={prompt}
           onChange={(e) => setPrompt(e.target.value.slice(0, 2000))}
           rows={4}
-          placeholder="Décris l'image : sujet, ambiance, palette, contexte… plus c'est précis, mieux c'est."
+          placeholder={t("artist.prompt_image")}
           className="w-full text-sm outline-none resize-none bg-transparent placeholder:text-delt-muted"
         />
         <div className="flex items-center justify-between text-[10px] text-delt-muted mt-1">
@@ -230,7 +232,7 @@ function ImageTab({ catalog, onCreditsUsed }) {
                       type="button"
                       onClick={() => downloadMedia(item.url, "png")}
                       className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white"
-                      title="Télécharger"
+                      title={t("artist.download")}
                     >
                       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -250,6 +252,7 @@ function ImageTab({ catalog, onCreditsUsed }) {
 }
 
 function VideoTab({ catalog, onCreditsUsed }) {
+  const t = useT();
   const [prompt, setPrompt]   = useState("");
   const [duration, setDuration] = useState(5);
   const [busy, setBusy]       = useState(false);
@@ -292,7 +295,7 @@ function VideoTab({ catalog, onCreditsUsed }) {
           value={prompt}
           onChange={(e) => setPrompt(e.target.value.slice(0, 2000))}
           rows={5}
-          placeholder="Décris la scène : sujet, action, mouvements de caméra, ambiance, durée souhaitée…"
+          placeholder={t("artist.prompt_video")}
           className="w-full text-sm outline-none resize-none bg-transparent placeholder:text-delt-muted"
         />
         <div className="text-[10px] text-delt-muted text-right mt-1">{prompt.length} / 2000</div>
@@ -362,6 +365,7 @@ function VideoTab({ catalog, onCreditsUsed }) {
 }
 
 export default function ArtistStudio() {
+  const t = useT();
   const [tab, setTab] = useState("image");
   const [catalog, setCatalog] = useState(null);
 
@@ -387,9 +391,9 @@ export default function ArtistStudio() {
             <line x1="12" y1="22" x2="12" y2="18"/>
           </svg>
         </div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-delt-text tracking-tight">Studio Artiste</h1>
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-delt-text tracking-tight">{t("artist.title")}</h1>
         <p className="text-sm text-delt-muted max-w-md mx-auto">
-          Génère des images, des vidéos et de la musique avec les meilleurs modèles créatifs.
+          {t("artist.subtitle")}
         </p>
       </div>
 
@@ -398,7 +402,7 @@ export default function ArtistStudio() {
         <TabButton
           active={tab === "image"}
           onClick={() => setTab("image")}
-          label="Image"
+          label={t("artist.tab_image")}
           sub="FLUX, Nano Banana, GPT Image"
           icon={
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke={tab === "image" ? "white" : "#6366f1"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -411,7 +415,7 @@ export default function ArtistStudio() {
         <TabButton
           active={tab === "video"}
           onClick={() => setTab("video")}
-          label="Vidéo"
+          label={t("artist.tab_video")}
           sub="Seedance 2 · 720p"
           icon={
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke={tab === "video" ? "white" : "#a855f7"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -423,7 +427,7 @@ export default function ArtistStudio() {
         <TabButton
           active={tab === "music"}
           onClick={() => setTab("music")}
-          label="Musique"
+          label={t("artist.tab_music")}
           sub="Suno V5.5"
           icon={
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke={tab === "music" ? "white" : "#ec4899"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

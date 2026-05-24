@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { api } from "../lib/api.js";
 import { useToast } from "../contexts/ToastContext.jsx";
+import { useT } from "../lib/i18n.jsx";
 
 const PLAN_RANK = { FREE: 0, BASIC: 1, PLUS: 2, PRO: 3, ULTRA: 4 };
 
@@ -94,6 +95,7 @@ function CheckIcon({ ok }) {
 
 export default function Pricing({ user, onSubscribed }) {
   const toast = useToast();
+  const t = useT();
   const [config, setConfig] = useState(null);
   const [error, setError] = useState(null);
 
@@ -111,7 +113,7 @@ export default function Pricing({ user, onSubscribed }) {
 
   if (!config) return (
     <div className="max-w-2xl mx-auto px-4 py-12 text-center">
-      <p className="text-delt-muted text-sm">Chargement…</p>
+      <p className="text-delt-muted text-sm">{t("pricing.loading")}</p>
     </div>
   );
 
@@ -123,6 +125,7 @@ export default function Pricing({ user, onSubscribed }) {
 }
 
 function PricingContent({ user, config, onSubscribed }) {
+  const t = useT();
   const [yearly, setYearly] = useState(false);
 
   return (
@@ -130,12 +133,12 @@ function PricingContent({ user, config, onSubscribed }) {
 
       {/* Header */}
       <div className="text-center">
-        <h1 className="text-4xl font-extrabold text-delt-text mb-3 tracking-tight">Tarification</h1>
-        <p className="text-lg text-delt-muted mb-8">Accédez à plusieurs modèles IA pour le prix d'un</p>
+        <h1 className="text-4xl font-extrabold text-delt-text mb-3 tracking-tight">{t("pricing.heading")}</h1>
+        <p className="text-lg text-delt-muted mb-8">{t("pricing.tagline")}</p>
 
         {config.mode === "sandbox" && (
           <div className="mb-6 inline-block text-xs px-3 py-1.5 rounded-full bg-yellow-100 text-yellow-800 font-semibold">
-            ⚠️ Mode sandbox — paiements fictifs
+            {t("pricing.sandbox")}
           </div>
         )}
 
@@ -145,13 +148,13 @@ function PricingContent({ user, config, onSubscribed }) {
             onClick={() => setYearly(false)}
             className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${!yearly ? "bg-white shadow text-delt-text" : "text-delt-muted"}`}
           >
-            Payer Mensuellement
+            {t("pricing.pay_monthly")}
           </button>
           <button
             onClick={() => setYearly(true)}
             className={`px-5 py-2 rounded-full text-sm font-semibold transition-all flex items-center gap-2 ${yearly ? "bg-white shadow text-delt-text" : "text-delt-muted"}`}
           >
-            Payer Annuellement
+            {t("pricing.pay_yearly")}
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: "linear-gradient(135deg,#2563eb,#06b6d4)", color: "white" }}>-20%</span>
           </button>
         </div>
@@ -292,17 +295,17 @@ function PricingContent({ user, config, onSubscribed }) {
 
       {/* Catalogue modèles — simplifié, juste la liste, plus de "consommation" */}
       <div>
-        <h2 className="text-2xl font-bold text-delt-text mb-2">Modèles inclus</h2>
+        <h2 className="text-2xl font-bold text-delt-text mb-2">{t("pricing.included_title")}</h2>
         <p className="text-sm text-delt-muted mb-5">
-          Tous les modèles ci-dessous sont accessibles dès le plan <strong className="text-delt-text">Starter</strong>.
+          <span dangerouslySetInnerHTML={{ __html: t("pricing.included_sub").replace("<strong>", "<strong class=\"text-delt-text\">") }} />
           Le routeur auto choisit le meilleur selon ta question.
         </p>
         <div className="rounded-2xl border border-delt-border overflow-x-auto shadow-sm">
           <table className="min-w-[500px] w-full text-sm">
             <thead className="bg-delt-surface border-b border-delt-border">
               <tr>
-                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">Catégorie</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">Modèles</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">{t("pricing.col_category")}</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">{t("pricing.col_models")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-delt-border">
@@ -321,15 +324,15 @@ function PricingContent({ user, config, onSubscribed }) {
 
       {/* Images */}
       <div>
-        <h2 className="text-2xl font-bold text-delt-text mb-2">Génération d'image</h2>
-        <p className="text-sm text-delt-muted mb-5">Tous les modèles d'image inclus dans ton abonnement.</p>
+        <h2 className="text-2xl font-bold text-delt-text mb-2">{t("pricing.image_title")}</h2>
+        <p className="text-sm text-delt-muted mb-5">{t("pricing.image_sub")}</p>
         <div className="rounded-2xl border border-delt-border overflow-x-auto shadow-sm">
           <table className="min-w-[500px] w-full text-sm">
             <thead className="bg-delt-surface border-b border-delt-border">
               <tr>
-                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">Modèle</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">Fournisseur</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">Usage</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">{t("pricing.col_model")}</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">{t("pricing.col_provider")}</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">{t("pricing.col_usage")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-delt-border">
@@ -347,15 +350,15 @@ function PricingContent({ user, config, onSubscribed }) {
 
       {/* Vidéo */}
       <div>
-        <h2 className="text-2xl font-bold text-delt-text mb-2">Génération de vidéo</h2>
-        <p className="text-sm text-delt-muted mb-5">Inclus dans ton abonnement.</p>
+        <h2 className="text-2xl font-bold text-delt-text mb-2">{t("pricing.video_title")}</h2>
+        <p className="text-sm text-delt-muted mb-5">{t("pricing.video_sub")}</p>
         <div className="rounded-2xl border border-delt-border overflow-x-auto shadow-sm">
           <table className="min-w-[500px] w-full text-sm">
             <thead className="bg-delt-surface border-b border-delt-border">
               <tr>
-                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">Modèle</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">Fournisseur</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">Résolution</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">{t("pricing.col_model")}</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">{t("pricing.col_provider")}</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">{t("pricing.col_resolution")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-delt-border">

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useT } from "../lib/i18n.jsx";
 
 const ICON_PRESETS = ["📁", "💻", "📱", "🎨", "📚", "🧠", "🚀", "🎬", "🎵", "✍️", "🔬", "💡", "🌍", "⚡", "🎯", "📊", "🍳", "🏋️"];
 const COLOR_PRESETS = [
@@ -14,6 +15,7 @@ export default function ProjectsSidebar({
   onEdit,
   onClose
 }) {
+  const t = useT();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName]   = useState("");
   const [newIcon, setNewIcon]   = useState("📁");
@@ -29,13 +31,13 @@ export default function ProjectsSidebar({
     <div className="h-full flex flex-col bg-white">
       {/* Header */}
       <div className="px-4 pt-4 pb-2 flex items-center justify-between flex-shrink-0">
-        <span className="text-xs font-semibold uppercase tracking-widest text-delt-muted">Projets</span>
+        <span className="text-xs font-semibold uppercase tracking-widest text-delt-muted">{t("sidebar.projects")}</span>
         <div className="flex items-center gap-1">
           <button
             onClick={() => setCreating(true)}
             className="w-7 h-7 rounded-full hover:bg-delt-surface flex items-center justify-center text-delt-muted hover:text-delt-text"
-            aria-label="Nouveau projet"
-            title="Nouveau projet"
+            aria-label={t("sidebar.new_project")}
+            title={t("sidebar.new_project")}
           >
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
               <line x1="12" y1="5" x2="12" y2="19"/>
@@ -43,7 +45,7 @@ export default function ProjectsSidebar({
             </svg>
           </button>
           {onClose && (
-            <button onClick={onClose} className="text-delt-muted hover:text-delt-text text-lg leading-none" aria-label="Fermer">✕</button>
+            <button onClick={onClose} className="text-delt-muted hover:text-delt-text text-lg leading-none" aria-label={t("sidebar.close")}>✕</button>
           )}
         </div>
       </div>
@@ -57,7 +59,7 @@ export default function ProjectsSidebar({
             value={newName}
             onChange={(e) => setNewName(e.target.value.slice(0, 80))}
             onKeyDown={(e) => { if (e.key === "Enter") submit(); if (e.key === "Escape") setCreating(false); }}
-            placeholder="Nom du projet"
+            placeholder={t("sidebar.project_name")}
             className="w-full px-3 py-2 rounded-lg border border-delt-border text-sm outline-none focus:border-delt-accent bg-white"
           />
           <div className="flex flex-wrap gap-1">
@@ -86,9 +88,9 @@ export default function ProjectsSidebar({
               onClick={submit}
               disabled={!newName.trim()}
               className="flex-1 px-3 py-1.5 rounded-lg bg-delt-text text-white text-xs font-bold disabled:opacity-40"
-            >Créer</button>
+            >{t("sidebar.create")}</button>
             <button onClick={() => setCreating(false)} className="px-3 py-1.5 rounded-lg text-xs text-delt-muted hover:text-delt-text">
-              Annuler
+              {t("sidebar.cancel")}
             </button>
           </div>
         </div>
@@ -97,9 +99,7 @@ export default function ProjectsSidebar({
       {/* Pas de projet */}
       {!creating && projects.length === 0 && (
         <div className="mx-3 mb-2 px-3 py-4 rounded-xl bg-delt-surface text-center">
-          <div className="text-[11px] text-delt-muted leading-relaxed">
-            Crée un projet pour grouper tes conversations<br/>(ex : <em>MyBibli</em>, <em>App Flutter</em>, <em>Roman SF</em>…)
-          </div>
+          <div className="text-[11px] text-delt-muted leading-relaxed" dangerouslySetInnerHTML={{ __html: t("sidebar.empty_hint") }} />
         </div>
       )}
 
@@ -113,7 +113,7 @@ export default function ProjectsSidebar({
           }`}
         >
           <span className="text-base">💬</span>
-          <span className="text-sm font-semibold flex-1 text-left">Tous les chats</span>
+          <span className="text-sm font-semibold flex-1 text-left">{t("sidebar.all_chats")}</span>
         </button>
 
         {projects.map((p) => {
@@ -141,8 +141,8 @@ export default function ProjectsSidebar({
                 <button
                   onClick={() => onEdit(p)}
                   className="opacity-0 group-hover:opacity-100 w-7 h-7 flex items-center justify-center text-delt-muted hover:text-delt-text rounded-lg transition-opacity"
-                  aria-label="Modifier"
-                  title="Modifier le projet"
+                  aria-label={t("sidebar.edit")}
+                  title={t("sidebar.edit_project")}
                 >
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>
