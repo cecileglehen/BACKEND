@@ -145,23 +145,37 @@ export async function revokeIntegration({ userId, app }) {
   );
 }
 
-// Récupère les tools au format Chat Completions pour cet user, filtrés par
-// les apps connectées (toolkits Composio).
-export async function getToolsForUser(userId) {
+// Récupère les tools au format Chat Completions pour cet user.
+//
+// IMPORTANT : Composio default limit=20. Si on passe plusieurs toolkits en
+// une fois, l'API retourne ~20 tools total (genre 20 Gmail + 0 Calendar →
+// l'IA ne voit jamais Calendar). On fait donc UN APPEL PAR TOOLKIT avec
+// limit=25 → garanti que chaque app a sa juste représentation.
+//
+// `appsOverride` = sous-liste d'apps activées dans le composer (sinon toutes
+// les apps connectées).
+export async function getToolsForUser(userId, appsOverride = null) {
   const integrations = await listUserIntegrations(userId);
-  const connectedApps = integrations.filter((i) => i.connected).map((i) => i.app);
-  if (connectedApps.length === 0) return [];
-  try {
-    const co = client();
-    const tools = await co.tools.get(String(userId), { toolkits: connectedApps });
-    if (!tools) return [];
-    // co.tools.get peut renvoyer un array ou un object { name: tool }
-    if (Array.isArray(tools)) return tools;
-    return Object.values(tools);
-  } catch (e) {
-    console.warn("[composio] getTools fail:", e.message);
-    return [];
+  let connectedApps = integrations.filter((i) => i.connected).map((i) => i.app);
+  if (appsOverride && appsOverride.length > 0) {
+    connectedApps = connectedApps.filter((app) => appsOverride.includes(app));
   }
+  if (connectedApps.length === 0) return [];
+
+  const co = client();
+  const TOOLS_PER_APP = 25;
+  const out = [];
+  const results = await Promise.all(connectedApps.map(async (app) => {
+    try {
+      const tools = await co.tools.get(String(userId), { toolkits: [app], limit: TOOLS_PER_APP });
+      return Array.isArray(tools) ? tools : Object.values(tools || {});
+    } catch (e) {
+      console.warn(`[composio] getTools fail pour ${app}:`, e.message);
+      return [];
+    }
+  }));
+  for (const arr of results) out.push(...arr);
+  return out;
 }
 
 // Exécute un tool call émis par le LLM.
