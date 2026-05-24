@@ -595,10 +595,12 @@ export default function ChatMessage({ msg, models = [], onRemake, onChooseVarian
               const friendly = (tc.name || "").toLowerCase().split("_")[0];
               const action = (tc.name || "").toLowerCase().split("_").slice(1).join(" ") || "action";
               const isError = tc.status === "error";
+              const errMsg = tc.error || (isError ? (tc.preview || "Erreur inconnue") : null);
               return (
                 <div
                   key={tc.id || i}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs ${
+                  title={errMsg || (tc.preview ? tc.preview.slice(0, 200) : "")}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs max-w-full ${
                     tc.status === "pending"
                       ? "bg-blue-50 border-blue-200 text-blue-700"
                       : isError
@@ -617,6 +619,9 @@ export default function ChatMessage({ msg, models = [], onRemake, onChooseVarian
                   )}
                   <span className="font-semibold capitalize">{friendly}</span>
                   <span className="text-[10px] opacity-80">· {action}</span>
+                  {isError && errMsg && (
+                    <span className="text-[10px] opacity-90 max-w-[280px] truncate">— {errMsg}</span>
+                  )}
                 </div>
               );
             })}
