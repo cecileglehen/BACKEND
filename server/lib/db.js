@@ -213,6 +213,20 @@ export async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
     CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash) WHERE revoked_at IS NULL;
 
+    -- ─── Intégrations Composio (Gmail, Drive, Notion, …) ─────────────────
+    CREATE TABLE IF NOT EXISTS user_integrations (
+      id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id        UUID REFERENCES users(id) ON DELETE CASCADE,
+      app_name       TEXT NOT NULL,        -- "gmail", "googledrive", "slack"…
+      connection_id  TEXT NOT NULL,        -- Composio connectionId
+      entity_id      TEXT NOT NULL,        -- Composio entityId (= user_id)
+      status         TEXT NOT NULL DEFAULT 'active',  -- active | revoked
+      connected_at   TIMESTAMPTZ DEFAULT NOW(),
+      revoked_at     TIMESTAMPTZ,
+      UNIQUE (user_id, app_name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_integrations ON user_integrations(user_id) WHERE status = 'active';
+
     CREATE OR REPLACE FUNCTION anonymize_user(p_user_id UUID)
     RETURNS void LANGUAGE plpgsql AS $$
     BEGIN

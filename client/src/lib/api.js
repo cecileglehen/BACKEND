@@ -311,6 +311,13 @@ export const api = {
 
   // API Keys (dashboard)
   listApiKeys: () => fetch(u("/api/keys"), { headers: authHeaders() }).then(json),
+
+  // Intégrations Composio (Gmail, Drive, Notion…)
+  listIntegrations: () => fetch(u("/api/integrations"), { headers: authHeaders() }).then(json),
+  connectIntegration: (app) =>
+    fetch(u(`/api/integrations/connect/${app}`), { method: "POST", headers: authHeaders() }).then(json),
+  disconnectIntegration: (app) =>
+    fetch(u(`/api/integrations/${app}`), { method: "DELETE", headers: authHeaders() }).then(json),
   createApiKey: (name) =>
     fetch(u("/api/keys"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ name }) }).then(json),
   revokeApiKey: (id) =>
