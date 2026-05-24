@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { useT } from "../lib/i18n.jsx";
 
 const DELT_URL = "https://bathroom-ultram-usd-offering.trycloudflare.com";
 const DELT_KEY = "myDMpvoCuw1ePElUrbqapiB7sXPfShWGfrSh5WdaSpM";
@@ -22,6 +23,7 @@ function PayPalDonate() {
 }
 
 export default function OurModelRoute() {
+  const t = useT();
   const [prompt, setPrompt] = useState("");
   const [output, setOutput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -87,67 +89,60 @@ export default function OurModelRoute() {
         <div className="text-center mb-10 sm:mb-14">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold mb-5">
             <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-            MADE IN FRANCE · OPEN BETA
+            {t("ourmodel.badge")}
           </div>
           <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-delt-text leading-[1.05]">
             DELT 33M
           </h1>
           <p className="mt-3 text-blue-600 text-sm sm:text-base font-medium uppercase tracking-wider">
-            Notre modèle propriétaire
+            {t("ourmodel.subtitle")}
           </p>
         </div>
 
         <div className="rounded-3xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white p-8 sm:p-12 shadow-xl mb-10 text-center">
-          <h2 className="text-3xl sm:text-5xl font-extrabold leading-tight">
-            Un peu bébête<br />mais français 🇫🇷
-          </h2>
+          <h2 className="text-3xl sm:text-5xl font-extrabold leading-tight" dangerouslySetInnerHTML={{ __html: t("ourmodel.hero_title") }} />
           <p className="mt-5 text-base sm:text-lg text-blue-50 max-w-2xl mx-auto leading-relaxed">
-            Soutenez Delt AI dans le développement et la création d'IA !
+            {t("ourmodel.hero_sub")}
           </p>
         </div>
 
         <div className="grid sm:grid-cols-3 gap-4 mb-10">
           <div className="rounded-2xl border border-delt-border bg-white p-5">
             <div className="text-3xl font-extrabold text-delt-text">33M</div>
-            <div className="text-xs text-delt-muted mt-1 uppercase tracking-wider font-semibold">Paramètres</div>
-            <p className="text-sm text-delt-muted mt-2">Entraîné from scratch sur GPU local — pas de fine-tuning externe.</p>
+            <div className="text-xs text-delt-muted mt-1 uppercase tracking-wider font-semibold">{t("ourmodel.stat_params")}</div>
+            <p className="text-sm text-delt-muted mt-2">{t("ourmodel.stat_params_desc")}</p>
           </div>
           <div className="rounded-2xl border border-delt-border bg-white p-5">
             <div className="text-3xl font-extrabold text-delt-text">1024</div>
-            <div className="text-xs text-delt-muted mt-1 uppercase tracking-wider font-semibold">Context</div>
-            <p className="text-sm text-delt-muted mt-2">Petite fenêtre, ultra rapide, conçu pour la conversation courte.</p>
+            <div className="text-xs text-delt-muted mt-1 uppercase tracking-wider font-semibold">{t("ourmodel.stat_ctx")}</div>
+            <p className="text-sm text-delt-muted mt-2">{t("ourmodel.stat_ctx_desc")}</p>
           </div>
           <div className="rounded-2xl border border-delt-border bg-white p-5">
             <div className="text-3xl font-extrabold text-delt-text">100%</div>
-            <div className="text-xs text-delt-muted mt-1 uppercase tracking-wider font-semibold">DELT</div>
-            <p className="text-sm text-delt-muted mt-2">Architecture, tokenizer, dataset — tout est maison.</p>
+            <div className="text-xs text-delt-muted mt-1 uppercase tracking-wider font-semibold">{t("ourmodel.stat_delt")}</div>
+            <p className="text-sm text-delt-muted mt-2">{t("ourmodel.stat_delt_desc")}</p>
           </div>
         </div>
 
         <div className="rounded-2xl border border-delt-border bg-delt-surface p-6 sm:p-8 mb-10">
-          <h3 className="text-xl font-bold text-delt-text mb-3">Pourquoi un modèle si petit ?</h3>
-          <p className="text-sm sm:text-base text-delt-muted leading-relaxed">
-            Parce qu'on commence quelque part. DELT 33M, c'est notre première brique
-            d'IA souveraine : on apprend à entraîner, à servir, à scaler. C'est imparfait,
-            parfois drôle, parfois confus — mais c'est <span className="font-semibold text-delt-text">le nôtre</span>.
-            Chaque abonnement Delt AI finance la prochaine version (100M, 500M, 1B…).
-          </p>
+          <h3 className="text-xl font-bold text-delt-text mb-3">{t("ourmodel.why_title")}</h3>
+          <p className="text-sm sm:text-base text-delt-muted leading-relaxed" dangerouslySetInnerHTML={{ __html: t("ourmodel.why_body") }} />
         </div>
 
         <div className="rounded-2xl border-2 border-blue-200 bg-white p-6 sm:p-8 mb-10 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
-            <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold uppercase tracking-wider">Live</span>
-            <h3 className="text-xl font-bold text-delt-text">Teste-le maintenant</h3>
+            <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold uppercase tracking-wider">{t("ourmodel.test_badge")}</span>
+            <h3 className="text-xl font-bold text-delt-text">{t("ourmodel.test_title")}</h3>
           </div>
           <p className="text-sm text-delt-muted mb-4">
-            Envoie un prompt à DELT 33M directement depuis cette page. Réponse en streaming, gratuit.
+            {t("ourmodel.test_desc")}
           </p>
           <form onSubmit={runTest} className="flex flex-col sm:flex-row gap-2">
             <input
               type="text"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Ex: Hello, who are you?"
+              placeholder={t("ourmodel.test_placeholder")}
               disabled={loading}
               className="flex-1 px-4 py-3 rounded-xl border border-delt-border bg-white text-delt-text text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50"
             />
@@ -156,30 +151,27 @@ export default function OurModelRoute() {
               disabled={loading || !prompt.trim()}
               className="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm font-semibold transition-colors whitespace-nowrap"
             >
-              {loading ? "Génère…" : "Envoyer"}
+              {loading ? t("ourmodel.test_loading") : t("ourmodel.test_send")}
             </button>
           </form>
           {(output || error || loading) && (
             <div className={`mt-4 p-4 rounded-xl text-sm whitespace-pre-wrap ${error ? "bg-red-50 text-red-700 border border-red-200" : "bg-delt-surface text-delt-text border border-delt-border"}`}>
-              {error ? `Erreur : ${error}` : (output || <span className="text-delt-muted italic">DELT réfléchit…</span>)}
+              {error ? `${t("err.generic")} : ${error}` : (output || <span className="text-delt-muted italic">{t("ourmodel.test_thinking")}</span>)}
             </div>
           )}
           <p className="text-[11px] text-delt-muted mt-3 italic">
-            ⚠ Le modèle parle surtout anglais et peut sortir n'importe quoi — c'est bébête mais c'est nous.
+            {t("ourmodel.test_warning")}
           </p>
         </div>
 
         <div className="rounded-3xl border-2 border-blue-300 bg-gradient-to-br from-blue-50 to-white p-6 sm:p-8 mb-10 text-center shadow-md">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-600 text-white text-[10px] font-bold uppercase tracking-wider mb-4">
-            🇫🇷 Soutiens un LLM 100% français
+            {t("ourmodel.support_badge")}
           </div>
           <h3 className="text-2xl sm:text-3xl font-extrabold text-delt-text mb-3">
-            Aide-nous à passer de 33M → 750M
+            {t("ourmodel.support_title")}
           </h3>
-          <p className="text-sm sm:text-base text-delt-muted max-w-xl mx-auto leading-relaxed mb-6">
-            GPU, dataset, formation : il nous faut <span className="font-bold text-delt-text">~5000€</span> pour la prochaine génération.
-            Chaque euro va directement dans le compute d'entraînement.
-          </p>
+          <p className="text-sm sm:text-base text-delt-muted max-w-xl mx-auto leading-relaxed mb-6" dangerouslySetInnerHTML={{ __html: t("ourmodel.support_body") }} />
 
           <div className="flex flex-wrap justify-center gap-2 mb-6">
             {[5, 10, 25].map((amt) => (
@@ -188,14 +180,14 @@ export default function OurModelRoute() {
               </span>
             ))}
             <span className="px-4 py-2 rounded-full bg-white border border-blue-300 text-blue-700 text-sm font-semibold">
-              Libre
+              {t("ourmodel.support_free")}
             </span>
           </div>
 
           <PayPalDonate />
 
           <p className="text-xs text-delt-muted mt-4">
-            Paiement 100% sécurisé via PayPal · Reçu par email
+            {t("ourmodel.support_secure")}
           </p>
         </div>
 
@@ -204,13 +196,13 @@ export default function OurModelRoute() {
             href="/billing"
             className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-delt-text hover:bg-black text-white font-semibold transition-colors shadow-md hover:shadow-lg"
           >
-            Ou prends un abonnement Delt AI
+            {t("ourmodel.cta_billing")}
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M5 12h14M13 5l7 7-7 7"/>
             </svg>
           </a>
           <p className="text-xs text-delt-muted mt-3">
-            Chaque crédit acheté finance aussi les prochains modèles maison.
+            {t("ourmodel.cta_billing_sub")}
           </p>
         </div>
 

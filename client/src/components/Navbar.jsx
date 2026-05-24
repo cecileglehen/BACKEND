@@ -2,14 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import Logo from "./Logo.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import { useT } from "../lib/i18n.jsx";
 
-const TABS = [
-  { to: "/",        label: "Chat" },
-  { to: "/code",    label: "Code" },
-  { to: "/studio",  label: "Studio" },
-  { to: "/billing", label: "Tarifs" },
-  { to: "/notre-modele", label: "NOTRE MODÈLE", highlight: "blue" }
-];
+function buildTabs(t) {
+  return [
+    { to: "/",        label: t("navbar.chat") },
+    { to: "/code",    label: t("navbar.code") },
+    { to: "/studio",  label: t("navbar.studio") },
+    { to: "/billing", label: t("navbar.pricing") },
+    { to: "/notre-modele", label: t("navbar.our_model"), highlight: "blue" }
+  ];
+}
 
 const PLAN_COLORS = {
   ULTRA: "#f59e0b",
@@ -21,6 +24,8 @@ const PLAN_COLORS = {
 
 export default function Navbar() {
   const { user, logout } = useAuth();
+  const t = useT();
+  const TABS = buildTabs(t);
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -83,7 +88,7 @@ export default function Navbar() {
             <button
               onClick={() => setOpen((o) => !o)}
               className="w-9 h-9 rounded-full bg-delt-text text-white text-sm font-bold flex items-center justify-center border border-slate-200 shadow-sm transition-transform hover:scale-105 active:scale-95"
-              aria-label="Menu profil"
+              aria-label={t("navbar.menu")}
               aria-expanded={open}
             >
               {initial}
@@ -108,7 +113,7 @@ export default function Navbar() {
                     <circle cx="12" cy="12" r="3"/>
                     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
                   </svg>
-                  Paramètres
+                  {t("navbar.settings")}
                 </button>
                 <button
                   onClick={handleLogout}
@@ -119,7 +124,7 @@ export default function Navbar() {
                     <polyline points="16 17 21 12 16 7"/>
                     <line x1="21" y1="12" x2="9" y2="12"/>
                   </svg>
-                  Déconnexion
+                  {t("navbar.logout")}
                 </button>
               </div>
             )}

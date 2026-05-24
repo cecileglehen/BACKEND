@@ -6,6 +6,7 @@ import UsagePage from "./UsagePage.jsx";
 import ModelPreferencesPage from "./ModelPreferencesPage.jsx";
 import MemoryPage from "./MemoryPage.jsx";
 import IntegrationsPage from "./IntegrationsPage.jsx";
+import { useLocale } from "../lib/i18n.jsx";
 
 const SECTIONS = [
   { id: "account",      label: "Compte" },
@@ -68,6 +69,7 @@ export default function SettingsPage({ user, initialSection = "account", onDelet
 }
 
 function AccountPanel({ user }) {
+  const { locale, setLocale, t } = useLocale();
   return (
     <div className="space-y-5">
       <div className="card p-4 sm:p-5">
@@ -75,6 +77,29 @@ function AccountPanel({ user }) {
         <div className="mt-4 grid sm:grid-cols-2 gap-3 text-sm">
           <Info label="Email" value={user?.email || "-"} />
           <Info label="Plan" value={user?.plan || "-"} />
+        </div>
+      </div>
+
+      <div className="card p-4 sm:p-5">
+        <h2 className="text-sm font-semibold text-delt-text">{t("settings.language")}</h2>
+        <div className="mt-3 flex gap-2">
+          {[
+            { code: "fr", label: t("settings.language_fr"), flag: "🇫🇷" },
+            { code: "en", label: t("settings.language_en"), flag: "🇬🇧" }
+          ].map((l) => (
+            <button
+              key={l.code}
+              onClick={() => setLocale(l.code)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                locale === l.code
+                  ? "bg-delt-text text-white border-delt-text"
+                  : "bg-white text-delt-text border-delt-border hover:bg-delt-surface"
+              }`}
+            >
+              <span>{l.flag}</span>
+              <span>{l.label}</span>
+            </button>
+          ))}
         </div>
       </div>
 

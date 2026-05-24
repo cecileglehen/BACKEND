@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
+import { useT } from "../lib/i18n.jsx";
 
 export default function GoodbyeRoute() {
+  const t = useT();
   const [show, setShow] = useState(false);
 
   useEffect(() => {
-    const t = setTimeout(() => setShow(true), 50);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setShow(true), 50);
+    return () => clearTimeout(timer);
   }, []);
 
   return (
@@ -19,26 +21,26 @@ export default function GoodbyeRoute() {
           </div>
 
           <h1 className="text-4xl sm:text-6xl font-extrabold text-delt-text leading-tight tracking-tight">
-            Pas de souci !
+            {t("goodbye.title")}
           </h1>
 
           <p className="mt-5 text-lg sm:text-xl text-delt-muted leading-relaxed max-w-xl mx-auto">
-            Le don a été annulé.
+            {t("goodbye.body")}
             <span className="block mt-2 text-delt-text font-semibold">
-              Tu peux nous soutenir autrement 💙
+              {t("goodbye.body_emphasis")}
             </span>
           </p>
 
           <div className="mt-10 grid sm:grid-cols-2 gap-3 max-w-xl mx-auto text-left">
             <div className="rounded-xl border border-delt-border bg-white p-5">
               <div className="text-2xl mb-2">⭐</div>
-              <div className="text-sm font-bold text-delt-text mb-1">Partage Delt AI</div>
-              <p className="text-xs text-delt-muted">Parle-en à tes amis, sur les réseaux. La pub gratuite c'est précieux.</p>
+              <div className="text-sm font-bold text-delt-text mb-1">{t("goodbye.alt_share")}</div>
+              <p className="text-xs text-delt-muted">{t("goodbye.alt_share_desc")}</p>
             </div>
             <div className="rounded-xl border border-delt-border bg-white p-5">
               <div className="text-2xl mb-2">💼</div>
-              <div className="text-sm font-bold text-delt-text mb-1">Prends un abonnement</div>
-              <p className="text-xs text-delt-muted">Chaque crédit finance aussi l'entraînement des prochains modèles.</p>
+              <div className="text-sm font-bold text-delt-text mb-1">{t("goodbye.alt_sub")}</div>
+              <p className="text-xs text-delt-muted">{t("goodbye.alt_sub_desc")}</p>
             </div>
           </div>
 
@@ -47,24 +49,24 @@ export default function GoodbyeRoute() {
               href="/notre-modele"
               className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-colors shadow-md"
             >
-              Réessayer le don
+              {t("goodbye.cta_retry")}
             </a>
             <a
               href="/billing"
               className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-white border border-delt-border hover:bg-delt-surface text-delt-text font-semibold transition-colors"
             >
-              Voir les abonnements
+              {t("goodbye.cta_billing")}
             </a>
             <a
               href="/"
               className="inline-flex items-center gap-2 px-6 py-3 rounded-full text-delt-muted hover:text-delt-text font-medium transition-colors"
             >
-              Retour au chat
+              {t("goodbye.cta_chat")}
             </a>
           </div>
 
           <p className="text-xs text-delt-muted mt-10 italic">
-            Aucun débit n'a été effectué.
+            {t("goodbye.note")}
           </p>
 
         </div>
