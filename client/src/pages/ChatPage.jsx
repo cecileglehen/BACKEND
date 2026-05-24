@@ -103,17 +103,7 @@ export default function ChatPage() {
     else refreshQuota();
   };
 
-  const chat = useChatStream({
-    projectId: activeProjectId,
-    enabledTools: enabledIntegrations,
-    onCreditsUsed,
-    onAgeGate: (resume) => {
-      setPendingVeniceSend(() => resume);
-      setAgeGateOpen(true);
-    }
-  });
-
-  // ── Composer state ─────────────────────────────────────────────────────
+  // ── Composer state (déclaré AVANT useChatStream qui en dépend) ─────────
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState([]);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -130,6 +120,16 @@ export default function ChatPage() {
   const [enabledIntegrations, setEnabledIntegrations] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem("delt-enabled-integrations") || "[]")); }
     catch { return new Set(); }
+  });
+
+  const chat = useChatStream({
+    projectId: activeProjectId,
+    enabledTools: enabledIntegrations,
+    onCreditsUsed,
+    onAgeGate: (resume) => {
+      setPendingVeniceSend(() => resume);
+      setAgeGateOpen(true);
+    }
   });
 
   useEffect(() => {
