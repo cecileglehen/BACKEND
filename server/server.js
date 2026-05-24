@@ -333,6 +333,22 @@ app.delete("/api/privacy/account", requireAuth, async (req, res) => {
 
 // ─── Quota snapshot ──────────────────────────────────────────────────────────
 
+// Injecte la date du jour pour éviter les hallucinations type "nous sommes
+// en 2024" alors que l'utilisateur partage un article 2026. La cutoff de
+// connaissance du modèle est figée, mais la conscience temporelle non.
+function buildDatePrompt() {
+  const now = new Date();
+  const isoDate = now.toISOString().slice(0, 10);
+  const months = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+  const dayName = ["dimanche","lundi","mardi","mercredi","jeudi","vendredi","samedi"][now.getUTCDay()];
+  const humanDate = `${dayName} ${now.getUTCDate()} ${months[now.getUTCMonth()]} ${now.getUTCFullYear()}`;
+  return [
+    `Date du jour : ${isoDate} (${humanDate}, fuseau UTC).`,
+    `Tu DOIS utiliser cette date pour interpréter "récent", "actuel", "maintenant", "cette année".`,
+    `Si un article, prix, événement, ou actu est daté de cette année ou de l'année passée, traite-le comme RÉCENT — ne dis JAMAIS "nous sommes en 2024" ou un autre déni temporel. Ta connaissance interne peut être antérieure à cette date : c'est normal, la date du jour ci-dessus est la vérité.`
+  ].join("\n");
+}
+
 function buildProjectSystemMessage(project) {
   if (!project) return null;
   const lines = [
@@ -1173,6 +1189,9 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
     if (skillPrompt) {
       compressed = [{ role: "system", content: skillPrompt }, ...compressed];
     }
+
+    // ─── Date actuelle (évite "nous sommes en 2024" sur du contenu 2026) ─
+    compressed = [{ role: "system", content: buildDatePrompt() }, ...compressed];
 
     // ─── Injection mémoire utilisateur (system prompt) ──────────────────────
     if (user.display_name || (user.memory_profile && Object.keys(user.memory_profile).length > 0)) {
