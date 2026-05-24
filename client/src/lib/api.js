@@ -136,7 +136,7 @@ export const api = {
   },
 
   // Chat streaming SSE
-  chatStream: ({ messages, tier, modelId, manual, projectId, onDelta, onThinking, onMeta, onDone, onError, onWebsearch, onArtifact, onImage }) => {
+  chatStream: ({ messages, tier, modelId, manual, projectId, onDelta, onThinking, onMeta, onDone, onError, onWebsearch, onArtifact, onImage, onTool }) => {
     const ctrl = new AbortController();
     fetch(u("/api/chat/stream"), {
       method: "POST",
@@ -169,6 +169,7 @@ export const api = {
             else if (msg.type === "websearch") onWebsearch?.(msg);
             else if (msg.type === "artifact") onArtifact?.(msg);
             else if (msg.type === "image" || msg.type === "image_pending" || msg.type === "image_error") onImage?.(msg);
+            else if (msg.type === "tool_call" || msg.type === "tool_result") onTool?.(msg);
             else if (msg.delta !== undefined) onDelta?.(msg.delta);
           } catch { /* ignore */ }
         }

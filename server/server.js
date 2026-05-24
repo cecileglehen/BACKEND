@@ -12,9 +12,9 @@ dotenv.config({ path: path.join(__dirname, "..", ".env") });
 import { initSchema } from "./lib/db.js";
 import { register, login, signToken, requireAuth, refreshUser, verifyToken } from "./lib/auth.js";
 import { routeMessage } from "./lib/router.js";
-import { chatWithFallback, streamChat } from "./lib/openrouter.js";
+import { chatWithFallback, chatWithTools, streamChat } from "./lib/openrouter.js";
 import { getBaseSkillPrompt, parseSkillBlocks } from "./lib/skills.js";
-import { listAvailableApps, listUserIntegrations, initiateConnection, confirmConnection, revokeIntegration } from "./lib/composio.js";
+import { listAvailableApps, listUserIntegrations, initiateConnection, confirmConnection, revokeIntegration, getToolsForUser, executeToolCall } from "./lib/composio.js";
 import { recordUsage, logUsage, quotaSnapshot, resolveTier } from "./lib/windows.js";
 import { getCredits, deductCredits, hasEnoughCredits, grantPlanCredits, resetMonthlyCredits, getApiCredits, transferCredits, getFreeNanoTokens, deductFreeNanoTokens, FREE_NANO_MODEL_ID } from "./lib/credits.js";
 import { computeCreditCost, computeCreditFromCost, FREE_TIER_ONLY_PLANS } from "./config/plans.js";
@@ -1267,6 +1267,58 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
       }
     } else if (decision.needsSearch && !hasSerperKey) {
       console.warn("[websearch] ⚠ Détection positive mais SERPER_API_KEY absente — search skippée");
+    }
+
+    // ─── Tool calling Composio (Gmail, Drive, etc.) ─────────────────────────
+    // Si l'user a des intégrations connectées, on récupère ses tools et on
+    // exécute la boucle de tool-calling AVANT de stream la réponse finale.
+    let composioTools = [];
+    let toolCallsExecuted = 0;
+    try {
+      composioTools = await getToolsForUser(user.id);
+    } catch (e) {
+      console.warn("[composio] getTools fail:", e.message);
+    }
+
+    if (composioTools.length > 0) {
+      const MAX_TOOL_ROUNDS = 5;
+      let round = 0;
+      while (round < MAX_TOOL_ROUNDS) {
+        let toolResp;
+        try {
+          toolResp = await chatWithTools({
+            modelId: modelInfo.id,
+            messages: compressed,
+            tools: composioTools,
+            signal: req.signal ?? undefined
+          });
+        } catch (e) {
+          console.warn("[composio] chatWithTools fail:", e.message);
+          break;
+        }
+        const msg = toolResp?.message;
+        const toolCalls = msg?.tool_calls;
+        if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
+          // L'IA ne demande plus de tool → on sort de la boucle.
+          // Le messages array reste tel quel pour le streaming final.
+          break;
+        }
+        // Ajoute le message assistant (avec les tool_calls) à l'historique
+        compressed.push({ role: "assistant", content: msg.content || "", tool_calls: toolCalls });
+        // Exécute chaque tool en parallèle
+        const results = await Promise.all(toolCalls.map(async (tc) => {
+          const name = tc.function?.name || tc.name;
+          let args = {};
+          try { args = JSON.parse(tc.function?.arguments || tc.arguments || "{}"); } catch {}
+          res.write(`data: ${JSON.stringify({ type: "tool_call", id: tc.id, name, args })}\n\n`);
+          const result = await executeToolCall({ userId: user.id, toolName: name, args });
+          res.write(`data: ${JSON.stringify({ type: "tool_result", id: tc.id, name, ok: !result?.error, preview: JSON.stringify(result).slice(0, 200) })}\n\n`);
+          return { tool_call_id: tc.id, role: "tool", name, content: JSON.stringify(result).slice(0, 8000) };
+        }));
+        compressed.push(...results);
+        toolCallsExecuted += toolCalls.length;
+        round += 1;
+      }
     }
 
     await streamChat({

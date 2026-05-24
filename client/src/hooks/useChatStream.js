@@ -83,6 +83,16 @@ export function useChatStream({ projectId, onCreditsUsed, onAgeGate }) {
         ...m,
         artifacts: [...(m.artifacts || []), { filename: a.filename, content: a.content, mime: a.mime, ext: a.ext }]
       })),
+      onTool: (info) => applyUpdate((m) => {
+        const next = { ...m, toolCalls: [...(m.toolCalls || [])] };
+        if (info.type === "tool_call") {
+          next.toolCalls.push({ id: info.id, name: info.name, args: info.args, status: "pending" });
+        } else if (info.type === "tool_result") {
+          const idx = next.toolCalls.findIndex((t) => t.id === info.id);
+          if (idx >= 0) next.toolCalls[idx] = { ...next.toolCalls[idx], status: info.ok ? "done" : "error", preview: info.preview };
+        }
+        return next;
+      }),
       onImage: (info) => applyUpdate((m) => {
         if (info.type === "image") {
           return { ...m, generatedImages: [...(m.generatedImages || []), { url: info.url, prompt: info.prompt, model: info.model }] };

@@ -58,17 +58,19 @@ async function callDeltModel(modelId, messages, signal) {
   return res.json();
 }
 
-async function callModel(modelId, messages, signal) {
+async function callModel(modelId, messages, signal, extra = {}) {
   if (isDeltModel(modelId)) return callDeltModel(modelId, messages, signal);
 
   const key = (process.env.OPENROUTER_API_KEY || "").trim();
   if (!key) throw new Error("OPENROUTER_API_KEY manquante");
 
+  const body = { model: modelId, messages, usage: { include: true }, ...extra };
+
   const res = await fetch(OR_URL, {
     method: "POST",
     signal,
     headers: headers(key),
-    body: JSON.stringify({ model: modelId, messages, usage: { include: true } })
+    body: JSON.stringify(body)
   });
 
   if (!res.ok) {
@@ -79,6 +81,18 @@ async function callModel(modelId, messages, signal) {
     throw err;
   }
   return res.json();
+}
+
+// Appel non-streaming avec support tools (OpenAI function calling format).
+// Renvoie le message complet (avec éventuellement tool_calls) + usage.
+export async function chatWithTools({ modelId, messages, tools, signal }) {
+  const data = await callModel(modelId, messages, signal, tools?.length > 0 ? { tools, tool_choice: "auto" } : {});
+  const choice = data?.choices?.[0];
+  return {
+    message: choice?.message || { role: "assistant", content: "" },
+    usage: data?.usage || null,
+    raw: data
+  };
 }
 
 export async function chatWithFallback({ modelId, messages, signal, manual = false }) {
