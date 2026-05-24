@@ -284,7 +284,18 @@ function stripReasoningEcho(content, reasoning) {
     .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
     .replace(/<think>[\s\S]*$/gi, "")
     .replace(/<thinking>[\s\S]*$/gi, "")
-    .replace(/<\/think>|<\/thinking>/gi, "");
+    .replace(/<\/think>|<\/thinking>/gi, "")
+    // Harmony / OpenAI internal tool-call format leaks dans le content
+    // (GPT-5.x sort parfois `to=functions.X ...json {...}` au lieu d'utiliser
+    // le vrai mécanisme tool_calls). On strip toutes les variantes connues.
+    .replace(/<\|channel\|>[^<]*?<\|message\|>/g, "")
+    .replace(/<\|[a-z_]+\|>/gi, "")
+    .replace(/to=functions\.[A-Z0-9_]+\s*[\s\S]*?\{[\s\S]*?\}\s*/gi, "")
+    .replace(/^\s*(commentary|analysis)\s*\n/gim, "")
+    // Spam/garbage tokens : suites CJK ou cyrillique aléatoires de 2+ chars
+    // (souvent injectées entre tool calls par OpenRouter sur certains modèles)
+    .replace(/[\u4e00-\u9fff\u3000-\u303f]{2,}/g, "")
+    .replace(/[\u0400-\u04ff]{4,}/g, "");
 
   const thought = String(reasoning || "").trim();
   if (thought.length < 24) return stripAnswerPrefix(clean);

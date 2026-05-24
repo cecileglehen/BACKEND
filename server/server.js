@@ -1326,7 +1326,13 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
           "✅ COMPORTEMENT CORRECT :",
           "- Si la question demande des données réelles (mes mails, mes events, mes messages) → APPELLE le tool correspondant.",
           "- Si tu ne reçois rien en réponse / si une erreur tool → DIS-LE clairement (\"Je n'ai pas pu accéder à Gmail, voici l'erreur reçue\").",
-          "- Actions sensibles (envoi mail, suppression fichier) → demande confirmation AVANT l'appel."
+          "- Actions sensibles (envoi mail, suppression fichier) → demande confirmation AVANT l'appel.",
+          "",
+          "🛑 FORMAT DE RÉPONSE — RÈGLE ABSOLUE :",
+          "- Tes appels de tools passent par le mécanisme tool_calls JSON structuré (invisible à l'utilisateur).",
+          "- Dans ton TEXTE de réponse, n'écris JAMAIS de syntaxe interne comme `to=functions.X`, `<|channel|>`, `commentary`, `json {...}`, ni de blocs imitant un appel d'outil.",
+          "- N'inclus jamais de tokens étrangers non demandés (chinois, cyrillique aléatoire). Si tu vois ces patterns dans ta génération, arrête et reformule en français propre.",
+          "- Réponds uniquement en langage naturel, comme à un humain. Le résultat des tools est déjà disponible dans l'historique, exploite-le directement."
         ].join("\n")
       }, ...compressed];
     }
