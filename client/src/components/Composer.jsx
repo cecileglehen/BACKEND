@@ -297,7 +297,7 @@ export default function Composer({
             const isFullAuto = autoMode && !manualModel;
             const brand = !isFullAuto ? manualModel?.brand : null;
             const brandLogo = brand ? BRAND_LOGOS[brand] : null;
-            const label = isFullAuto ? "Auto" : (manualLabel || "Modèle");
+            const label = isFullAuto ? t("composer.auto") : (manualLabel || t("composer.model"));
             return (
               <button
                 type="button"
@@ -350,7 +350,7 @@ export default function Composer({
                 <line x1="16.5" y1="16.5" x2="21" y2="21" />
                 <path d="M8.5 11h5M11 8.5v5" />
               </svg>
-              <span className="font-medium">Deep Search</span>
+              <span className="font-medium">{t("composer.deep_search")}</span>
             </button>
           )}
 
@@ -370,7 +370,7 @@ export default function Composer({
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
               </svg>
-              <span className="font-medium hidden sm:inline">{debateActive ? "Débat actif" : "Débat"}</span>
+              <span className="font-medium hidden sm:inline">{debateActive ? t("composer.debate_active") : t("composer.debate")}</span>
             </button>
           )}
 
@@ -472,6 +472,7 @@ const INTEG_COLOR_LOGOS = {
 };
 
 function ToolsButton({ integrations, enabledIntegrations, onToggle }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const connected = integrations.filter((i) => i.connected);
@@ -494,7 +495,7 @@ function ToolsButton({ integrations, enabledIntegrations, onToggle }) {
             ? "border-blue-300 bg-blue-50 text-blue-700"
             : "border-delt-border text-delt-muted hover:text-delt-text hover:bg-delt-surface"
         }`}
-        title="Outils connectés"
+        title={t("composer.tools_title")}
       >
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="3"/>
@@ -508,13 +509,13 @@ function ToolsButton({ integrations, enabledIntegrations, onToggle }) {
       {open && (
         <div className="absolute bottom-full mb-2 right-0 z-50 w-72 bg-white rounded-xl border border-delt-border shadow-xl overflow-hidden">
           <div className="px-3 py-2.5 border-b border-delt-border bg-delt-surface/40">
-            <div className="text-xs font-bold text-delt-text uppercase tracking-wider">Outils connectés</div>
-            <div className="text-[11px] text-delt-muted mt-0.5">Active ce que l'IA peut utiliser dans ce chat</div>
+            <div className="text-xs font-bold text-delt-text uppercase tracking-wider">{t("composer.tools_title")}</div>
+            <div className="text-[11px] text-delt-muted mt-0.5">{t("composer.tools_desc")}</div>
           </div>
           {connected.length === 0 ? (
             <div className="px-4 py-6 text-center">
-              <div className="text-sm text-delt-muted">Aucune intégration connectée</div>
-              <a href="/settings" className="text-xs text-blue-600 font-semibold hover:underline mt-2 inline-block">Connecter une app →</a>
+              <div className="text-sm text-delt-muted">{t("composer.tools_empty")}</div>
+              <a href="/settings" className="text-xs text-blue-600 font-semibold hover:underline mt-2 inline-block">{t("composer.tools_connect")}</a>
             </div>
           ) : (
             <div className="py-1 max-h-80 overflow-y-auto">
@@ -547,7 +548,7 @@ function ToolsButton({ integrations, enabledIntegrations, onToggle }) {
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-semibold text-delt-text truncate">{it.label}</div>
                       <div className="text-[10px] text-delt-muted">
-                        {active ? "✓ Autorisé pour ce chat" : "Inactif"}
+                        {active ? t("composer.tools_authorized") : t("composer.tools_inactive")}
                       </div>
                     </div>
                     {/* Toggle switch */}
@@ -568,7 +569,7 @@ function ToolsButton({ integrations, enabledIntegrations, onToggle }) {
             </div>
           )}
           <div className="px-3 py-2 border-t border-delt-border bg-delt-surface/30 text-[10px] text-delt-muted text-center">
-            Apps activées → l'IA peut les appeler dans ce chat
+            {t("composer.tools_footer")}
           </div>
         </div>
       )}
