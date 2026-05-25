@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
+import { useT } from "../lib/i18n.jsx";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "https://deltai-backend.onrender.com").replace(/\/$/, "");
 
@@ -52,7 +53,9 @@ console.log("Coût :", res.delt.credit_cost, "Cr");`
   }
 ];
 
-function CopyButton({ text, label = "Copier" }) {
+function CopyButton({ text, label }) {
+  const t = useT();
+  const finalLabel = label || t("apikeys.copy");
   const [copied, setCopied] = useState(false);
   const copy = () => {
     navigator.clipboard.writeText(text).then(() => {
@@ -71,7 +74,7 @@ function CopyButton({ text, label = "Copier" }) {
           <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#10b981" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12"/>
           </svg>
-          <span className="text-emerald-600">Copié</span>
+          <span className="text-emerald-600">{t("apikeys.copied")}</span>
         </>
       ) : (
         <>
@@ -79,7 +82,7 @@ function CopyButton({ text, label = "Copier" }) {
             <rect x="9" y="9" width="13" height="13" rx="2"/>
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
           </svg>
-          {label}
+          {finalLabel}
         </>
       )}
     </button>
@@ -87,6 +90,7 @@ function CopyButton({ text, label = "Copier" }) {
 }
 
 export default function ApiKeysPage() {
+  const t = useT();
   const [keys, setKeys]                   = useState([]);
   const [loading, setLoading]             = useState(true);
   const [creating, setCreating]           = useState(false);
@@ -154,7 +158,7 @@ export default function ApiKeysPage() {
   };
 
   const handleRevoke = async (id) => {
-    if (!window.confirm("Révoquer cette clé ? Toutes les requêtes échoueront immédiatement.")) return;
+    if (!window.confirm(t("apikeys.revoke_confirm2"))) return;
     try {
       await api.revokeApiKey(id);
       await refresh();
@@ -181,16 +185,16 @@ export default function ApiKeysPage() {
           </svg>
         </div>
         <div>
-          <h1 className="text-xl sm:text-2xl font-extrabold text-delt-text tracking-tight">Clés API</h1>
-          <p className="text-sm text-delt-muted">Accède à tous les modèles DELT depuis ton code — compatible OpenAI SDK.</p>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-delt-text tracking-tight">{t("apikeys.title")}</h1>
+          <p className="text-sm text-delt-muted">{t("apikeys.subtitle2")}</p>
         </div>
       </div>
 
       {/* Soldes & transfert */}
       <div className="rounded-2xl bg-white border border-delt-border p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
-          <div className="text-xs font-bold uppercase tracking-widest text-delt-muted">Solde de crédits</div>
-          <a href="/billing" className="text-[11px] font-semibold text-delt-accent hover:underline">+ Recharger</a>
+          <div className="text-xs font-bold uppercase tracking-widest text-delt-muted">{t("apikeys.credits_balance")}</div>
+          <a href="/billing" className="text-[11px] font-semibold text-delt-accent hover:underline">{t("apikeys.recharge")}</a>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
@@ -201,13 +205,13 @@ export default function ApiKeysPage() {
                 <line x1="8" y1="21" x2="16" y2="21"/>
                 <line x1="12" y1="17" x2="12" y2="21"/>
               </svg>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-delt-muted">Plan (app)</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-delt-muted">{t("apikeys.plan_app")}</span>
             </div>
             <div className="text-2xl font-extrabold text-delt-text font-mono">
               {credits.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               <span className="text-xs font-normal text-delt-muted ml-1">Cr</span>
             </div>
-            <div className="text-[10px] text-delt-muted mt-0.5">Pour le chat dans l'app web</div>
+            <div className="text-[10px] text-delt-muted mt-0.5">{t("apikeys.plan_desc")}</div>
           </div>
 
           <div className="rounded-xl p-4 border" style={{ background: "linear-gradient(135deg, #eff6ff, #ecfeff)", borderColor: "#bfdbfe" }}>
@@ -215,13 +219,13 @@ export default function ApiKeysPage() {
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5"/>
               </svg>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-blue-700">API (sk-delt)</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-blue-700">{t("apikeys.api_label")}</span>
             </div>
             <div className="text-2xl font-extrabold text-blue-700 font-mono">
               {apiCredits.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               <span className="text-xs font-normal text-blue-600 ml-1">Cr</span>
             </div>
-            <div className="text-[10px] text-blue-600/80 mt-0.5">Pour tes appels API externes</div>
+            <div className="text-[10px] text-blue-600/80 mt-0.5">{t("apikeys.api_desc")}</div>
           </div>
         </div>
 
@@ -235,15 +239,15 @@ export default function ApiKeysPage() {
             onChange={(e) => setTransferDirection(e.target.value)}
             className="px-3 py-2 text-xs font-semibold rounded-xl border border-delt-border bg-white outline-none focus:border-delt-accent"
           >
-            <option value="to_api">Plan → API</option>
-            <option value="to_plan">API → Plan</option>
+            <option value="to_api">{t("apikeys.to_api")}</option>
+            <option value="to_plan">{t("apikeys.to_plan")}</option>
           </select>
           <input
             type="number"
             min="1" step="1"
             value={transferAmount}
             onChange={(e) => setTransferAmount(e.target.value)}
-            placeholder="Montant en Cr"
+            placeholder={t("apikeys.amount_placeholder")}
             className="flex-1 px-3 py-2 text-sm rounded-xl border border-delt-border outline-none focus:border-delt-accent"
           />
           <button
@@ -252,7 +256,7 @@ export default function ApiKeysPage() {
             className="px-4 py-2 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ background: "linear-gradient(135deg, #2563eb, #06b6d4)" }}
           >
-            {transferring ? "..." : "Transférer"}
+            {transferring ? "..." : t("apikeys.transfer_btn")}
           </button>
         </div>
       </div>
@@ -268,8 +272,8 @@ export default function ApiKeysPage() {
                 </svg>
               </div>
               <div>
-                <div className="text-sm font-bold text-emerald-900">Nouvelle clé créée</div>
-                <div className="text-[11px] text-emerald-700">Cette clé ne sera plus jamais affichée — copie-la maintenant.</div>
+                <div className="text-sm font-bold text-emerald-900">{t("apikeys.new_key")}</div>
+                <div className="text-[11px] text-emerald-700">{t("apikeys.warning_once")}</div>
               </div>
             </div>
             <button onClick={() => setRevealedKey(null)} className="text-emerald-700 hover:text-emerald-900 text-lg leading-none">✕</button>
@@ -285,13 +289,13 @@ export default function ApiKeysPage() {
 
       {/* Création */}
       <div className="rounded-2xl bg-white border border-delt-border p-5 shadow-sm">
-        <div className="text-xs font-bold uppercase tracking-widest text-delt-muted mb-3">Créer une clé</div>
+        <div className="text-xs font-bold uppercase tracking-widest text-delt-muted mb-3">{t("apikeys.create_section")}</div>
         <div className="flex flex-col sm:flex-row gap-2">
           <input
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Nom (ex: production, dev local, mobile…)"
+            placeholder={t("apikeys.name_placeholder2")}
             className="flex-1 px-4 py-2.5 text-sm rounded-xl border border-delt-border outline-none focus:border-delt-accent"
             maxLength={100}
           />
@@ -307,7 +311,7 @@ export default function ApiKeysPage() {
                   <line x1="12" y1="5" x2="12" y2="19"/>
                   <line x1="5" y1="12" x2="19" y2="12"/>
                 </svg>
-                Générer
+                {t("apikeys.create")}
               </>
             )}
           </button>
@@ -331,7 +335,7 @@ export default function ApiKeysPage() {
         </div>
 
         {loading ? (
-          <div className="text-sm text-delt-muted py-4">Chargement…</div>
+          <div className="text-sm text-delt-muted py-4">{t("apikeys.loading")}</div>
         ) : activeKeys.length === 0 ? (
           <div className="text-sm text-delt-muted py-4 text-center bg-delt-surface rounded-xl">
             Aucune clé active. Crée-en une pour commencer.
@@ -354,7 +358,7 @@ export default function ApiKeysPage() {
                   onClick={() => handleRevoke(k.id)}
                   className="text-xs font-semibold text-red-600 hover:text-white hover:bg-red-600 px-3 py-1.5 rounded-full border border-red-200 hover:border-red-600 transition-colors flex-shrink-0"
                 >
-                  Révoquer
+                  {t("apikeys.revoke")}
                 </button>
               </div>
             ))}
@@ -371,7 +375,7 @@ export default function ApiKeysPage() {
                 <div key={k.id} className="px-3 py-2 rounded-lg bg-delt-surface text-xs opacity-70">
                   <span className="font-medium">{k.name || "(sans nom)"}</span>
                   <span className="text-delt-muted ml-2 font-mono">{k.key_prefix}...</span>
-                  <span className="text-red-600 ml-2 font-semibold">RÉVOQUÉE</span>
+                  <span className="text-red-600 ml-2 font-semibold">{t("apikeys.revoked_badge")}</span>
                 </div>
               ))}
             </div>
@@ -382,7 +386,7 @@ export default function ApiKeysPage() {
       {/* Quick start */}
       <div className="rounded-2xl bg-white border border-delt-border p-5 shadow-sm">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <div className="text-xs font-bold uppercase tracking-widest text-delt-muted">Test rapide</div>
+          <div className="text-xs font-bold uppercase tracking-widest text-delt-muted">{t("apikeys.quick_test")}</div>
           <div className="inline-flex p-0.5 rounded-full bg-delt-surface border border-delt-border">
             {LANGS.map((l) => (
               <button

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api.js";
+import { useT } from "../lib/i18n.jsx";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "https://deltai-backend.onrender.com").replace(/\/$/, "");
 
@@ -9,21 +10,21 @@ const TIER_BADGE = {
   NORMAL: "badge-normal", EXPERT: "badge-expert", PRO: "badge-pro"
 };
 
-const SECTIONS = [
-  { id: "intro",       label: "Introduction" },
-  { id: "quickstart",  label: "Démarrage rapide" },
-  { id: "auth",        label: "Authentification" },
-  { id: "base-url",    label: "Base URL & SDK" },
-  { id: "endpoints",   label: "Endpoints" },
-  { id: "chat",        label: "Chat completions" },
-  { id: "streaming",   label: "Streaming SSE" },
-  { id: "multimodal",  label: "Vision & multimodal" },
-  { id: "models",      label: "Catalogue de modèles" },
-  { id: "pricing",     label: "Facturation" },
-  { id: "limits",      label: "Limites & bonnes pratiques" },
-  { id: "errors",      label: "Codes d'erreur" },
-  { id: "cookbook",    label: "Cookbook" },
-  { id: "faq",         label: "FAQ" }
+const SECTION_KEYS = [
+  { id: "intro",       labelKey: "docs.intro" },
+  { id: "quickstart",  labelKey: "docs.quickstart" },
+  { id: "auth",        labelKey: "docs.auth" },
+  { id: "base-url",    labelKey: "docs.base_url_sdk" },
+  { id: "endpoints",   labelKey: "docs.endpoints" },
+  { id: "chat",        labelKey: "docs.chat_completions" },
+  { id: "streaming",   labelKey: "docs.streaming" },
+  { id: "multimodal",  labelKey: "docs.vision" },
+  { id: "models",      labelKey: "docs.catalog" },
+  { id: "pricing",     labelKey: "docs.pricing_label" },
+  { id: "limits",      labelKey: "docs.limits" },
+  { id: "errors",      labelKey: "docs.errors" },
+  { id: "cookbook",    labelKey: "docs.cookbook" },
+  { id: "faq",         labelKey: "docs.faq" }
 ];
 
 function formatCtx(n) {
@@ -110,6 +111,7 @@ function Param({ name, type, required, desc }) {
 }
 
 export default function ApiDocsPage() {
+  const t = useT();
   const [catalog, setCatalog] = useState(null);
   const [activeSection, setActiveSection] = useState("intro");
 
@@ -120,7 +122,7 @@ export default function ApiDocsPage() {
   useEffect(() => {
     const handler = () => {
       const offset = 80;
-      for (const sec of [...SECTIONS].reverse()) {
+      for (const sec of [...SECTION_KEYS].reverse()) {
         const el = document.getElementById(sec.id);
         if (el && el.getBoundingClientRect().top <= offset) {
           setActiveSection(sec.id);
@@ -157,7 +159,7 @@ export default function ApiDocsPage() {
           </svg>
         </div>
         <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-delt-text tracking-tight">Documentation API</h1>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-delt-text tracking-tight">{t("docs.title")}</h1>
           <p className="text-sm text-delt-muted">API REST compatible OpenAI · {allModels.length || "30+"} modèles dans un seul endpoint</p>
         </div>
       </div>
@@ -167,8 +169,8 @@ export default function ApiDocsPage() {
         {/* Sidebar TOC */}
         <aside className="hidden lg:block">
           <nav className="sticky top-6 space-y-0.5">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-delt-muted mb-2 px-2">Sommaire</div>
-            {SECTIONS.map((s) => (
+            <div className="text-[10px] font-bold uppercase tracking-widest text-delt-muted mb-2 px-2">{t("docs.toc")}</div>
+            {SECTION_KEYS.map((s) => (
               <a
                 key={s.id}
                 href={`#${s.id}`}
@@ -178,7 +180,7 @@ export default function ApiDocsPage() {
                     : "text-delt-muted hover:text-delt-text hover:bg-delt-surface"
                 }`}
               >
-                {s.label}
+                {t(s.labelKey)}
               </a>
             ))}
           </nav>
@@ -189,7 +191,7 @@ export default function ApiDocsPage() {
 
           {/* ─── INTRO ───────────────────────────── */}
           <section id="intro" className="scroll-mt-20">
-            <H2 id="intro">Introduction</H2>
+            <H2 id="intro">{t("docs.intro")}</H2>
             <P>
               L'<strong className="text-delt-text">API DELT</strong> donne accès à tous les meilleurs modèles d'IA du marché — GPT-5, Claude Sonnet/Opus, Gemini, Grok, Mistral, Llama, DeepSeek, Perplexity Sonar et plus — derrière un <strong>endpoint unique</strong> compatible avec le SDK OpenAI.
             </P>
@@ -213,8 +215,8 @@ export default function ApiDocsPage() {
 
           {/* ─── QUICK START ─────────────────────── */}
           <section id="quickstart">
-            <H2 id="quickstart">Démarrage rapide</H2>
-            <P>En 3 étapes, tu envoies ta première requête :</P>
+            <H2 id="quickstart">{t("docs.quickstart")}</H2>
+            <P>{t("docs.steps")}</P>
             <div className="space-y-3">
               {[
                 { n: 1, t: "Crée une clé API", d: <>Va dans l'onglet <a href="/api" className="text-delt-accent font-semibold hover:underline">API</a>, clique "Créer une clé", et copie-la (elle ne sera affichée qu'une seule fois).</> },
@@ -234,7 +236,7 @@ export default function ApiDocsPage() {
               ))}
             </div>
 
-            <H3>Exemple complet (Python)</H3>
+            <H3>{t("docs.complete_example")}</H3>
             <Code lang="python">{`from openai import OpenAI
 
 client = OpenAI(
@@ -252,20 +254,20 @@ print(response.choices[0].message.content)`}</Code>
 
           {/* ─── AUTH ────────────────────────────── */}
           <section id="auth">
-            <H2 id="auth">Authentification</H2>
+            <H2 id="auth">{t("docs.auth")}</H2>
             <P>
               Toutes les requêtes doivent inclure ta clé API dans le header :
             </P>
             <Code>{`Authorization: Bearer sk-delt-VOTRE_CLE`}</Code>
 
-            <H3>Format de la clé</H3>
+            <H3>{t("docs.key_format")}</H3>
             <P>
               Toutes les clés DELT commencent par <code className="font-mono bg-delt-surface px-1.5 py-0.5 rounded text-[11px]">sk-delt-</code> suivi de 64 caractères hex aléatoires. Exemple :
               <br />
               <code className="font-mono text-[11px] text-delt-muted">sk-delt-533ea05dac3b...</code>
             </P>
 
-            <H3>Sécurité</H3>
+            <H3>{t("docs.security")}</H3>
             <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-xs space-y-2">
               <div><strong className="text-amber-900">⚠ Ne mets jamais ta clé dans du code public.</strong> Stocke-la côté serveur ou dans un gestionnaire de secrets (env vars, AWS Secrets, etc.).</div>
               <div>Une clé compromise peut être <strong>révoquée immédiatement</strong> depuis l'onglet API.</div>
@@ -275,12 +277,12 @@ print(response.choices[0].message.content)`}</Code>
 
           {/* ─── BASE URL & SDK ──────────────────── */}
           <section id="base-url">
-            <H2 id="base-url">Base URL & SDK</H2>
+            <H2 id="base-url">{t("docs.base_url_sdk")}</H2>
             <P>
               L'API DELT est <strong>strictement compatible</strong> avec l'API <code className="font-mono bg-delt-surface px-1 py-0.5 rounded text-[11px]">/v1/chat/completions</code> d'OpenAI. Tu peux donc utiliser n'importe quel SDK officiel ou tiers — il suffit de changer la base URL.
             </P>
             <div className="rounded-xl bg-delt-surface p-4 mb-4">
-              <div className="text-[10px] font-bold uppercase tracking-widest text-delt-muted">Base URL</div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-delt-muted">{t("docs.base_url")}</div>
               <div className="font-mono text-sm font-bold text-delt-text mt-1">{API_BASE}/v1</div>
             </div>
 
@@ -314,19 +316,19 @@ client := openai.NewClientWithConfig(config)`}</Code>
 
           {/* ─── ENDPOINTS ───────────────────────── */}
           <section id="endpoints">
-            <H2 id="endpoints">Endpoints</H2>
+            <H2 id="endpoints">{t("docs.endpoints")}</H2>
             <Endpoint method="GET"  path="/v1/models" desc="Liste tous les modèles disponibles avec leur ID, tier et capacités." />
             <Endpoint method="POST" path="/v1/chat/completions" desc="Génère une réponse texte. Supporte le streaming SSE et le multimodal (images)." />
           </section>
 
           {/* ─── CHAT COMPLETIONS ────────────────── */}
           <section id="chat">
-            <H2 id="chat">Chat completions</H2>
+            <H2 id="chat">{t("docs.chat_completions")}</H2>
             <P>
               Endpoint principal pour générer du texte. <strong>Drop-in replacement</strong> de l'endpoint OpenAI du même nom.
             </P>
 
-            <H3>Paramètres</H3>
+            <H3>{t("docs.params")}</H3>
             <div className="rounded-xl border border-delt-border bg-white p-4">
               <Param name="model"        type="string"  required desc="ID exact du modèle (ex: openai/gpt-5.4, anthropic/claude-sonnet-4-5)" />
               <Param name="messages"     type="array"   required desc="Historique au format [{role, content}]. Roles : system, user, assistant" />
@@ -340,7 +342,7 @@ client := openai.NewClientWithConfig(config)`}</Code>
               <Param name="seed"         type="number"  desc="Pour reproductibilité (si supporté par le modèle)" />
             </div>
 
-            <H3>Exemple</H3>
+            <H3>{t("docs.example")}</H3>
             <Code lang="python">{`response = client.chat.completions.create(
     model="anthropic/claude-sonnet-4-5",
     messages=[
@@ -352,7 +354,7 @@ client := openai.NewClientWithConfig(config)`}</Code>
 )
 print(response.choices[0].message.content)`}</Code>
 
-            <H3>Format de réponse</H3>
+            <H3>{t("docs.response_format")}</H3>
             <Code lang="json">{`{
   "id": "chatcmpl-abc123",
   "object": "chat.completion",
@@ -380,7 +382,7 @@ print(response.choices[0].message.content)`}</Code>
 
           {/* ─── STREAMING ──────────────────────── */}
           <section id="streaming">
-            <H2 id="streaming">Streaming SSE</H2>
+            <H2 id="streaming">{t("docs.streaming")}</H2>
             <P>
               Active <code className="font-mono bg-delt-surface px-1 py-0.5 rounded text-[11px]">stream: true</code> pour recevoir les tokens au fur et à mesure (Server-Sent Events au format OpenAI standard).
             </P>
@@ -408,7 +410,7 @@ for await (const chunk of stream) {
   process.stdout.write(chunk.choices[0]?.delta?.content || "");
 }`}</Code>
 
-            <H3>Format des chunks</H3>
+            <H3>{t("docs.chunks_format")}</H3>
             <Code lang="text">{`data: {"id":"...","choices":[{"delta":{"content":"Hello"}}]}
 
 data: {"id":"...","choices":[{"delta":{"content":" world"}}]}
@@ -420,7 +422,7 @@ data: [DONE]`}</Code>
 
           {/* ─── MULTIMODAL ──────────────────────── */}
           <section id="multimodal">
-            <H2 id="multimodal">Vision & multimodal</H2>
+            <H2 id="multimodal">{t("docs.vision")}</H2>
             <P>
               Plusieurs modèles supportent la vision (analyse d'images). Passe l'image en base64 ou via URL dans le content du message :
             </P>
@@ -443,7 +445,7 @@ data: [DONE]`}</Code>
 
           {/* ─── MODELS CATALOG ──────────────────── */}
           <section id="models">
-            <H2 id="models">Catalogue de modèles</H2>
+            <H2 id="models">{t("docs.catalog")}</H2>
             <P>
               <strong className="text-delt-text">{allModels.length}</strong> modèles disponibles, organisés par tier. Les modèles <strong>FREE</strong> sont 100 % gratuits.
             </P>
@@ -453,9 +455,9 @@ data: [DONE]`}</Code>
                 <table className="min-w-[700px] w-full text-sm">
                   <thead className="bg-delt-surface border-b border-delt-border">
                     <tr>
-                      <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-delt-muted">Tier</th>
+                      <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-delt-muted">{t("usage.col_tier")}</th>
                       <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-delt-muted">ID</th>
-                      <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-delt-muted">Modèle</th>
+                      <th className="text-left px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-delt-muted">{t("usage.col_model")}</th>
                       <th className="text-right px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-delt-muted">Ctx</th>
                     </tr>
                   </thead>
@@ -480,17 +482,17 @@ data: [DONE]`}</Code>
               </div>
             </div>
 
-            <H3>Catégories créatives</H3>
+            <H3>{t("docs.creative_cats")}</H3>
             <P>
               Génération d'image (<code className="font-mono text-[11px]">/api/image</code>), vidéo (<code className="font-mono text-[11px]">/api/video</code>) et musique (<code className="font-mono text-[11px]">/api/music</code>) facturées par génération, pas par tokens.
             </P>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
               <div className="rounded-xl bg-delt-surface p-3 text-center">
-                <div className="text-xs font-bold text-delt-text">Image</div>
+                <div className="text-xs font-bold text-delt-text">{t("artist.tab_image")}</div>
                 <div className="text-[10px] text-delt-muted mt-1">FLUX · Nano Banana · GPT Image</div>
               </div>
               <div className="rounded-xl bg-delt-surface p-3 text-center">
-                <div className="text-xs font-bold text-delt-text">Vidéo</div>
+                <div className="text-xs font-bold text-delt-text">{t("artist.tab_video")}</div>
                 <div className="text-[10px] text-delt-muted mt-1">Seedance 2 — 720p</div>
               </div>
               <div className="rounded-xl bg-delt-surface p-3 text-center">

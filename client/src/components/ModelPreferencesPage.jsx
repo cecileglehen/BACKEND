@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
+import { useT } from "../lib/i18n.jsx";
 
 const BRAND_LOGO = {
   OpenAI:     "/brands/openai.svg",
@@ -17,15 +18,15 @@ const BRAND_LOGO = {
 
 const TIER_ORDER = ["FREE", "UNCENSORED", "PICO", "NANO", "MINI", "NORMAL", "EXPERT", "PRO"];
 
-const TIER_INFO = {
-  FREE:       { label: "Free",        desc: "Modèles 100 % gratuits — usage léger" },
-  UNCENSORED: { label: "Uncensored",  desc: "Modèle non censuré (18+)" },
-  PICO:       { label: "Pico",        desc: "Ultra rapide, ultra cheap — 0,10 Cr/1k" },
-  NANO:       { label: "Nano",        desc: "Questions simples — 0,20 Cr/1k" },
-  MINI:       { label: "Mini",        desc: "Tâches standard — 0,40 Cr/1k" },
-  NORMAL:     { label: "Normal",      desc: "Questions complexes — 4 Cr/1k" },
-  EXPERT:     { label: "Expert",      desc: "Analyse profonde, raisonnement — 8 Cr/1k" },
-  PRO:        { label: "Pro",         desc: "Le top du top — 50 Cr/1k" }
+const TIER_INFO_KEYS = {
+  FREE:       { label: "Free",        descKey: "tier.free.desc" },
+  UNCENSORED: { label: "Uncensored",  descKey: "tier.uncensored.desc" },
+  PICO:       { label: "Pico",        descKey: "tier.pico.desc" },
+  NANO:       { label: "Nano",        descKey: "tier.nano.desc" },
+  MINI:       { label: "Mini",        descKey: "tier.mini.desc" },
+  NORMAL:     { label: "Normal",      descKey: "tier.normal.desc" },
+  EXPERT:     { label: "Expert",      descKey: "tier.expert.desc" },
+  PRO:        { label: "Pro",         descKey: "tier.pro.desc" }
 };
 
 const TIER_BADGE = {
@@ -43,6 +44,7 @@ const BRAND_LABEL = {
 };
 
 export default function ModelPreferencesPage({ user, onSaved, isOnboarding = false }) {
+  const t = useT();
   const [catalog, setCatalog]   = useState(null);
   const [prefs, setPrefs]       = useState({});
   const [saving, setSaving]     = useState(false);
@@ -117,13 +119,9 @@ export default function ModelPreferencesPage({ user, onSaved, isOnboarding = fal
             </svg>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-delt-text tracking-tight">
-            {isOnboarding ? "Choisis tes modèles préférés" : "Modèles par défaut"}
+            {isOnboarding ? t("modelprefs.title_onb") : t("modelprefs.title")}
           </h1>
-          <p className="text-sm text-delt-muted mt-2 max-w-xl mx-auto">
-            En mode <strong className="text-delt-text">auto</strong>, DELT choisit le tier optimal pour ta question.
-            Sélectionne la famille <strong className="text-delt-text">par défaut</strong> pour chaque niveau.
-            DELT choisit automatiquement la variante exacte adaptée.
-          </p>
+          <p className="text-sm text-delt-muted mt-2 max-w-xl mx-auto" dangerouslySetInnerHTML={{ __html: t("modelprefs.desc").replace(/<strong>/g, "<strong class=\"text-delt-text\">") }} />
         </div>
 
         {error && (
@@ -133,7 +131,8 @@ export default function ModelPreferencesPage({ user, onSaved, isOnboarding = fal
         {/* Tiers */}
         <div className="space-y-5">
           {tiers.map(({ tier, models }) => {
-            const info = TIER_INFO[tier] || { label: tier, desc: "" };
+            const tierData = TIER_INFO_KEYS[tier] || { label: tier, descKey: null };
+            const info = { label: tierData.label, desc: tierData.descKey ? t(tierData.descKey) : "" };
             const selectedId = prefs[tier];
             const selectedModel = catalog.categories?.[tier]?.models?.find((m) => m.id === selectedId);
             return (
@@ -145,7 +144,7 @@ export default function ModelPreferencesPage({ user, onSaved, isOnboarding = fal
                     </span>
                     <span className="text-xs text-delt-muted">{info.desc}</span>
                   </div>
-                  <span className="text-[10px] text-delt-muted">{models.length} famille{models.length > 1 ? "s" : ""}</span>
+                  <span className="text-[10px] text-delt-muted">{models.length} {models.length > 1 ? t("modelprefs.families_plural") : t("modelprefs.families")}</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -173,7 +172,7 @@ export default function ModelPreferencesPage({ user, onSaved, isOnboarding = fal
                           <div className={`text-sm font-bold truncate ${selected ? "text-delt-accent" : "text-delt-text"}`}>
                             {BRAND_LABEL[m.brand] || m.brand}
                           </div>
-                          <div className="text-[11px] text-delt-muted truncate">Sélection automatique</div>
+                          <div className="text-[11px] text-delt-muted truncate">{t("modelprefs.auto_select")}</div>
                         </div>
                         {selected && (
                           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#6366f1" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
@@ -202,17 +201,17 @@ export default function ModelPreferencesPage({ user, onSaved, isOnboarding = fal
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" className="animate-spin">
                   <path d="M21 12a9 9 0 1 1-6.2-8.55"/>
                 </svg>
-                Enregistrement…
+                {t("modelprefs.saving")}
               </>
             ) : savedFlash ? (
               <>
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>
-                Enregistré ✓
+                {t("modelprefs.saved_flash")}
               </>
             ) : (
-              isOnboarding ? "Confirmer et accéder au chat →" : "Enregistrer les préférences"
+              isOnboarding ? t("modelprefs.confirm_onb") : t("modelprefs.save")
             )}
           </button>
           {isOnboarding && (
@@ -221,7 +220,7 @@ export default function ModelPreferencesPage({ user, onSaved, isOnboarding = fal
               onClick={onSaved}
               className="w-full mt-2 text-xs text-delt-muted hover:text-delt-text font-medium"
             >
-              Plus tard
+              {t("modelprefs.later")}
             </button>
           )}
         </div>

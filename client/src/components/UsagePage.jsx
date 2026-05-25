@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
+import { useT, useLocale } from "../lib/i18n.jsx";
 
 const BRAND_LOGO = {
   OpenAI:     "/brands/openai.svg",
@@ -19,11 +20,11 @@ const TIER_BADGE = {
   NORMAL: "badge-normal", EXPERT: "badge-expert", PRO: "badge-pro"
 };
 
-const PERIODS = [
-  { id: "7d",  label: "7 jours" },
-  { id: "30d", label: "30 jours" },
-  { id: "90d", label: "90 jours" },
-  { id: "all", label: "Tout" },
+const PERIOD_KEYS = [
+  { id: "7d",  labelKey: "usage.7d" },
+  { id: "30d", labelKey: "usage.30d" },
+  { id: "90d", labelKey: "usage.90d" },
+  { id: "all", labelKey: "usage.all" },
 ];
 
 function brandOf(modelId) {
@@ -74,6 +75,8 @@ function MiniBarChart({ data }) {
 }
 
 export default function UsagePage() {
+  const t = useT();
+  const { locale } = useLocale();
   const [period, setPeriod]   = useState("30d");
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
@@ -109,11 +112,11 @@ export default function UsagePage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="text-lg font-bold text-delt-text">Utilisation</h2>
-          <p className="text-xs text-delt-muted">Suivi des tokens et modèles utilisés.</p>
+          <h2 className="text-lg font-bold text-delt-text">{t("usage.title")}</h2>
+          <p className="text-xs text-delt-muted">{t("usage.subtitle2")}</p>
         </div>
         <div className="inline-flex p-0.5 rounded-full bg-delt-surface border border-delt-border">
-          {PERIODS.map((p) => (
+          {PERIOD_KEYS.map((p) => (
             <button
               key={p.id}
               type="button"
@@ -122,7 +125,7 @@ export default function UsagePage() {
                 period === p.id ? "bg-white text-delt-text shadow-sm" : "text-delt-muted hover:text-delt-text"
               }`}
             >
-              {p.label}
+              {t(p.labelKey)}
             </button>
           ))}
         </div>
@@ -133,16 +136,16 @@ export default function UsagePage() {
       )}
 
       {loading && !data ? (
-        <div className="rounded-xl bg-delt-surface p-8 text-center text-sm text-delt-muted">Chargement…</div>
+        <div className="rounded-xl bg-delt-surface p-8 text-center text-sm text-delt-muted">{t("usage.loading")}</div>
       ) : (
         <>
           {/* Stats globales */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {[
-              { label: "Appels", value: fmt(data?.totals?.calls), icon: "📨" },
-              { label: "Tokens in", value: fmt(data?.totals?.tokens_in), icon: "↓", colored: "#10b981" },
-              { label: "Tokens out", value: fmt(data?.totals?.tokens_out), icon: "↑", colored: "#6366f1" },
-              { label: "Tokens total", value: fmt((Number(data?.totals?.tokens_in) || 0) + (Number(data?.totals?.tokens_out) || 0)), icon: "Σ", colored: "#06b6d4" }
+              { label: t("usage.calls"), value: fmt(data?.totals?.calls), icon: "📨" },
+              { label: t("usage.tokens_in"), value: fmt(data?.totals?.tokens_in), icon: "↓", colored: "#10b981" },
+              { label: t("usage.tokens_out"), value: fmt(data?.totals?.tokens_out), icon: "↑", colored: "#6366f1" },
+              { label: t("usage.tokens_total"), value: fmt((Number(data?.totals?.tokens_in) || 0) + (Number(data?.totals?.tokens_out) || 0)), icon: "Σ", colored: "#06b6d4" }
             ].map((s) => (
               <div key={s.label} className="rounded-2xl bg-white border border-delt-border p-4 shadow-sm">
                 <div className="flex items-center justify-between mb-2">
@@ -158,8 +161,8 @@ export default function UsagePage() {
           {data?.byDay?.length > 0 && (
             <div className="rounded-2xl bg-white border border-delt-border p-5 shadow-sm">
               <div className="flex items-center justify-between mb-4">
-                <div className="text-xs font-bold uppercase tracking-widest text-delt-muted">Consommation par jour</div>
-                <span className="text-[10px] text-delt-muted">{data.byDay.length} jour{data.byDay.length > 1 ? "s" : ""}</span>
+                <div className="text-xs font-bold uppercase tracking-widest text-delt-muted">{t("usage.per_day")}</div>
+                <span className="text-[10px] text-delt-muted">{data.byDay.length} {data.byDay.length > 1 ? t("usage.days") : t("usage.day")}</span>
               </div>
               <MiniBarChart data={data.byDay} />
               <div className="flex justify-between text-[10px] text-delt-muted mt-2">
@@ -172,7 +175,7 @@ export default function UsagePage() {
           {/* Par marque (donut/résumé) */}
           {byBrand.length > 0 && (
             <div className="rounded-2xl bg-white border border-delt-border p-5 shadow-sm">
-              <div className="text-xs font-bold uppercase tracking-widest text-delt-muted mb-4">Répartition par marque</div>
+              <div className="text-xs font-bold uppercase tracking-widest text-delt-muted mb-4">{t("usage.by_brand")}</div>
               <div className="space-y-2">
                 {byBrand.map((b) => {
                   const max = Math.max(1, ...byBrand.map((x) => x.cost_cr));
@@ -208,19 +211,19 @@ export default function UsagePage() {
           {data?.byModel?.length > 0 ? (
             <div className="rounded-2xl bg-white border border-delt-border shadow-sm overflow-hidden">
               <div className="px-5 py-3 border-b border-delt-border flex items-center justify-between">
-                <div className="text-xs font-bold uppercase tracking-widest text-delt-muted">Détail par modèle</div>
+                <div className="text-xs font-bold uppercase tracking-widest text-delt-muted">{t("usage.detail_models")}</div>
                 <span className="text-[10px] text-delt-muted">{data.byModel.length} modèle{data.byModel.length > 1 ? "s" : ""}</span>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm min-w-[640px]">
                   <thead className="bg-delt-surface border-b border-delt-border">
                     <tr>
-                      <th className="text-left px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-delt-muted">Modèle</th>
-                      <th className="text-left px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-delt-muted">Tier</th>
-                      <th className="text-right px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-delt-muted">Appels</th>
-                      <th className="text-right px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-delt-muted">Tokens in</th>
-                      <th className="text-right px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-delt-muted">Tokens out</th>
-                      <th className="text-right px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-delt-accent">Total</th>
+                      <th className="text-left px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-delt-muted">{t("usage.col_model")}</th>
+                      <th className="text-left px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-delt-muted">{t("usage.col_tier")}</th>
+                      <th className="text-right px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-delt-muted">{t("usage.col_calls")}</th>
+                      <th className="text-right px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-delt-muted">{t("usage.tokens_in")}</th>
+                      <th className="text-right px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-delt-muted">{t("usage.tokens_out")}</th>
+                      <th className="text-right px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-delt-accent">{t("usage.col_total")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-delt-border">
@@ -262,8 +265,8 @@ export default function UsagePage() {
           ) : (
             !loading && (
               <div className="rounded-2xl bg-delt-surface p-8 text-center">
-                <div className="text-sm text-delt-muted mb-1">Aucune utilisation sur cette période.</div>
-                <div className="text-xs text-delt-muted/70">Lance une conversation pour voir les stats apparaître.</div>
+                <div className="text-sm text-delt-muted mb-1">{t("usage.empty_period")}</div>
+                <div className="text-xs text-delt-muted/70">{t("usage.empty_hint")}</div>
               </div>
             )
           )}
