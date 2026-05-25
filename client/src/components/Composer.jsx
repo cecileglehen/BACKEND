@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api.js";
+import { useT } from "../lib/i18n.jsx";
 
 const BRAND_LOGOS = {
   OpenAI:     "/brands/openai.svg",
@@ -43,6 +44,7 @@ export default function Composer({
   deepActive = false,
   onToggleDeep
 }) {
+  const t = useT();
   const ref = useRef(null);
   const imageInputRef = useRef(null);
   const docInputRef = useRef(null);
@@ -177,7 +179,7 @@ export default function Composer({
                 type="button"
                 onClick={() => removeAttachment(att._id)}
                 className="text-delt-muted hover:text-delt-text flex-shrink-0"
-                aria-label="Retirer"
+                aria-label={t("composer.remove_attach")}
               >
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -215,7 +217,7 @@ export default function Composer({
             if (canSend) onSend();
           }
         }}
-        placeholder="Posez votre question"
+        placeholder={t("composer.placeholder")}
         rows={1}
         className="w-full outline-none resize-none text-[15px] text-delt-text placeholder:text-delt-muted leading-relaxed bg-transparent"
       />
@@ -233,8 +235,8 @@ export default function Composer({
                 : attachOpen ? "bg-delt-surface text-delt-text"
                 : "text-delt-muted hover:bg-delt-surface"
               }`}
-              aria-label="Joindre"
-              title={uploadError || "Joindre image ou fichier"}
+              aria-label={t("composer.attach")}
+              title={uploadError || t("composer.attach_title")}
             >
               {uploading ? (
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" className="animate-spin">
@@ -301,7 +303,7 @@ export default function Composer({
                 type="button"
                 onClick={onOpenModels}
                 className="flex items-center gap-1.5 h-9 px-2.5 sm:px-3 rounded-full border border-delt-border hover:bg-delt-surface transition-colors text-xs sm:text-sm text-delt-text min-w-0"
-                title="Choisir la famille de modèle"
+                title={t("composer.choose_family")}
               >
                 {brandLogo ? (
                   <img src={brandLogo} alt={brand} className="w-4 h-4 object-contain flex-shrink-0" />
@@ -341,7 +343,7 @@ export default function Composer({
                   : "border-delt-border text-delt-muted hover:text-delt-text hover:bg-delt-surface"
               }`}
               style={deepActive ? { background: "linear-gradient(135deg, #0f766e, #2563eb)" } : {}}
-              title="DELT Deep Search Beta"
+              title={t("composer.deep_title")}
             >
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="7" />
@@ -363,7 +365,7 @@ export default function Composer({
                   : "border-delt-border text-delt-muted hover:text-delt-text hover:bg-delt-surface"
               }`}
               style={debateActive ? { background: "linear-gradient(135deg, #a855f7, #ec4899)" } : {}}
-              title={debateActive ? "Désactiver le débat" : "Mode débat : plusieurs IA débattent puis synthétisent"}
+              title={debateActive ? t("composer.debate_disable") : t("composer.debate_off")}
             >
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
@@ -383,7 +385,7 @@ export default function Composer({
                   : "border-delt-border text-delt-muted hover:text-delt-text hover:bg-delt-surface"
               }`}
               style={parallelModels.length > 0 ? { background: "linear-gradient(135deg, #6366f1, #06b6d4)" } : {}}
-              title="Comparer plusieurs modèles en parallèle"
+              title={t("composer.parallel_title")}
             >
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="7" height="7" rx="1"/>
@@ -392,7 +394,7 @@ export default function Composer({
                 <rect x="14" y="14" width="7" height="7" rx="1"/>
               </svg>
               <span className="font-medium">
-                {parallelModels.length > 0 ? `×${parallelModels.length}` : "Multi"}
+                {parallelModels.length > 0 ? `×${parallelModels.length}` : t("composer.parallel")}
               </span>
             </button>
           )}
@@ -408,8 +410,8 @@ export default function Composer({
               : transcribing ? "bg-delt-surface text-delt-muted"
               : "text-delt-muted hover:bg-delt-surface"
             }`}
-            aria-label={recording ? "Arrêter" : "Dictée vocale"}
-            title={recError || (recording ? "Cliquer pour arrêter" : "Dictée vocale")}
+            aria-label={recording ? t("composer.stop_record") : t("composer.dictate")}
+            title={recError || (recording ? t("composer.dictate_stop") : t("composer.dictate"))}
           >
             {transcribing ? (
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" className="animate-spin">

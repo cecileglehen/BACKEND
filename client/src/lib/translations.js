@@ -93,6 +93,22 @@ export const TRANSLATIONS = {
   "composer.tools_authorized":{fr: "✓ Autorisé pour ce chat",            en: "✓ Allowed in this chat" },
   "composer.tools_inactive": { fr: "Inactif",                            en: "Inactive" },
   "composer.tools_footer":   { fr: "Apps activées → l'IA peut les appeler dans ce chat", en: "Enabled apps → the AI can call them in this chat" },
+  "composer.placeholder":    { fr: "Posez votre question",               en: "Ask your question" },
+  "composer.attach":         { fr: "Joindre",                            en: "Attach" },
+  "composer.attach_title":   { fr: "Joindre image ou fichier",           en: "Attach image or file" },
+  "composer.remove_attach":  { fr: "Retirer",                            en: "Remove" },
+  "composer.choose_family":  { fr: "Choisir la famille de modèle",       en: "Choose model family" },
+  "composer.deep_title":     { fr: "DELT Deep Search Beta",              en: "DELT Deep Search Beta" },
+  "composer.debate_off":     { fr: "Mode débat : plusieurs IA débattent puis synthétisent", en: "Debate mode: multiple AIs debate then synthesize" },
+  "composer.debate_disable": { fr: "Désactiver le débat",                en: "Disable debate" },
+  "composer.parallel":       { fr: "Multi",                              en: "Multi" },
+  "composer.parallel_title": { fr: "Comparer plusieurs modèles en parallèle", en: "Compare multiple models in parallel" },
+  "composer.dictate":        { fr: "Dictée vocale",                      en: "Voice dictation" },
+  "composer.dictate_stop":   { fr: "Cliquer pour arrêter",               en: "Click to stop" },
+  "composer.stop_record":    { fr: "Arrêter",                            en: "Stop" },
+  "composer.err_transcribe": { fr: "Erreur transcription",               en: "Transcription error" },
+  "composer.err_mic":        { fr: "Microphone non disponible",          en: "Microphone unavailable" },
+  "composer.err_upload":     { fr: "Erreur upload",                      en: "Upload error" },
 
   // ─── BrandPills ────────────────────────────────────────────────────────────
   "pills.collapse":          { fr: "− Masquer",                          en: "− Hide" },
@@ -229,5 +245,36 @@ export const TRANSLATIONS = {
   "pricing.image_title":     { fr: "Génération d'image",                 en: "Image generation" },
   "pricing.image_sub":       { fr: "Tous les modèles d'image inclus dans ton abonnement.", en: "All image models included in your subscription." },
   "pricing.video_title":     { fr: "Génération de vidéo",                en: "Video generation" },
-  "pricing.video_sub":       { fr: "Inclus dans ton abonnement.",        en: "Included in your subscription." }
+  "pricing.video_sub":       { fr: "Inclus dans ton abonnement.",        en: "Included in your subscription." },
+
+  // ─── Integrations Page ─────────────────────────────────────────────────────
+  "integ.title":             { fr: "Intégrations",                       en: "Integrations" },
+  "integ.desc":              { fr: "Connecte tes apps pour que l'IA puisse y accéder dans tes conversations (lire tes mails, ajouter un événement Calendar, créer une page Notion, etc.). Tu peux déconnecter à tout moment — Delt AI ne stocke aucun de tes contenus.", en: "Connect your apps so the AI can access them in your chats (read your emails, add a Calendar event, create a Notion page, etc.). You can disconnect at any time — Delt AI never stores your content." },
+  "integ.loading":           { fr: "Chargement…",                        en: "Loading…" },
+  "integ.connecting":        { fr: "Connexion en cours…",                en: "Connecting…" },
+  "integ.connect":           { fr: "Connecter",                          en: "Connect" },
+  "integ.disconnect":        { fr: "Déconnecter",                        en: "Disconnect" },
+  "integ.connected":         { fr: "✓ Connecté",                         en: "✓ Connected" },
+  "integ.not_connected":     { fr: "Non connecté",                       en: "Not connected" },
+  "integ.confirm_disconnect":{ fr: "Déconnecter {{app}} ? L'IA n'aura plus accès à ce service.", en: "Disconnect {{app}}? The AI will no longer have access to this service." },
+  "integ.error_connect":     { fr: "Erreur connexion {{app}} : {{msg}}", en: "Error connecting {{app}}: {{msg}}" },
+  "integ.disconnected":      { fr: "{{app}} déconnecté",                 en: "{{app}} disconnected" },
+  "integ.powered_by":        { fr: "Propulsé par",                       en: "Powered by" },
+  "integ.tokens_note":       { fr: "Les tokens OAuth sont gérés et chiffrés par Composio — Delt AI ne les voit jamais.", en: "OAuth tokens are managed and encrypted by Composio — Delt AI never sees them." },
+
+  // ─── Categories (integrations & content) ───────────────────────────────────
+  "cat.email":               { fr: "Email",                              en: "Email" },
+  "cat.storage":             { fr: "Stockage",                           en: "Storage" },
+  "cat.calendar":            { fr: "Agenda",                             en: "Calendar" },
+  "cat.communication":       { fr: "Communication",                      en: "Communication" },
+  "cat.productivity":        { fr: "Productivité",                       en: "Productivity" },
+  "cat.dev":                 { fr: "Dev",                                en: "Dev" },
+  "cat.project":             { fr: "Projet",                             en: "Project" },
+  "cat.payment":             { fr: "Paiement",                           en: "Payment" },
+
+  // ─── Settings extras ───────────────────────────────────────────────────────
+  "settings.profile":        { fr: "Profil",                             en: "Profile" },
+  "settings.docs_section":   { fr: "Documents",                          en: "Documents" },
+  "settings.privacy_policy": { fr: "Politique de confidentialité",       en: "Privacy Policy" },
+  "settings.terms":          { fr: "CGU",                                en: "Terms" }
 };

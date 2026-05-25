@@ -1,6 +1,19 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api.js";
 import { useToast } from "../contexts/ToastContext.jsx";
+import { useT, useLocale } from "../lib/i18n.jsx";
+
+// Catégorie FR → clé translation
+const CATEGORY_KEYS = {
+  "Email": "cat.email",
+  "Stockage": "cat.storage",
+  "Agenda": "cat.calendar",
+  "Communication": "cat.communication",
+  "Productivité": "cat.productivity",
+  "Dev": "cat.dev",
+  "Projet": "cat.project",
+  "Paiement": "cat.payment"
+};
 
 // Couleurs officielles de chaque marque (simpleicons brand colors)
 const BRAND_COLORS = {
@@ -27,6 +40,8 @@ const COLOR_LOGOS = {
 
 export default function IntegrationsPage() {
   const toast = useToast();
+  const t = useT();
+  const { locale } = useLocale();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyApp, setBusyApp] = useState(null);
@@ -63,20 +78,20 @@ export default function IntegrationsPage() {
       if (redirectUrl) {
         window.location.href = redirectUrl;
       } else {
-        toast.success("Connexion en cours…");
+        toast.success(t("integ.connecting"));
         await load();
       }
     } catch (e) {
-      toast.error(`Erreur connexion ${app} : ${e.message}`);
+      toast.error(t("integ.error_connect", { app, msg: e.message }));
     } finally { setBusyApp(null); }
   };
 
   const handleDisconnect = async (app) => {
-    if (!confirm(`Déconnecter ${app} ? L'IA n'aura plus accès à ce service.`)) return;
+    if (!confirm(t("integ.confirm_disconnect", { app }))) return;
     setBusyApp(app);
     try {
       await api.disconnectIntegration(app);
-      toast.success(`${app} déconnecté`);
+      toast.success(t("integ.disconnected", { app }));
       await load();
     } catch (e) {
       toast.error(e.message);
@@ -91,20 +106,16 @@ export default function IntegrationsPage() {
   return (
     <div className="space-y-5">
       <div className="card p-4 sm:p-5">
-        <h2 className="text-sm font-semibold text-delt-text">Intégrations</h2>
-        <p className="text-xs text-delt-muted mt-1 leading-relaxed">
-          Connecte tes apps pour que l'IA puisse y accéder dans tes conversations
-          (lire tes mails, ajouter un événement Calendar, créer une page Notion, etc.).
-          Tu peux déconnecter à tout moment — Delt AI ne stocke aucun de tes contenus.
-        </p>
+        <h2 className="text-sm font-semibold text-delt-text">{t("integ.title")}</h2>
+        <p className="text-xs text-delt-muted mt-1 leading-relaxed">{t("integ.desc")}</p>
       </div>
 
       {loading ? (
-        <div className="text-sm text-delt-muted text-center py-8">Chargement…</div>
+        <div className="text-sm text-delt-muted text-center py-8">{t("integ.loading")}</div>
       ) : (
         Object.entries(grouped).map(([category, apps]) => (
           <div key={category} className="card p-4 sm:p-5">
-            <h3 className="text-xs uppercase tracking-wider font-bold text-delt-muted mb-3">{category}</h3>
+            <h3 className="text-xs uppercase tracking-wider font-bold text-delt-muted mb-3">{CATEGORY_KEYS[category] ? t(CATEGORY_KEYS[category]) : category}</h3>
             <div className="grid sm:grid-cols-2 gap-3">
               {apps.map((it) => (
                 <div
@@ -142,9 +153,9 @@ export default function IntegrationsPage() {
                     <div className="font-semibold text-sm text-delt-text truncate">{it.label}</div>
                     <div className="text-[11px] text-delt-muted">
                       {it.connected ? (
-                        <>✓ Connecté · {new Date(it.connectedAt).toLocaleDateString("fr-FR")}</>
+                        <>{t("integ.connected")} · {new Date(it.connectedAt).toLocaleDateString(locale === "fr" ? "fr-FR" : "en-US")}</>
                       ) : (
-                        "Non connecté"
+                        t("integ.not_connected")
                       )}
                     </div>
                   </div>
@@ -154,7 +165,7 @@ export default function IntegrationsPage() {
                       disabled={busyApp === it.app}
                       className="text-xs font-semibold px-3 py-1.5 rounded-lg text-red-700 hover:bg-red-100 transition-colors disabled:opacity-50"
                     >
-                      Déconnecter
+                      {t("integ.disconnect")}
                     </button>
                   ) : (
                     <button
@@ -162,7 +173,7 @@ export default function IntegrationsPage() {
                       disabled={busyApp === it.app}
                       className="text-xs font-bold px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:bg-blue-300"
                     >
-                      {busyApp === it.app ? "…" : "Connecter"}
+                      {busyApp === it.app ? "…" : t("integ.connect")}
                     </button>
                   )}
                 </div>
@@ -173,7 +184,7 @@ export default function IntegrationsPage() {
       )}
 
       <p className="text-[11px] text-delt-muted italic px-2">
-        Propulsé par <a href="https://composio.dev" target="_blank" rel="noopener noreferrer" className="underline">Composio</a>. Les tokens OAuth sont gérés et chiffrés par Composio — Delt AI ne les voit jamais.
+        {t("integ.powered_by")} <a href="https://composio.dev" target="_blank" rel="noopener noreferrer" className="underline">Composio</a>. {t("integ.tokens_note")}
       </p>
     </div>
   );
