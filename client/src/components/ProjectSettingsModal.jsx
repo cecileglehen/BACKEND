@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api.js";
 import { useToast } from "../contexts/ToastContext.jsx";
+import { useT } from "../lib/i18n.jsx";
 
 const ICON_PRESETS = ["📁", "💻", "📱", "🎨", "📚", "🧠", "🚀", "🎬", "🎵", "✍️", "🔬", "💡", "🌍", "⚡", "🎯", "📊", "🍳", "🏋️"];
 const COLOR_PRESETS = [
@@ -10,6 +11,7 @@ const COLOR_PRESETS = [
 
 export default function ProjectSettingsModal({ project, onClose, onUpdated, onDeleted }) {
   const toast = useToast();
+  const t = useT();
   const [name, setName]           = useState(project.name || "");
   const [icon, setIcon]           = useState(project.icon || "📁");
   const [color, setColor]         = useState(project.color || "#6366f1");
@@ -53,7 +55,7 @@ export default function ProjectSettingsModal({ project, onClose, onUpdated, onDe
   };
 
   const remove = async () => {
-    if (!window.confirm(`Supprimer le projet "${project.name}" ? Les conversations resteront mais seront détachées.`)) return;
+    if (!window.confirm(t("proj.delete_confirm"))) return;
     try {
       await api.deleteProject(project.id);
       onDeleted?.();
@@ -78,7 +80,7 @@ export default function ProjectSettingsModal({ project, onClose, onUpdated, onDe
         <div className="px-5 py-4 border-b border-delt-border flex items-center justify-between flex-shrink-0">
           <h2 className="text-lg font-extrabold text-delt-text tracking-tight flex items-center gap-2">
             <span className="text-xl">{icon}</span>
-            Paramètres projet
+            {t("proj.settings")}
           </h2>
           <button onClick={onClose} className="text-delt-muted hover:text-delt-text text-2xl leading-none">✕</button>
         </div>
@@ -87,14 +89,14 @@ export default function ProjectSettingsModal({ project, onClose, onUpdated, onDe
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
           {/* Nom */}
           <div>
-            <label className="block text-[11px] font-bold uppercase tracking-widest text-delt-muted mb-1.5">Nom</label>
+            <label className="block text-[11px] font-bold uppercase tracking-widest text-delt-muted mb-1.5">{t("proj.name")}</label>
             <input type="text" value={name} onChange={(e) => setName(e.target.value.slice(0, 80))}
               className="w-full px-3 py-2 rounded-xl border border-delt-border text-sm outline-none focus:border-delt-accent" />
           </div>
 
           {/* Icône */}
           <div>
-            <label className="block text-[11px] font-bold uppercase tracking-widest text-delt-muted mb-1.5">Icône</label>
+            <label className="block text-[11px] font-bold uppercase tracking-widest text-delt-muted mb-1.5">{t("proj.icon")}</label>
             <div className="flex flex-wrap gap-1.5">
               {ICON_PRESETS.map((i) => (
                 <button key={i} onClick={() => setIcon(i)}
@@ -107,7 +109,7 @@ export default function ProjectSettingsModal({ project, onClose, onUpdated, onDe
 
           {/* Couleur */}
           <div>
-            <label className="block text-[11px] font-bold uppercase tracking-widest text-delt-muted mb-1.5">Couleur</label>
+            <label className="block text-[11px] font-bold uppercase tracking-widest text-delt-muted mb-1.5">{t("proj.color")}</label>
             <div className="flex flex-wrap gap-2">
               {COLOR_PRESETS.map((c) => (
                 <button key={c} onClick={() => setColor(c)}
@@ -119,19 +121,19 @@ export default function ProjectSettingsModal({ project, onClose, onUpdated, onDe
 
           {/* Description */}
           <div>
-            <label className="block text-[11px] font-bold uppercase tracking-widest text-delt-muted mb-1.5">Description</label>
+            <label className="block text-[11px] font-bold uppercase tracking-widest text-delt-muted mb-1.5">{t("proj.description")}</label>
             <input type="text" value={desc} onChange={(e) => setDesc(e.target.value.slice(0, 500))}
-              placeholder="Pour quoi sert ce projet ?"
+              placeholder={t("proj.desc_placeholder")}
               className="w-full px-3 py-2 rounded-xl border border-delt-border text-sm outline-none focus:border-delt-accent" />
           </div>
 
           {/* System prompt */}
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-widest text-delt-muted mb-1.5">
-              System prompt (instructions IA)
+              {t("proj.sysprompt_label")}
             </label>
             <textarea value={sysPrompt} onChange={(e) => setSysPrompt(e.target.value.slice(0, 4000))} rows={5}
-              placeholder="Ex : Tu es expert Flutter, tu réponds en français, code propre avec commentaires…"
+              placeholder={t("proj.sysprompt_placeholder")}
               className="w-full px-3 py-2 rounded-xl border border-delt-border text-sm outline-none focus:border-delt-accent resize-none font-mono" />
             <div className="text-[10px] text-delt-muted text-right mt-1">{sysPrompt.length} / 4000</div>
           </div>
@@ -139,11 +141,11 @@ export default function ProjectSettingsModal({ project, onClose, onUpdated, onDe
           {/* Modèle par défaut */}
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-widest text-delt-muted mb-1.5">
-              Modèle par défaut <span className="font-normal normal-case">(optionnel)</span>
+              {t("proj.default_model")} <span className="font-normal normal-case">{t("proj.optional")}</span>
             </label>
             <select value={defaultModel} onChange={(e) => setDefaultModel(e.target.value)}
               className="w-full px-3 py-2 rounded-xl border border-delt-border text-sm outline-none focus:border-delt-accent bg-white">
-              <option value="">— Aucun (utilise auto ou ton choix manuel) —</option>
+              <option value="">{t("proj.no_default")}</option>
               {allModels.map((m) => (
                 <option key={m.id} value={m.id}>{m.tier} · {m.display} ({m.brand})</option>
               ))}
@@ -153,20 +155,20 @@ export default function ProjectSettingsModal({ project, onClose, onUpdated, onDe
           {/* Mémoire projet — faits clés */}
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-widest text-delt-muted mb-1.5">
-              Faits clés à mémoriser <span className="font-normal normal-case">(une ligne par fait)</span>
+              {t("proj.key_facts")} <span className="font-normal normal-case">{t("proj.key_facts_hint")}</span>
             </label>
             <textarea value={keyFacts} onChange={(e) => setKeyFacts(e.target.value)} rows={4}
-              placeholder={"Stack: Flutter + Supabase\nNom appli: MyBibli\nDeadline: 1er mars"}
+              placeholder={t("proj.key_facts_placeholder").replace(/\\n/g, "\n")}
               className="w-full px-3 py-2 rounded-xl border border-delt-border text-sm outline-none focus:border-delt-accent resize-none font-mono" />
           </div>
 
           {/* Contexte libre */}
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-widest text-delt-muted mb-1.5">
-              Contexte projet
+              {t("proj.context")}
             </label>
             <textarea value={context} onChange={(e) => setContext(e.target.value.slice(0, 1000))} rows={3}
-              placeholder="Toute info utile que l'IA doit savoir sur ce projet."
+              placeholder={t("proj.context_placeholder")}
               className="w-full px-3 py-2 rounded-xl border border-delt-border text-sm outline-none focus:border-delt-accent resize-none" />
           </div>
         </div>
@@ -174,16 +176,16 @@ export default function ProjectSettingsModal({ project, onClose, onUpdated, onDe
         {/* Footer */}
         <div className="px-5 py-3 border-t border-delt-border flex items-center justify-between gap-2 flex-shrink-0">
           <button onClick={remove} className="text-xs font-semibold text-red-600 hover:text-white hover:bg-red-600 px-3 py-2 rounded-full border border-red-200 hover:border-red-600 transition-colors">
-            Supprimer
+            {t("proj.delete")}
           </button>
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="text-xs font-semibold text-delt-muted hover:text-delt-text px-3 py-2">
-              Annuler
+              {t("proj.cancel")}
             </button>
             <button onClick={save} disabled={saving}
               className="px-5 py-2 rounded-full text-sm font-bold text-white shadow-sm hover:shadow-md disabled:opacity-40 transition-all"
               style={{ background: `linear-gradient(135deg, ${color}, ${color}dd)` }}>
-              {saving ? "Enregistrement…" : "Enregistrer"}
+              {saving ? t("proj.saving") : t("proj.save")}
             </button>
           </div>
         </div>
