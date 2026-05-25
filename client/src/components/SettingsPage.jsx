@@ -8,30 +8,31 @@ import MemoryPage from "./MemoryPage.jsx";
 import IntegrationsPage from "./IntegrationsPage.jsx";
 import { useLocale } from "../lib/i18n.jsx";
 
-const SECTIONS = [
-  { id: "account",      label: "Compte" },
-  { id: "memory",       label: "Mémoire" },
-  { id: "models",       label: "Modèles" },
-  { id: "integrations", label: "Intégrations" },
-  { id: "usage",        label: "Utilisation" },
-  { id: "api",          label: "API" },
-  { id: "docs",         label: "Docs" },
-  { id: "privacy",      label: "Confidentialite" }
+const SECTION_KEYS = [
+  { id: "account",      key: "settings.account" },
+  { id: "memory",       key: "settings.memory" },
+  { id: "models",       key: "settings.models" },
+  { id: "integrations", key: "settings.integrations" },
+  { id: "usage",        key: "settings.usage" },
+  { id: "api",          key: "settings.api" },
+  { id: "docs",         key: "settings.docs" },
+  { id: "privacy",      key: "settings.privacy" }
 ];
 
 export default function SettingsPage({ user, initialSection = "account", onDeleted }) {
+  const { t } = useLocale();
   const [section, setSection] = useState(initialSection);
 
   return (
     <div className="max-w-6xl mx-auto px-3 sm:px-6 py-5 sm:py-8">
       <div className="mb-6">
-        <h1 className="text-xl sm:text-2xl font-bold text-delt-text">Settings</h1>
-        <p className="text-sm text-delt-muted mt-1">Compte, API, documentation et confidentialite.</p>
+        <h1 className="text-xl sm:text-2xl font-bold text-delt-text">{t("settings.title")}</h1>
+        <p className="text-sm text-delt-muted mt-1">{t("settings.subtitle")}</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)] gap-4 sm:gap-6">
         <aside className="md:sticky md:top-20 h-fit border border-delt-border rounded-lg bg-white overflow-x-auto md:overflow-hidden flex md:block">
-          {SECTIONS.map((item) => (
+          {SECTION_KEYS.map((item) => (
             <button
               key={item.id}
               onClick={() => setSection(item.id)}
@@ -39,7 +40,7 @@ export default function SettingsPage({ user, initialSection = "account", onDelet
                 section === item.id ? "bg-delt-panel text-delt-text" : "text-delt-muted hover:bg-delt-surface hover:text-delt-text"
               }`}
             >
-              {item.label}
+              {t(item.key)}
             </button>
           ))}
         </aside>
@@ -73,7 +74,7 @@ function AccountPanel({ user }) {
   return (
     <div className="space-y-5">
       <div className="card p-4 sm:p-5">
-        <h2 className="text-sm font-semibold text-delt-text">Profil</h2>
+        <h2 className="text-sm font-semibold text-delt-text">{t("settings.profile")}</h2>
         <div className="mt-4 grid sm:grid-cols-2 gap-3 text-sm">
           <Info label="Email" value={user?.email || "-"} />
           <Info label="Plan" value={user?.plan || "-"} />
@@ -104,10 +105,10 @@ function AccountPanel({ user }) {
       </div>
 
       <div className="card p-4 sm:p-5">
-        <h2 className="text-sm font-semibold text-delt-text">Documents</h2>
+        <h2 className="text-sm font-semibold text-delt-text">{t("settings.docs_section") || "Documents"}</h2>
         <div className="mt-3 flex flex-wrap gap-2">
-          <a href="/privacy" className="btn-secondary text-sm">Politique de confidentialite</a>
-          <a href="/terms" className="btn-secondary text-sm">CGU</a>
+          <a href="/privacy" className="btn-secondary text-sm">{t("settings.privacy_policy") || "Privacy Policy"}</a>
+          <a href="/terms" className="btn-secondary text-sm">{t("settings.terms") || "Terms"}</a>
         </div>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useT } from "../lib/i18n.jsx";
 
 // Map brand name → fichier SVG + label affiché
 const BRAND_CONFIG = {
@@ -91,6 +92,7 @@ function familyModel(brand, models, isFree = false) {
 }
 
 function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVideo = false, isMusic = false, openBrand, setOpenBrand, families }) {
+  const t = useT();
   const isChat = !isImage && !isVideo && !isMusic;
   return (
     <div className="flex flex-wrap items-center justify-center gap-2 max-w-3xl mx-auto">
@@ -149,10 +151,10 @@ function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVide
                 <div className="px-3 py-2 border-b border-delt-border flex items-center gap-2">
                   <BrandIcon brand={brand} size={18} />
                   <span className="text-sm font-semibold text-delt-text">{label}</span>
-                  <span className="text-[10px] text-delt-muted uppercase tracking-wider ml-auto">Familles</span>
+                  <span className="text-[10px] text-delt-muted uppercase tracking-wider ml-auto">{t("pills.family_header")}</span>
                 </div>
                 <div className="px-3 py-2 text-[11px] text-delt-muted border-b border-delt-border bg-delt-surface/30 leading-snug">
-                  Choisis une <strong>famille</strong> — le router pick la version (nano/mini/full/pro) selon la difficulté de ta demande.
+                  {t("pills.family_hint")}
                 </div>
                 <div className="py-1 max-h-72 overflow-y-auto">
                   <button
@@ -162,10 +164,10 @@ function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVide
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-semibold">🤖 Auto (tout {label})</span>
+                      <span className="font-semibold">{t("pills.auto_brand", { brand: label })}</span>
                       <span className="text-[9px] uppercase tracking-wider text-delt-muted">Router</span>
                     </div>
-                    <div className="text-[10px] text-delt-muted mt-0.5">Le routeur choisit librement dans toutes les versions</div>
+                    <div className="text-[10px] text-delt-muted mt-0.5">{t("pills.auto_brand_desc")}</div>
                   </button>
                   {brandFamilies.map((fam) => {
                     const famId = `family:${encodeURIComponent(brand)}:${fam.id}`;

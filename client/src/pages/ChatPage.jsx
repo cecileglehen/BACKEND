@@ -695,7 +695,7 @@ export default function ChatPage() {
                       className="text-[10px] uppercase tracking-wider text-delt-muted hover:text-delt-text px-2 py-1 rounded-md hover:bg-delt-surface transition-colors flex items-center gap-1"
                       title={pillsCollapsed ? "Afficher les modèles" : "Masquer les modèles"}
                     >
-                      {pillsCollapsed ? "+ Modèles" : "− Masquer"}
+                      {pillsCollapsed ? t("pills.expand") : t("pills.collapse")}
                     </button>
                   </div>
                   {!pillsCollapsed && (
@@ -773,7 +773,7 @@ export default function ChatPage() {
                       className="text-[10px] uppercase tracking-wider text-delt-muted hover:text-delt-text px-2 py-1 rounded-md hover:bg-delt-surface transition-colors flex items-center gap-1"
                       title={pillsCollapsed ? "Afficher les modèles" : "Masquer les modèles"}
                     >
-                      {pillsCollapsed ? "+ Modèles" : "− Masquer"}
+                      {pillsCollapsed ? t("pills.expand") : t("pills.collapse")}
                     </button>
                   </div>
                   {!pillsCollapsed && (
