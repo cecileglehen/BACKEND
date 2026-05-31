@@ -14,6 +14,7 @@ import OurModelRoute from "./pages/OurModelRoute.jsx";
 import ThanksRoute from "./pages/ThanksRoute.jsx";
 import GoodbyeRoute from "./pages/GoodbyeRoute.jsx";
 import IntroRoute from "./pages/IntroRoute.jsx";
+import AgentsPage from "./components/AgentsPage.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 
 export default function App() {
@@ -45,6 +46,7 @@ function AppShell() {
         <Navbar />
         <Routes>
           <Route path="/"        element={<ChatPage />} />
+          <Route path="/agents"  element={<AgentsPage />} />
           <Route path="/code"    element={<CodeStudioRoute />} />
           <Route path="/studio"  element={<ArtistStudioRoute />} />
           <Route path="/notre-modele"      element={<OurModelRoute />} />

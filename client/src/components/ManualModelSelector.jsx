@@ -1,33 +1,7 @@
 import { useMemo } from "react";
+import { BRAND_LOGO, BRAND_LABEL } from "../lib/brands.js";
 
 const PROVIDERS = ["Mistral", "OpenAI", "Anthropic", "Google", "Meta", "xAI", "Perplexity", "DeepSeek", "Venice", "InclusionAI", "Arcee", "Moonshot", "Nova", "Qwen"];
-
-const BRAND_LOGO = {
-  OpenAI:     "/brands/openai.svg",
-  Google:     "/brands/gemini-color.svg",
-  Anthropic:  "/brands/claude-color.svg",
-  Mistral:    "/brands/mistral-color.svg",
-  Meta:       "/brands/meta-color.svg",
-  xAI:        "/brands/grok.svg",
-  Perplexity: "/brands/perplexity-color.svg",
-  Venice:     "/brands/venice-color.svg",
-  InclusionAI:"/brands/antgroup-color.svg",
-  Arcee:      "/brands/arcee-color.png",
-  DeepSeek:   "/brands/deepseek-color.svg",
-  Moonshot:   "/brands/moonshot-color.svg",
-  Nova:       "/brands/nova-color.svg",
-  Qwen:       "/brands/qwen-color.svg",
-};
-
-const BRAND_LABEL = {
-  OpenAI: "GPT",
-  Anthropic: "Claude",
-  Google: "Gemini",
-  Meta: "Llama",
-  xAI: "Grok",
-  InclusionAI: "Inclusion",
-  Moonshot: "Kimi"
-};
 
 export default function ManualModelSelector({ catalog, selectedId, onSelect, plan }) {
   const isFree = plan === "FREE";

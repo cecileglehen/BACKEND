@@ -1,20 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { useT } from "../lib/i18n.jsx";
-
-const BRAND_LOGO = {
-  OpenAI:     "/brands/openai.svg",
-  Google:     "/brands/gemini-color.svg",
-  Anthropic:  "/brands/claude-color.svg",
-  Mistral:    "/brands/mistral-color.svg",
-  Meta:       "/brands/meta-color.svg",
-  xAI:        "/brands/grok.svg",
-  Perplexity: "/brands/perplexity-color.svg",
-  Venice:     "/brands/venice-color.svg",
-  InclusionAI:"/brands/antgroup-color.svg",
-  Arcee:      "/brands/arcee-color.png",
-  DeepSeek:   "/brands/deepseek-color.svg",
-};
+import { BRAND_LOGO, BRAND_LABEL } from "../lib/brands.js";
 
 const TIER_ORDER = ["FREE", "UNCENSORED", "PICO", "NANO", "MINI", "NORMAL", "EXPERT", "PRO"];
 
@@ -32,15 +19,6 @@ const TIER_INFO_KEYS = {
 const TIER_BADGE = {
   FREE: "", UNCENSORED: "badge-venice", PICO: "badge-pico", NANO: "badge-eco",
   MINI: "badge-mini", NORMAL: "badge-normal", EXPERT: "badge-expert", PRO: "badge-pro"
-};
-
-const BRAND_LABEL = {
-  OpenAI: "GPT",
-  Anthropic: "Claude",
-  Google: "Gemini",
-  Meta: "Llama",
-  xAI: "Grok",
-  InclusionAI: "Inclusion"
 };
 
 export default function ModelPreferencesPage({ user, onSaved, isOnboarding = false }) {

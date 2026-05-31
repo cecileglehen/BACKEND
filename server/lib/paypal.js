@@ -30,6 +30,91 @@ async function getAccessToken() {
   return data.access_token;
 }
 
+// ─── Commandes one-time (packs de crédits prépayés / PAYG) ──────────────────
+import { getCreditPack } from "../config/plans.js";
+import { addCredits } from "./credits.js";
+
+// Crée une commande PayPal (Orders API v2) pour un pack de crédits.
+export async function createCreditOrder(userId, packId, returnUrl, cancelUrl) {
+  const pack = getCreditPack(packId);
+  if (!pack) throw new Error("Pack de crédits inconnu");
+  const token = await getAccessToken();
+  const res = await fetch(`${baseUrl()}/v2/checkout/orders`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      Prefer: "return=representation"
+    },
+    body: JSON.stringify({
+      intent: "CAPTURE",
+      purchase_units: [{
+        custom_id: `${userId}:${pack.id}`,
+        description: `DELT AI — ${pack.credits} crédits`,
+        amount: { currency_code: "EUR", value: pack.priceEur.toFixed(2) }
+      }],
+      application_context: {
+        brand_name: "DELT AI",
+        locale: "fr-FR",
+        shipping_preference: "NO_SHIPPING",
+        user_action: "PAY_NOW",
+        return_url: returnUrl,
+        cancel_url: cancelUrl
+      }
+    })
+  });
+  const data = await res.json();
+  if (!data.id) throw new Error("PayPal order error: " + JSON.stringify(data));
+  const approveUrl = data.links?.find((l) => l.rel === "approve")?.href;
+  return { orderId: data.id, approveUrl };
+}
+
+// Capture une commande approuvée, vérifie le montant, crédite l'utilisateur (idempotent).
+export async function captureCreditOrder(userId, orderId) {
+  const db = getDb();
+
+  // Idempotence : déjà traité ?
+  const existing = await db.query(`SELECT status, credits FROM credit_orders WHERE id=$1`, [orderId]);
+  if (existing.rows[0]?.status === "completed") {
+    return { ok: true, alreadyProcessed: true, credits: Number(existing.rows[0].credits) };
+  }
+
+  const token = await getAccessToken();
+  const res = await fetch(`${baseUrl()}/v2/checkout/orders/${orderId}/capture`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
+  });
+  const data = await res.json();
+  if (data.status !== "COMPLETED") {
+    throw new Error("Paiement non complété: " + (data.message || data.status || "inconnu"));
+  }
+
+  // Vérifie l'appartenance + le montant via custom_id (userId:packId)
+  const pu = data.purchase_units?.[0];
+  const customId = pu?.payments?.captures?.[0]?.custom_id || pu?.custom_id || "";
+  const [ownerId, packId] = customId.split(":");
+  if (ownerId !== userId) throw new Error("Commande non liée à cet utilisateur");
+  const pack = getCreditPack(packId);
+  if (!pack) throw new Error("Pack inconnu sur la commande");
+
+  const paidValue = Number(pu?.payments?.captures?.[0]?.amount?.value || pu?.amount?.value || 0);
+  if (paidValue + 0.001 < pack.priceEur) throw new Error("Montant payé insuffisant");
+
+  // Enregistre la commande (idempotence) PUIS crédite
+  const ins = await db.query(
+    `INSERT INTO credit_orders (id, user_id, pack_id, credits, amount_eur, status)
+     VALUES ($1,$2,$3,$4,$5,'completed')
+     ON CONFLICT (id) DO NOTHING RETURNING id`,
+    [orderId, userId, pack.id, pack.credits, pack.priceEur]
+  );
+  if (ins.rowCount === 0) {
+    // Course : un autre process a déjà inséré → ne pas double-créditer
+    return { ok: true, alreadyProcessed: true, credits: pack.credits };
+  }
+  await addCredits(userId, pack.credits);
+  return { ok: true, credits: pack.credits, packId: pack.id };
+}
+
 // Crée un lien d'abonnement PayPal pour un plan
 // planId = ID du PayPal Billing Plan (créé manuellement dans le dashboard PayPal)
 export async function createSubscriptionLink(paypalPlanId, returnUrl, cancelUrl) {

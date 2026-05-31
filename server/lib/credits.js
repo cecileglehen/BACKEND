@@ -37,6 +37,24 @@ export async function hasEnoughCredits(userId, cost) {
   return credits >= cost;
 }
 
+// Ajoute des crédits au solde (top-up / pack prépayé). Renvoie le nouveau solde.
+export async function addCredits(userId, amount) {
+  if (!(amount > 0)) return getCredits(userId);
+  if (!process.env.DATABASE_URL) {
+    const next = (memCredits.get(userId) ?? 0) + amount;
+    memCredits.set(userId, next);
+    return next;
+  }
+  const db = getDb();
+  const { rows } = await db.query(
+    `UPDATE users SET credits = credits + $2 WHERE id=$1 RETURNING credits`,
+    [userId, amount]
+  );
+  if (!rows[0]) throw new Error("Utilisateur introuvable pour ajout crédits");
+  memCredits.set(userId, Number(rows[0].credits));
+  return Number(rows[0].credits);
+}
+
 // Attribue les crédits mensuels au renouvellement d'abonnement
 export async function grantPlanCredits(userId, plan) {
   const planInfo = PLANS[plan];
@@ -91,9 +109,9 @@ export async function hasEnoughApiCredits(userId, cost) {
   return credits >= cost;
 }
 
-// ─── Free Nano tokens (Mistral Small 4 pour plan FREE) ───────────────────────
+// ─── Free Nano tokens (Mistral Small 4 — legacy column, plan FREE) ──────────
 export const FREE_NANO_MODEL_ID = "mistralai/mistral-small-2603";
-const FREE_NANO_LIMIT = 10000;
+const FREE_NANO_LIMIT = 50000;
 
 export async function getFreeNanoTokens(userId) {
   const db = getDb();
@@ -118,6 +136,47 @@ export async function deductFreeNanoTokens(userId, tokens) {
   await db.query(
     `UPDATE users SET free_nano_tokens = GREATEST(0, free_nano_tokens - $2) WHERE id=$1`,
     [userId, Math.ceil(tokens)]
+  );
+}
+
+// ─── Generic per-model free token pools (JSONB free_model_tokens) ───────────
+// Shape: { "<modelId>": { tokens: 12345, month: "2026-05" } }
+export async function getFreeModelTokens(userId, modelId, limit) {
+  const db = getDb();
+  const month = new Date().toISOString().slice(0, 7);
+  const { rows } = await db.query(
+    `SELECT free_model_tokens FROM users WHERE id=$1`, [userId]
+  );
+  if (!rows[0]) return 0;
+  const map = rows[0].free_model_tokens || {};
+  const entry = map[modelId];
+  if (!entry || entry.month !== month) {
+    map[modelId] = { tokens: limit, month };
+    await db.query(
+      `UPDATE users SET free_model_tokens = $2 WHERE id=$1`,
+      [userId, JSON.stringify(map)]
+    );
+    return limit;
+  }
+  return Number(entry.tokens) || 0;
+}
+
+export async function deductFreeModelTokens(userId, modelId, tokens) {
+  const db = getDb();
+  const month = new Date().toISOString().slice(0, 7);
+  const n = Math.ceil(tokens);
+  // jsonb_set on the {modelId,tokens} path. We compute new value in JS for safety.
+  const { rows } = await db.query(
+    `SELECT free_model_tokens FROM users WHERE id=$1`, [userId]
+  );
+  if (!rows[0]) return;
+  const map = rows[0].free_model_tokens || {};
+  const cur = map[modelId];
+  if (!cur || cur.month !== month) return;
+  map[modelId] = { tokens: Math.max(0, (Number(cur.tokens) || 0) - n), month };
+  await db.query(
+    `UPDATE users SET free_model_tokens = $2 WHERE id=$1`,
+    [userId, JSON.stringify(map)]
   );
 }
 

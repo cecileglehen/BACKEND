@@ -1,28 +1,12 @@
 import { useState, useRef, useEffect } from "react";
-import { useT } from "../lib/i18n.jsx";
+import { useT, useLocale } from "../lib/i18n.jsx";
+import { BRAND_CONFIG } from "../lib/brands.js";
 
-// Map brand name → fichier SVG + label affiché
-const BRAND_CONFIG = {
-  DELT:        { icon: "/logo-delt.svg",               label: "DELT" },
-  OpenAI:      { icon: "/brands/openai.svg",           label: "GPT" },
-  Anthropic:   { icon: "/brands/claude-color.svg",     label: "Claude" },
-  Google:      { icon: "/brands/gemini-color.svg",     label: "Gemini" },
-  Mistral:     { icon: "/brands/mistral-color.svg",    label: "Mistral" },
-  xAI:         { icon: "/brands/grok.svg",             label: "Grok" },
-  Perplexity:  { icon: "/brands/perplexity-color.svg", label: "Perplexity" },
-  Meta:        { icon: "/brands/meta-color.svg",       label: "Llama" },
-  Venice:      { icon: "/brands/venice-color.svg",     label: "Venice" },
-  InclusionAI: { icon: "/brands/antgroup-color.svg",   label: "Inclusion" },
-  Recraft:     { icon: "/brands/recraft.svg",          label: "Recraft" },
-  Flux:        { icon: "/brands/flux.svg",             label: "FLUX" },
-  ByteDance:   { icon: "/brands/bytedance-color.svg",  label: "Seedance" },
-  Arcee:       { icon: "/brands/arcee-color.png",      label: "Arcee" },
-  Moonshot:    { icon: "/brands/moonshot-color.svg",   label: "Kimi" },
-  Nova:        { icon: "/brands/nova-color.svg",       label: "Nova" },
-  Qwen:        { icon: "/brands/qwen-color.svg",       label: "Qwen" },
-  DeepSeek:    { icon: "/brands/deepseek-color.svg",   label: "DeepSeek" },
-  Suno:        { icon: null,                           label: "Suno" }
-};
+function pickLabel(value, locale) {
+  if (!value) return null;
+  if (typeof value === "string") return value;
+  return value[locale] || value.fr || value.en || null;
+}
 
 function BrandIcon({ brand, size = 16 }) {
   const cfg = BRAND_CONFIG[brand];
@@ -93,15 +77,18 @@ function familyModel(brand, models, isFree = false) {
 
 function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVideo = false, isMusic = false, openBrand, setOpenBrand, families }) {
   const t = useT();
+  const { locale } = useLocale();
   const isChat = !isImage && !isVideo && !isMusic;
   return (
-    <div className="flex flex-wrap items-center justify-center gap-2 max-w-3xl mx-auto">
+    <div className="flex flex-wrap items-center justify-center gap-2 max-w-3xl mx-auto stagger-children">
       {brands.map(([brand, models]) => {
         const cfg = BRAND_CONFIG[brand];
         const label = cfg?.label || brand;
         const pick = isImage || isVideo || isMusic ? models[0] : familyModel(brand, models, isFree);
         const selectedHere = selectedId === pick.id || models.some((m) => m.id === selectedId) || (typeof selectedId === "string" && selectedId.startsWith(`family:${encodeURIComponent(brand)}:`));
         const isLocked = isFree && !isImage && models.every((m) => m.tier !== "FREE" && m.tier !== "UNCENSORED" && !m.freeMonthlyTokens);
+        const totalFreeTokens = models.reduce((sum, m) => sum + (Number(m.freeMonthlyTokens) || 0), 0);
+        const hasFreeTokens = totalFreeTokens > 0;
         const popKey = `${isMusic ? "mus" : isVideo ? "vid" : isImage ? "img" : "chat"}-${brand}`;
         const brandFamilies = isChat ? (families?.[brand] || []) : [];
         const hasFamilies = brandFamilies.length > 0;
@@ -110,12 +97,12 @@ function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVide
         return (
           <div key={popKey} className="relative">
             <div
-              className={`flex items-center gap-1 rounded-full border transition-colors overflow-hidden ${
+              className={`flex items-center gap-1 rounded-full border transition-all overflow-hidden tap-shrink ${
                 selectedHere
                   ? "bg-delt-text text-white border-delt-text"
                   : isLocked
                   ? "bg-white text-delt-muted/50 border-delt-border opacity-50"
-                  : "bg-white text-delt-text border-delt-border hover:bg-delt-surface"
+                  : "bg-white text-delt-text border-delt-border hover:bg-delt-surface hover:scale-105"
               }`}
             >
               <button
@@ -128,6 +115,11 @@ function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVide
                 {isVideo && <VideoBadge />}
                 {isMusic && <MusicBadge />}
                 <span className="font-medium">{label}</span>
+                {hasFreeTokens && !selectedHere && (
+                  <span className="ml-1 px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[9px] font-bold uppercase tracking-wider">
+                    {Math.round(totalFreeTokens / 1000)}K free
+                  </span>
+                )}
               </button>
 
               {showDots && (
@@ -147,7 +139,7 @@ function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVide
             </div>
 
             {openBrand === popKey && isChat && hasFamilies && (
-              <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50 w-72 bg-white rounded-xl border border-delt-border shadow-lg overflow-hidden">
+              <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50 w-72 bg-white rounded-xl border border-delt-border shadow-lg overflow-hidden animate-popIn">
                 <div className="px-3 py-2 border-b border-delt-border flex items-center gap-2">
                   <BrandIcon brand={brand} size={18} />
                   <span className="text-sm font-semibold text-delt-text">{label}</span>
@@ -172,6 +164,8 @@ function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVide
                   {brandFamilies.map((fam) => {
                     const famId = `family:${encodeURIComponent(brand)}:${fam.id}`;
                     const selFam = selectedId === famId;
+                    const famFreeTokens = fam.models.reduce((s, m) => s + (Number(m.freeMonthlyTokens) || 0), 0);
+                    const famFeatured = fam.models.find((m) => m.featuredLabel)?.featuredLabel;
                     return (
                       <button
                         key={fam.id}
@@ -193,7 +187,15 @@ function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVide
                           <span className="font-semibold">
                             {fam.models.length === 1 ? fam.models[0].display : fam.label}
                           </span>
+                          {famFreeTokens > 0 && (
+                            <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[9px] font-bold uppercase tracking-wider whitespace-nowrap">
+                              {famFreeTokens.toLocaleString()} free
+                            </span>
+                          )}
                         </div>
+                        {famFeatured && (
+                          <div className="text-[10px] text-emerald-700 mt-0.5">{pickLabel(famFeatured, locale)}</div>
+                        )}
                       </button>
                     );
                   })}
@@ -202,7 +204,7 @@ function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVide
             )}
 
             {openBrand === popKey && !isChat && (
-              <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50 w-64 bg-white rounded-xl border border-delt-border shadow-lg overflow-hidden">
+              <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50 w-64 bg-white rounded-xl border border-delt-border shadow-lg overflow-hidden animate-popIn">
                 <div className="px-3 py-2 border-b border-delt-border flex items-center gap-2">
                   <BrandIcon brand={brand} size={18} />
                   {isImage && <ImageBadge size={14} />}

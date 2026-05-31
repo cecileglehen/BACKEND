@@ -12,6 +12,20 @@ export const PLANS = {
 // Plans limités aux modèles gratuits uniquement
 export const FREE_TIER_ONLY_PLANS = new Set(["FREE"]);
 
+// ─── Packs de crédits prépayés (PAYG / top-up ponctuel) ──────────────────────
+// Achat one-time via PayPal. 1€ = 100 Cr, avec bonus croissant sur les gros packs.
+export const CREDIT_PACKS = {
+  pack_5:  { id: "pack_5",  priceEur: 5,   credits: 500,    bonus: 0,    label: "Recharge 5€" },
+  pack_10: { id: "pack_10", priceEur: 10,  credits: 1050,   bonus: 50,   label: "Recharge 10€" },
+  pack_25: { id: "pack_25", priceEur: 25,  credits: 2750,   bonus: 250,  label: "Recharge 25€" },
+  pack_50: { id: "pack_50", priceEur: 50,  credits: 5750,   bonus: 750,  label: "Recharge 50€" },
+  pack_100:{ id: "pack_100",priceEur: 100, credits: 12000,  bonus: 2000, label: "Recharge 100€" }
+};
+
+export function getCreditPack(packId) {
+  return CREDIT_PACKS[packId] || null;
+}
+
 // Limites des pièces jointes par plan
 //  - attachmentsPerConv  : nombre max de fichiers par conversation
 //  - pdfMaxPages         : nombre max de pages PDF lues (le reste est ignoré)
@@ -26,6 +40,34 @@ export const PLAN_LIMITS = {
 
 export function getPlanLimits(plan) {
   return PLAN_LIMITS[plan] || PLAN_LIMITS.FREE;
+}
+
+// Nombre d'agents IA personnalisés créables par plan
+//  FREE 0 · BASIC (10€) 1 · PLUS (23€) 2 · PRO (75€) 6 · ULTRA (200€) 20
+export const AGENT_LIMITS = {
+  FREE:  0,
+  BASIC: 1,
+  PLUS:  2,
+  PRO:   6,
+  ULTRA: 20
+};
+
+export function getAgentLimit(plan) {
+  return AGENT_LIMITS[plan] ?? 0;
+}
+
+// Stockage total de fichiers de connaissances (RAG) par utilisateur, en Mo
+//  BASIC (10€) 20 Mo · PLUS (23€) 75 Mo · PRO (75€) 200 Mo · ULTRA (200€) 1 Go
+export const AGENT_KNOWLEDGE_MB = {
+  FREE:  0,
+  BASIC: 20,
+  PLUS:  75,
+  PRO:   200,
+  ULTRA: 1024
+};
+
+export function getKnowledgeQuotaBytes(plan) {
+  return (AGENT_KNOWLEDGE_MB[plan] ?? 0) * 1024 * 1024;
 }
 
 // Fallback tier-based si modelId inconnu (Cr / 1k tokens, in+out combinés)

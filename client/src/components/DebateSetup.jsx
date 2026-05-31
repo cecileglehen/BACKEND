@@ -1,26 +1,6 @@
 import { useMemo, useState } from "react";
-
-const BRAND_LOGO = {
-  OpenAI: "/brands/openai.svg",
-  Google: "/brands/gemini-color.svg",
-  Anthropic: "/brands/claude-color.svg",
-  Mistral: "/brands/mistral-color.svg",
-  Meta: "/brands/meta-color.svg",
-  xAI: "/brands/grok.svg",
-  Perplexity: "/brands/perplexity-color.svg",
-  DeepSeek: "/brands/deepseek-color.svg",
-  Arcee: "/brands/arcee-color.png",
-  InclusionAI: "/brands/antgroup-color.svg"
-};
-
-const BRAND_LABEL = {
-  OpenAI: "GPT",
-  Anthropic: "Claude",
-  Google: "Gemini",
-  Meta: "Llama",
-  xAI: "Grok",
-  InclusionAI: "Inclusion"
-};
+import { useT } from "../lib/i18n.jsx";
+import { BRAND_LOGO, BRAND_LABEL } from "../lib/brands.js";
 
 const FALLBACK_FAMILIES = ["OpenAI", "Anthropic", "Google", "Mistral", "xAI", "Meta", "Perplexity"].map((brand) => ({
   role: "debater",
@@ -34,6 +14,7 @@ const FALLBACK_FAMILIES = ["OpenAI", "Anthropic", "Google", "Mistral", "xAI", "M
 }));
 
 export default function DebateSetup({ catalog, onStart, onClose }) {
+  const t = useT();
   const [rounds, setRounds] = useState(10);
 
   const families = useMemo(() => {
@@ -98,9 +79,9 @@ export default function DebateSetup({ catalog, onStart, onClose }) {
         <div className="px-5 py-4 border-b border-delt-border flex items-center justify-between flex-shrink-0">
           <div>
             <h2 className="text-lg font-extrabold text-delt-text tracking-tight flex items-center gap-2">
-              <span>🎭</span> Débat contradictoire
+              <span>🎭</span> {t("debate.title")}
             </h2>
-            <p className="text-xs text-delt-muted">Choisis 2 ou 3 marques. Le router prend la bonne variante.</p>
+            <p className="text-xs text-delt-muted">{t("debate.subtitle")}</p>
           </div>
           <button onClick={onClose} className="text-delt-muted hover:text-delt-text text-2xl leading-none">✕</button>
         </div>
@@ -108,7 +89,7 @@ export default function DebateSetup({ catalog, onStart, onClose }) {
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
           <div>
             <div className="flex items-center justify-between mb-2">
-              <div className="text-xs font-bold uppercase tracking-widest text-delt-muted">IA du débat</div>
+              <div className="text-xs font-bold uppercase tracking-widest text-delt-muted">{t("debate.agents_label")}</div>
               <div className="text-[11px] text-delt-muted">{selected.length}/3</div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -135,7 +116,7 @@ export default function DebateSetup({ catalog, onStart, onClose }) {
                       <div className={`text-sm font-bold truncate ${picked ? "text-delt-accent" : "text-delt-text"}`}>
                         {family.model.display}
                       </div>
-                      <div className="text-[10px] text-delt-muted truncate">Auto router</div>
+                      <div className="text-[10px] text-delt-muted truncate">{t("debate.auto_router")}</div>
                     </div>
                   </button>
                 );
@@ -145,8 +126,8 @@ export default function DebateSetup({ catalog, onStart, onClose }) {
 
           <div>
             <div className="flex items-center justify-between mb-2">
-              <div className="text-xs font-bold uppercase tracking-widest text-delt-muted">Longueur du débat</div>
-              <div className="text-xs font-mono text-delt-text">{rounds} messages</div>
+              <div className="text-xs font-bold uppercase tracking-widest text-delt-muted">{t("debate.length_label")}</div>
+              <div className="text-xs font-mono text-delt-text">{t("debate.messages", { n: rounds })}</div>
             </div>
             <input
               type="range"
@@ -158,26 +139,26 @@ export default function DebateSetup({ catalog, onStart, onClose }) {
               className="w-full accent-delt-accent"
             />
             <div className="flex justify-between text-[10px] text-delt-muted mt-1">
-              <span>Court</span>
-              <span>≈10 messages</span>
-              <span>Long</span>
+              <span>{t("debate.short")}</span>
+              <span>{t("debate.medium")}</span>
+              <span>{t("debate.long")}</span>
             </div>
           </div>
 
           <div className="rounded-2xl border border-delt-border bg-delt-surface px-4 py-3 text-sm text-delt-text">
-            Une IA propose, les autres répondent avec accords, failles et corrections. Le dernier tour produit la réponse finale propre.
+            {t("debate.explanation")}
           </div>
         </div>
 
         <div className="px-5 py-3 border-t border-delt-border flex items-center justify-between gap-2 flex-shrink-0">
-          <span className="text-[11px] text-delt-muted">Chaque message consomme les crédits du modèle routé.</span>
+          <span className="text-[11px] text-delt-muted">{t("debate.credit_note")}</span>
           <button
             onClick={start}
             disabled={selected.length < 2}
             className="px-5 py-2.5 rounded-full text-sm font-bold text-white shadow-md hover:shadow-lg disabled:opacity-40 transition-all"
             style={{ background: "linear-gradient(135deg, #6366f1, #ec4899)" }}
           >
-            Activer →
+            {t("debate.activate")}
           </button>
         </div>
       </div>

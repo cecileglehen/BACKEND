@@ -1,30 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-
-const BRAND_LOGO = {
-  OpenAI:     "/brands/openai.svg",
-  Google:     "/brands/gemini-color.svg",
-  Anthropic:  "/brands/claude-color.svg",
-  Mistral:    "/brands/mistral-color.svg",
-  Meta:       "/brands/meta-color.svg",
-  xAI:        "/brands/grok.svg",
-  Perplexity: "/brands/perplexity-color.svg",
-  InclusionAI:"/brands/antgroup-color.svg",
-  DeepSeek:   "/brands/deepseek-color.svg",
-  Arcee:      "/brands/arcee-color.png"
-};
+import { useT } from "../lib/i18n.jsx";
+import { BRAND_LOGO, BRAND_LABEL } from "../lib/brands.js";
 
 const TIER_ORDER = ["FREE", "UNCENSORED", "PICO", "NANO", "MINI", "NORMAL", "EXPERT", "PRO"];
 const MAX_MODELS = 4;
-const BRAND_LABEL = {
-  OpenAI: "GPT",
-  Anthropic: "Claude",
-  Google: "Gemini",
-  Meta: "Llama",
-  xAI: "Grok",
-  InclusionAI: "Inclusion"
-};
 
 export default function ParallelPicker({ catalog, selected, onChange, onClose }) {
+  const t = useT();
   const [picks, setPicks] = useState(selected || []);
 
   useEffect(() => {
@@ -85,8 +67,8 @@ export default function ParallelPicker({ catalog, selected, onChange, onClose })
         {/* Header */}
         <div className="px-5 py-4 border-b border-delt-border flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-extrabold text-delt-text tracking-tight">Comparaison parallèle</h2>
-            <p className="text-xs text-delt-muted">Envoie ta question à 2-4 modèles en même temps</p>
+            <h2 className="text-lg font-extrabold text-delt-text tracking-tight">{t("parallel.title")}</h2>
+            <p className="text-xs text-delt-muted">{t("parallel.subtitle")}</p>
           </div>
           <button onClick={onClose} className="text-delt-muted hover:text-delt-text text-2xl leading-none">✕</button>
         </div>
@@ -94,7 +76,7 @@ export default function ParallelPicker({ catalog, selected, onChange, onClose })
         {/* Selected chips */}
         <div className="px-5 py-3 border-b border-delt-border bg-delt-surface min-h-[3rem]">
           {picks.length === 0 ? (
-            <div className="text-xs text-delt-muted">Aucun modèle sélectionné. Choisis-en jusqu'à {MAX_MODELS}.</div>
+            <div className="text-xs text-delt-muted">{t("parallel.empty", { max: MAX_MODELS })}</div>
           ) : (
             <div className="flex flex-wrap gap-2 items-center">
               {picks.map((m, i) => (
@@ -119,7 +101,7 @@ export default function ParallelPicker({ catalog, selected, onChange, onClose })
               ))}
               {picks.length > 0 && (
                 <button onClick={clear} className="text-[11px] text-delt-muted hover:text-red-600 font-semibold ml-1">
-                  Tout effacer
+                  {t("parallel.clear")}
                 </button>
               )}
             </div>
@@ -171,8 +153,8 @@ export default function ParallelPicker({ catalog, selected, onChange, onClose })
         {/* Footer */}
         <div className="px-5 py-3 border-t border-delt-border flex items-center justify-between gap-3 bg-white">
           <div className="text-[11px] text-delt-muted">
-            {picks.length}/{MAX_MODELS} modèle{picks.length > 1 ? "s" : ""}
-            {picks.length >= 2 && " · prêt à comparer"}
+            {t("parallel.counter", { n: picks.length, max: MAX_MODELS, s: picks.length > 1 ? "s" : "" })}
+            {picks.length >= 2 && t("parallel.ready")}
           </div>
           <button
             onClick={confirm}
@@ -180,7 +162,7 @@ export default function ParallelPicker({ catalog, selected, onChange, onClose })
             className="px-5 py-2.5 rounded-full text-sm font-bold text-white shadow-md hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed transition-all"
             style={{ background: picks.length >= 2 || picks.length === 0 ? "linear-gradient(135deg, #6366f1, #06b6d4)" : "#94a3b8" }}
           >
-            {picks.length === 0 ? "Désactiver" : picks.length < 2 ? "Sélectionne ≥ 2" : `Confirmer (×${picks.length})`}
+            {picks.length === 0 ? t("parallel.disable") : picks.length < 2 ? t("parallel.min_pick") : t("parallel.confirm", { n: picks.length })}
           </button>
         </div>
       </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../lib/api.js";
 import { useToast } from "../contexts/ToastContext.jsx";
 import { useT, useLocale } from "../lib/i18n.jsx";
+import { INTEG_BRAND_COLORS as BRAND_COLORS, INTEG_COLOR_LOGOS as COLOR_LOGOS } from "../lib/brands.js";
 
 // Catégorie FR → clé translation
 const CATEGORY_KEYS = {
@@ -13,29 +14,6 @@ const CATEGORY_KEYS = {
   "Dev": "cat.dev",
   "Projet": "cat.project",
   "Paiement": "cat.payment"
-};
-
-// Couleurs officielles de chaque marque (simpleicons brand colors)
-const BRAND_COLORS = {
-  gmail:          "#EA4335",
-  googledrive:    "#4285F4",
-  googlecalendar: "#4285F4",
-  slack:          "#4A154B",
-  notion:         "#000000",
-  github:         "#181717",
-  linear:         "#5E6AD2",
-  trello:         "#0079BF",
-  discord:        "#5865F2",
-  stripe:         "#635BFF"
-};
-
-// Logos couleur officiels (PNG/SVG natifs). Si présent → on l'affiche tel quel
-// au lieu du mask monochrome avec couleur appliquée.
-const COLOR_LOGOS = {
-  gmail:          "/brands/gmail-color.png",
-  googledrive:    "/brands/googledrive-color.png",
-  googlecalendar: "/brands/googlecalendar-color.png",
-  slack:          "/brands/slack-color.png"
 };
 
 export default function IntegrationsPage() {

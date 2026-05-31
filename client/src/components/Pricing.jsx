@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { api } from "../lib/api.js";
 import { useToast } from "../contexts/ToastContext.jsx";
+import { useAuth } from "../contexts/AuthContext.jsx";
 import { useT } from "../lib/i18n.jsx";
 
 const PLAN_RANK = { FREE: 0, BASIC: 1, PLUS: 2, PRO: 3, ULTRA: 4 };
@@ -15,6 +17,7 @@ const ALL_FEATURES = [
   { text: "Génération vidéo",           sub: "Seedance 2 (ByteDance)" },
   { text: "Génération musicale",        sub: "Suno V5.5 (2 pistes / génération)" },
   { text: "Recherche Web approfondie",  sub: "Perplexity Sonar + Google" },
+  { text: "Agents IA personnalisés",    sub: "1 · 2 · 6 · 20 agents + fichiers de connaissances (RAG) selon le plan" },
   { text: "Accès API directe DELT",     sub: "Compatible OpenAI SDK" },
 ];
 
@@ -24,8 +27,8 @@ const PLANS = [
     label: "Starter",
     subtitle: "Pour découvrir DELT AI",
     price: 10,
-    yearlyPrice: 8,
     multiplier: null,
+    agents: 1, knowledge: "20 Mo",
     dark: true,
   },
   {
@@ -33,8 +36,8 @@ const PLANS = [
     label: "Standard",
     subtitle: "2,5× plus d'usage que Starter",
     price: 23,
-    yearlyPrice: 18,
     multiplier: "2,5×",
+    agents: 2, knowledge: "75 Mo",
     popular: true,
   },
   {
@@ -42,16 +45,16 @@ const PLANS = [
     label: "Expert",
     subtitle: "8,5× plus d'usage que Starter",
     price: 75,
-    yearlyPrice: 60,
     multiplier: "8,5×",
+    agents: 6, knowledge: "200 Mo",
   },
   {
     key: "ULTRA",
     label: "Entreprise",
     subtitle: "25× plus d'usage que Starter",
     price: 200,
-    yearlyPrice: 160,
     multiplier: "25×",
+    agents: 20, knowledge: "1 Go",
   },
 ];
 
@@ -60,9 +63,9 @@ const CATEGORY_TABLE = [
   { cat: "UNCENSORED", models: "Venice Dolphin Mistral 24B",                                                                    badge: "badge-venice" },
   { cat: "PICO",       models: "Gemini 2.5 Flash Lite · DeepSeek V4 Flash",                                                     badge: "badge-pico" },
   { cat: "NANO",       models: "Mistral Small 4 · GPT-4o Mini · GPT-5.4 Nano · Gemini 2.5 Flash",                              badge: "badge-eco" },
-  { cat: "MINI",       models: "Mistral Large 3 · GPT-5.4 Mini · Llama 4 Maverick · Gemini 3.1 Flash Lite · Claude Haiku 4.5 · Grok 4.20 · Grok 4.3", badge: "badge-mini" },
+  { cat: "MINI",       models: "Mistral Large 3 · Mixtral 8x22B · GPT-5.4 Mini · Llama 4 Maverick · Gemini 3.1 Flash Lite · Claude Haiku 4.5 · Grok 4.20 · Grok 4.3", badge: "badge-mini" },
   { cat: "NORMAL",     models: "GPT-5.4 · Claude Sonnet 4.5 · Mistral Large · Sonar Web Search",                                            badge: "badge-normal" },
-  { cat: "EXPERT",     models: "GPT-5.5 · Claude Opus 4.5 · Grok 4.20 Multi-Agent · Sonar Deep Research",                      badge: "badge-expert" },
+  { cat: "EXPERT",     models: "GPT-5.5 · Claude Opus 4.8 · Grok 4.20 Multi-Agent · Sonar Deep Research",                      badge: "badge-expert" },
   { cat: "PRO",        models: "GPT-5.4 Pro · GPT-5.5 Pro",                                                                    badge: "badge-pro" },
 ];
 
@@ -126,7 +129,6 @@ export default function Pricing({ user, onSubscribed }) {
 
 function PricingContent({ user, config, onSubscribed }) {
   const t = useT();
-  const [yearly, setYearly] = useState(false);
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-12 space-y-16">
@@ -141,23 +143,6 @@ function PricingContent({ user, config, onSubscribed }) {
             {t("pricing.sandbox")}
           </div>
         )}
-
-        {/* Toggle */}
-        <div className="inline-flex items-center bg-slate-100 rounded-full p-1">
-          <button
-            onClick={() => setYearly(false)}
-            className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${!yearly ? "bg-white shadow text-delt-text" : "text-delt-muted"}`}
-          >
-            {t("pricing.pay_monthly")}
-          </button>
-          <button
-            onClick={() => setYearly(true)}
-            className={`px-5 py-2 rounded-full text-sm font-semibold transition-all flex items-center gap-2 ${yearly ? "bg-white shadow text-delt-text" : "text-delt-muted"}`}
-          >
-            {t("pricing.pay_yearly")}
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: "linear-gradient(135deg,#2563eb,#06b6d4)", color: "white" }}>-20%</span>
-          </button>
-        </div>
       </div>
 
       {/* Cards */}
@@ -168,7 +153,7 @@ function PricingContent({ user, config, onSubscribed }) {
           const userRank = PLAN_RANK[user?.plan] ?? 0;
           const planRank = PLAN_RANK[plan.key] ?? 0;
           const isLower = planRank < userRank;
-          const price = yearly ? plan.yearlyPrice : plan.price;
+          const price = plan.price;
 
           return (
             <div
@@ -205,13 +190,29 @@ function PricingContent({ user, config, onSubscribed }) {
                   )}
                 </div>
                 <p className={`text-sm ${plan.dark ? "text-blue-200" : "text-slate-500"}`}>{plan.subtitle}</p>
-                <div className={`mt-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${
-                  plan.dark ? "bg-white/15 text-white" : "bg-emerald-50 text-emerald-700"
-                }`}>
-                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12"/>
-                  </svg>
-                  Tout est dispo
+                <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                  <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${
+                    plan.dark ? "bg-white/15 text-white" : "bg-emerald-50 text-emerald-700"
+                  }`}>
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                    Tout est dispo
+                  </div>
+                  {plan.agents != null && (
+                    <div className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                      plan.dark ? "bg-white/15 text-white" : "bg-indigo-50 text-indigo-700"
+                    }`}>
+                      🤖 {plan.agents} agent{plan.agents > 1 ? "s" : ""}
+                    </div>
+                  )}
+                  {plan.knowledge && (
+                    <div className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                      plan.dark ? "bg-white/15 text-white" : "bg-cyan-50 text-cyan-700"
+                    }`}>
+                      📄 {plan.knowledge}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -224,7 +225,7 @@ function PricingContent({ user, config, onSubscribed }) {
                   <span className={`text-sm mb-2 ${plan.dark ? "text-blue-200" : "text-slate-500"}`}>/mois (TTC)</span>
                 </div>
                 <p className={`text-xs mt-1 ${plan.dark ? "text-blue-300" : "text-slate-400"}`}>
-                  {yearly ? "Facturé annuellement" : "Annulez à tout moment"}
+                  {t("pricing.cancel_anytime")}
                 </p>
               </div>
 
@@ -248,7 +249,7 @@ function PricingContent({ user, config, onSubscribed }) {
                   </button>
                 ) : (
                   <PayPalButtons
-                    key={`${plan.key}-${config.mode}-${yearly}`}
+                    key={`${plan.key}-${config.mode}`}
                     style={{ shape: "pill", color: plan.dark ? "white" : "blue", layout: "vertical", label: "subscribe", height: 45 }}
                     createSubscription={(_d, actions) => actions.subscription.create({ plan_id: planId })}
                     onApprove={async (data) => {
@@ -374,6 +375,98 @@ function PricingContent({ user, config, onSubscribed }) {
         </div>
       </div>
 
+      {/* Top-up / PAYG */}
+      <TopUpSection user={user} />
+
+    </div>
+  );
+}
+
+function TopUpSection({ user }) {
+  const t = useT();
+  const toast = useToast();
+  const { refreshQuota } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [packs, setPacks] = useState([]);
+  const [busy, setBusy] = useState(null);
+  const [capturing, setCapturing] = useState(false);
+
+  useEffect(() => {
+    api.creditPacks().then(({ packs }) => setPacks(packs || [])).catch(() => {});
+  }, []);
+
+  // Retour PayPal : ?topup=success&token=<orderId> → capture
+  useEffect(() => {
+    const topup = searchParams.get("topup");
+    const token = searchParams.get("token");
+    if (topup === "success" && token && !capturing) {
+      setCapturing(true);
+      api.captureCreditOrder(token)
+        .then((r) => {
+          toast.success(t("topup.success", { credits: r.credits }));
+          refreshQuota?.();
+        })
+        .catch((e) => toast.error(e.message))
+        .finally(() => {
+          setCapturing(false);
+          setSearchParams({}, { replace: true });
+        });
+    } else if (topup === "cancel") {
+      setSearchParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  const buy = async (packId) => {
+    setBusy(packId);
+    try {
+      const { approveUrl } = await api.createCreditOrder(packId);
+      if (approveUrl) window.location.href = approveUrl;
+      else throw new Error("Lien PayPal indisponible");
+    } catch (e) {
+      toast.error(e.message);
+      setBusy(null);
+    }
+  };
+
+  if (!user || user.plan === "FREE") {
+    return (
+      <div className="rounded-3xl border border-delt-border bg-delt-surface/40 p-8 text-center">
+        <h2 className="text-2xl font-extrabold text-delt-text mb-2">{t("topup.title")}</h2>
+        <p className="text-sm text-delt-muted">{t("topup.need_plan")}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-3xl border border-delt-border bg-white p-6 sm:p-8 shadow-sm">
+      <div className="text-center mb-6">
+        <h2 className="text-2xl sm:text-3xl font-extrabold text-delt-text">{t("topup.title")}</h2>
+        <p className="text-sm text-delt-muted mt-2 max-w-xl mx-auto">{t("topup.subtitle")}</p>
+      </div>
+      {capturing && (
+        <div className="mb-4 text-center text-sm text-indigo-600 font-semibold">{t("topup.processing")}</div>
+      )}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 stagger-children">
+        {packs.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => buy(p.id)}
+            disabled={!!busy}
+            className="rounded-2xl border border-delt-border bg-white p-4 text-center hover-lift tap-shrink disabled:opacity-50 transition-all relative"
+          >
+            {p.bonus > 0 && (
+              <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[10px] font-bold px-2 py-0.5 rounded-full text-white whitespace-nowrap" style={{ background: "linear-gradient(135deg,#6366f1,#06b6d4)" }}>
+                +{p.bonus} bonus
+              </span>
+            )}
+            <div className="text-2xl font-extrabold text-delt-text mt-1">{p.priceEur}€</div>
+            <div className="text-sm font-bold text-indigo-600 mt-1">{p.credits.toLocaleString()} Cr</div>
+            <div className="text-[10px] text-delt-muted mt-1">{busy === p.id ? t("topup.redirecting") : t("topup.buy")}</div>
+          </button>
+        ))}
+      </div>
+      <p className="text-[11px] text-delt-muted text-center mt-4">{t("topup.note")}</p>
     </div>
   );
 }

@@ -11,7 +11,7 @@ const stripForLLM = (list) => list.map(({ role, content, attachments: a }) => {
  * Centralise toute la logique de streaming chat / image / video / merge / remake / parallel.
  * Retourne l'API consommée par ChatPage.
  */
-export function useChatStream({ projectId, enabledTools, onCreditsUsed, onAgeGate }) {
+export function useChatStream({ projectId, agentId, enabledTools, onCreditsUsed, onAgeGate }) {
   const [messages, setMessages] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -71,6 +71,7 @@ export function useChatStream({ projectId, enabledTools, onCreditsUsed, onAgeGat
       modelId: model?.id,
       manual: !!model,
       projectId: projectId ?? undefined,
+      agentId: agentId ?? undefined,
       enabledTools: enabledTools ? [...enabledTools] : undefined,
       onMeta: (meta) => applyUpdate((m) => ({ ...m, tier: meta.tier, model: meta.model })),
       onThinking: (delta) => applyUpdate((m) => ({ ...m, reasoning: (m.reasoning || "") + delta, thinking: true })),
@@ -128,7 +129,7 @@ export function useChatStream({ projectId, enabledTools, onCreditsUsed, onAgeGat
         setRouterInfo(null);
       }
     });
-  }, [projectId, enabledTools, onCreditsUsed, onAgeGate]);
+  }, [projectId, agentId, enabledTools, onCreditsUsed, onAgeGate]);
 
   // Image
   const generateImage = useCallback(async (prompt, model) => {
@@ -199,6 +200,7 @@ export function useChatStream({ projectId, enabledTools, onCreditsUsed, onAgeGat
       modelId: m.id,
       manual: true,
       projectId: projectId ?? undefined,
+      agentId: agentId ?? undefined,
       onMeta: (meta) => {
         setMessages((prev) => prev.map((msg, i) => {
           if (i !== compMsgIndex) return msg;
@@ -244,7 +246,7 @@ export function useChatStream({ projectId, enabledTools, onCreditsUsed, onAgeGat
       }
     }));
     abortRef.current = () => aborts.forEach((a) => a?.());
-  }, [projectId, onCreditsUsed]);
+  }, [projectId, agentId, onCreditsUsed]);
 
   // Merge variants → 1 réponse synthétisée
   const mergeVariants = useCallback((msgIndex) => {

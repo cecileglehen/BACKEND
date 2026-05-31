@@ -7,6 +7,7 @@ import { useT } from "../lib/i18n.jsx";
 function buildTabs(t) {
   return [
     { to: "/",        label: t("navbar.chat") },
+    { to: "/agents",  label: t("navbar.agents") },
     { to: "/code",    label: t("navbar.code") },
     { to: "/studio",  label: t("navbar.studio") },
     { to: "/billing", label: t("navbar.pricing") },
@@ -94,7 +95,7 @@ export default function Navbar() {
               {initial}
             </button>
             {open && (
-              <div className="absolute right-0 mt-2 w-[calc(100vw-1rem)] max-w-64 rounded-xl border border-delt-border bg-white shadow-xl z-50 overflow-hidden animate-slideUp">
+              <div className="absolute right-0 mt-2 w-[calc(100vw-1rem)] max-w-64 rounded-xl border border-delt-border bg-white shadow-xl z-50 overflow-hidden animate-slideInDown origin-top-right">
                 <div className="px-4 py-3 border-b border-delt-border">
                   <div className="text-sm font-semibold text-delt-text truncate">{user.email}</div>
                   <div className="text-xs text-delt-muted mt-0.5 flex items-center gap-1.5">

@@ -439,7 +439,7 @@ data: [DONE]`}</Code>
     }]
 )`}</Code>
             <P>
-              Modèles compatibles : <strong>GPT-5.4</strong>, <strong>GPT-5.5</strong>, <strong>Claude Sonnet/Opus 4.5</strong>, <strong>Gemini 2.5 Flash/Pro</strong>, <strong>Grok 4.20</strong>.
+              Modèles compatibles : <strong>GPT-5.4</strong>, <strong>GPT-5.5</strong>, <strong>Claude Sonnet 4.5/Opus 4.8</strong>, <strong>Gemini 2.5 Flash/Pro</strong>, <strong>Grok 4.20</strong>.
             </P>
           </section>
 

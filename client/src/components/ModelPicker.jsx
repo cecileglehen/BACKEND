@@ -1,4 +1,11 @@
 import { useMemo, useState } from "react";
+import { useLocale } from "../lib/i18n.jsx";
+
+function pickLabel(value, locale) {
+  if (!value) return null;
+  if (typeof value === "string") return value;
+  return value[locale] || value.fr || value.en || null;
+}
 
 const BRANDS = ["Mistral", "OpenAI", "Anthropic", "Google", "Meta", "xAI", "Perplexity", "DeepSearch", "Venice", "InclusionAI"];
 
@@ -16,6 +23,7 @@ const CAT_STYLE = {
 
 export default function ModelPicker({ catalog, selected, onSelect, disabled }) {
   const [brand, setBrand] = useState("All");
+  const { locale } = useLocale();
 
   const flat = useMemo(() => {
     if (!catalog) return [];
@@ -70,7 +78,7 @@ export default function ModelPicker({ catalog, selected, onSelect, disabled }) {
                     {m.display}
                     {m.featuredLabel && (
                       <span className="ml-2 align-middle text-[10px] px-1.5 py-0.5 rounded font-semibold badge-favorite">
-                        {m.featuredLabel}
+                        {pickLabel(m.featuredLabel, locale)}
                       </span>
                     )}
                   </div>
