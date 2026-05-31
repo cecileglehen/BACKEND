@@ -104,7 +104,7 @@ export default function ProjectsSidebar({
       )}
 
       {/* Liste */}
-      <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
+      <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5 stagger-children">
         {/* Tous les chats */}
         <button
           onClick={() => onSelect(null)}

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import MessageRenderer from "./MessageRenderer.jsx";
+import { BRAND_LOGO } from "../lib/brands.js";
 
 // Dérive la marque + le label depuis l'id OpenRouter du modèle.
 // Permet d'afficher le logo même si le catalog n'a pas la version complète.
@@ -60,25 +61,6 @@ const CAT_BADGE = {
   PRICE:  "badge-expert",
   EXPERT: "badge-expert",
   PRO:    "badge-pro"
-};
-
-const BRAND_LOGO = {
-  OpenAI:     "/brands/openai.svg",
-  Google:     "/brands/gemini-color.svg",
-  Anthropic:  "/brands/claude-color.svg",
-  Mistral:    "/brands/mistral-color.svg",
-  Meta:       "/brands/meta-color.svg",
-  xAI:        "/brands/grok.svg",
-  Perplexity: "/brands/perplexity-color.svg",
-  Venice:     "/brands/venice-color.svg",
-  InclusionAI:"/brands/antgroup-color.svg",
-  ByteDance:  "/brands/bytedance-color.svg",
-  Flux:       "/brands/flux.svg",
-  Arcee:      "/brands/arcee-color.png",
-  DeepSeek:   "/brands/deepseek-color.svg",
-  Moonshot:   "/brands/moonshot-color.svg",
-  Nova:       "/brands/nova-color.svg",
-  Qwen:       "/brands/qwen-color.svg",
 };
 
 const TIER_ORDER = ["FREE", "UNCENSORED", "PICO", "NANO", "MINI", "NORMAL", "EXPERT", "PRO"];
@@ -530,7 +512,7 @@ export default function ChatMessage({ msg, models = [], onRemake, onChooseVarian
   // Mode rendu normal (mais avec option pour cacher l'avatar quand utilisé dans une variante)
   return (
     <div
-      className={`flex gap-2 sm:gap-3 animate-fadeIn ${isUser ? "flex-row-reverse" : "flex-row"}`}
+      className={`flex gap-2 sm:gap-3 animate-fadeInUp ${isUser ? "flex-row-reverse" : "flex-row"}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >

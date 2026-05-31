@@ -22,7 +22,7 @@ router.get("/models", requireApiKey, (_req, res) => {
         owned_by: m.brand?.toLowerCase() || "delt",
         tier,
         display: m.display,
-        ...(m.featuredLabel && { featured: m.featuredLabel })
+        ...(m.featuredLabel && { featured: typeof m.featuredLabel === "string" ? m.featuredLabel : (m.featuredLabel.en || m.featuredLabel.fr) })
       });
     }
   }

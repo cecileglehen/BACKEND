@@ -1,24 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { useT } from "../lib/i18n.jsx";
+import { BRAND_LOGO, INTEG_BRAND_COLORS, INTEG_COLOR_LOGOS } from "../lib/brands.js";
 
-const BRAND_LOGOS = {
-  OpenAI:     "/brands/openai.svg",
-  Anthropic:  "/brands/claude-color.svg",
-  Google:     "/brands/gemini-color.svg",
-  Mistral:    "/brands/mistral-color.svg",
-  xAI:        "/brands/grok.svg",
-  Perplexity: "/brands/perplexity-color.svg",
-  Meta:       "/brands/meta-color.svg",
-  Venice:     "/brands/venice-color.svg",
-  InclusionAI:"/brands/antgroup-color.svg",
-  DeepSeek:   "/brands/deepseek-color.svg",
-  Arcee:      "/brands/arcee-color.png",
-  Moonshot:   "/brands/moonshot-color.svg",
-  Nova:       "/brands/nova-color.svg",
-  Qwen:       "/brands/qwen-color.svg",
-  DELT:       "/logo-delt.svg"
-};
+const BRAND_LOGOS = BRAND_LOGO;
 
 export default function Composer({
   value,
@@ -147,7 +132,7 @@ export default function Composer({
   };
 
   return (
-    <div className="w-full rounded-2xl sm:rounded-3xl border border-delt-border bg-white shadow-sm px-3 sm:px-4 pt-3 pb-2 transition-shadow focus-within:shadow-md">
+    <div data-tour="composer" className="w-full rounded-2xl sm:rounded-3xl border border-delt-border bg-white shadow-sm px-3 sm:px-4 pt-3 pb-2 transition-shadow focus-within:shadow-md">
       {/* Pièces jointes */}
       {attachments.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-2 pb-2 border-b border-delt-border">
@@ -225,7 +210,7 @@ export default function Composer({
       <div className="flex items-center justify-between gap-2 mt-1">
         <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-wrap">
           {/* Attach — popover image / fichier */}
-          <div ref={attachMenuRef} className="relative">
+          <div data-tour="attach" ref={attachMenuRef} className="relative">
             <button
               type="button"
               onClick={() => setAttachOpen((v) => !v)}
@@ -250,7 +235,7 @@ export default function Composer({
             </button>
 
             {attachOpen && (
-              <div className="absolute bottom-full left-0 mb-2 w-52 rounded-2xl border border-delt-border bg-white shadow-lg overflow-hidden z-40 animate-slideUp">
+              <div className="absolute bottom-full left-0 mb-2 w-52 rounded-2xl border border-delt-border bg-white shadow-lg overflow-hidden z-40 animate-popIn origin-bottom-left">
                 <button
                   type="button"
                   onClick={openImagePicker}
@@ -300,6 +285,7 @@ export default function Composer({
             const label = isFullAuto ? t("composer.auto") : (manualLabel || t("composer.model"));
             return (
               <button
+                data-tour="models"
                 type="button"
                 onClick={onOpenModels}
                 className="flex items-center gap-1.5 h-9 px-2.5 sm:px-3 rounded-full border border-delt-border hover:bg-delt-surface transition-colors text-xs sm:text-sm text-delt-text min-w-0"
@@ -335,6 +321,7 @@ export default function Composer({
 
           {onToggleDeep && (
             <button
+              data-tour="deep"
               type="button"
               onClick={onToggleDeep}
               className={`flex items-center gap-1.5 h-9 px-2.5 sm:px-3 rounded-full border transition-colors text-xs sm:text-sm min-w-0 ${
@@ -357,6 +344,7 @@ export default function Composer({
           {/* Mode Débat */}
           {onOpenDebate && (
             <button
+              data-tour="debate"
               type="button"
               onClick={onOpenDebate}
               className={`flex items-center gap-1.5 h-9 px-2.5 sm:px-3 rounded-full border transition-colors text-xs sm:text-sm min-w-0 ${
@@ -377,6 +365,7 @@ export default function Composer({
           {/* Multi-modèle parallèle */}
           {onOpenParallel && (
             <button
+              data-tour="parallel"
               type="button"
               onClick={onOpenParallel}
               className={`flex items-center gap-1.5 h-9 px-2.5 sm:px-3 rounded-full border transition-colors text-xs sm:text-sm min-w-0 ${
@@ -459,18 +448,6 @@ export default function Composer({
 }
 
 // ─── Bouton "Outils" : icône gear + popover avec toggles intégrations ───────
-const INTEG_BRAND_COLORS = {
-  gmail: "#EA4335", googledrive: "#4285F4", googlecalendar: "#4285F4",
-  slack: "#4A154B", notion: "#000", github: "#181717", linear: "#5E6AD2",
-  trello: "#0079BF", discord: "#5865F2", stripe: "#635BFF"
-};
-const INTEG_COLOR_LOGOS = {
-  gmail: "/brands/gmail-color.png",
-  googledrive: "/brands/googledrive-color.png",
-  googlecalendar: "/brands/googlecalendar-color.png",
-  slack: "/brands/slack-color.png"
-};
-
 function ToolsButton({ integrations, enabledIntegrations, onToggle }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -486,7 +463,7 @@ function ToolsButton({ integrations, enabledIntegrations, onToggle }) {
   }, [open]);
 
   return (
-    <div className="relative" ref={ref}>
+    <div data-tour="tools" className="relative" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -507,7 +484,7 @@ function ToolsButton({ integrations, enabledIntegrations, onToggle }) {
       </button>
 
       {open && (
-        <div className="absolute bottom-full mb-2 right-0 z-50 w-72 bg-white rounded-xl border border-delt-border shadow-xl overflow-hidden">
+        <div className="absolute bottom-full mb-2 right-0 z-50 w-72 bg-white rounded-xl border border-delt-border shadow-xl overflow-hidden animate-popIn origin-bottom-right">
           <div className="px-3 py-2.5 border-b border-delt-border bg-delt-surface/40">
             <div className="text-xs font-bold text-delt-text uppercase tracking-wider">{t("composer.tools_title")}</div>
             <div className="text-[11px] text-delt-muted mt-0.5">{t("composer.tools_desc")}</div>

@@ -166,9 +166,9 @@ export default function LandingPage({ onStart }) {
       <section className="bg-slate-50 py-20 px-6">
         <div className="max-w-5xl mx-auto">
           <h2 className="text-2xl font-bold text-slate-900 text-center mb-12">{t("land.features_title")}</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 stagger-children">
             {FEATURES.map((f) => (
-              <div key={f.title} className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm hover:shadow-md transition-shadow">
+              <div key={f.title} className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm hover-lift">
                 <div
                   className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
                   style={{ background: "linear-gradient(135deg, rgba(37,99,235,0.12), rgba(6,182,212,0.12))", color: "#2563eb" }}
@@ -188,11 +188,11 @@ export default function LandingPage({ onStart }) {
         <div className="max-w-5xl mx-auto">
           <h2 className="text-2xl font-bold text-slate-900 text-center mb-3">{t("land.pricing_title")}</h2>
           <p className="text-center text-slate-500 text-sm mb-12">{t("land.pricing_sub")}</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 stagger-children">
             {PLANS.map((p) => (
               <div
                 key={p.name}
-                className={`rounded-2xl border p-6 flex flex-col gap-4 transition-shadow ${
+                className={`rounded-2xl border p-6 flex flex-col gap-4 hover-lift ${
                   p.highlight
                     ? "border-blue-400 shadow-lg shadow-blue-100 scale-[1.03]"
                     : "border-slate-100 shadow-sm"

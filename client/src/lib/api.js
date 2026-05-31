@@ -52,6 +52,23 @@ export const api = {
       body: JSON.stringify({ projectId })
     }).then(json),
 
+  // Agents IA personnalisés
+  listAgents:  () => fetch(u("/api/agents"), { headers: authHeaders() }).then(json),
+  getAgent:    (id) => fetch(u(`/api/agents/${id}`), { headers: authHeaders() }).then(json),
+  createAgent: (data) => fetch(u("/api/agents"), { method: "POST", headers: authHeaders(), body: JSON.stringify(data) }).then(json),
+  updateAgent: (id, data) => fetch(u(`/api/agents/${id}`), { method: "PUT", headers: authHeaders(), body: JSON.stringify(data) }).then(json),
+  deleteAgent: (id) => fetch(u(`/api/agents/${id}`), { method: "DELETE", headers: authHeaders() }).then(json),
+  // Fichiers de connaissances (RAG)
+  listAgentFiles: (id) => fetch(u(`/api/agents/${id}/files`), { headers: authHeaders() }).then(json),
+  uploadAgentFile: (id, file) => {
+    const form = new FormData();
+    form.append("file", file);
+    const headers = {};
+    if (_token) headers["Authorization"] = `Bearer ${_token}`;
+    return fetch(u(`/api/agents/${id}/files`), { method: "POST", headers, body: form }).then(json);
+  },
+  deleteAgentFile: (id, fileId) => fetch(u(`/api/agents/${id}/files/${fileId}`), { method: "DELETE", headers: authHeaders() }).then(json),
+
   // Mémoire utilisateur (nom + intérêts + ton)
   getMemory: () => fetch(u("/api/memory"), { headers: authHeaders() }).then(json),
   setMemory: ({ displayName, profile }) =>
@@ -59,6 +76,11 @@ export const api = {
       method: "PUT", headers: authHeaders(),
       body: JSON.stringify({ displayName, profile })
     }).then(json),
+
+  // Packs de crédits prépayés (PAYG / top-up)
+  creditPacks:   () => fetch(u("/api/credits/packs"), { headers: authHeaders() }).then(json),
+  createCreditOrder: (pack) => fetch(u("/api/credits/order"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ pack }) }).then(json),
+  captureCreditOrder: (orderId) => fetch(u("/api/credits/capture"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ orderId }) }).then(json),
 
   // Préférences modèles (mode auto)
   getModelPreferences: () => fetch(u("/api/preferences/models"), { headers: authHeaders() }).then(json),
@@ -136,12 +158,12 @@ export const api = {
   },
 
   // Chat streaming SSE
-  chatStream: ({ messages, tier, modelId, manual, projectId, enabledTools, onDelta, onThinking, onMeta, onDone, onError, onWebsearch, onArtifact, onImage, onTool }) => {
+  chatStream: ({ messages, tier, modelId, manual, projectId, agentId, enabledTools, onDelta, onThinking, onMeta, onDone, onError, onWebsearch, onArtifact, onImage, onTool }) => {
     const ctrl = new AbortController();
     fetch(u("/api/chat/stream"), {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ messages, tier, modelId, manual, ...(projectId && { projectId }), ...(enabledTools && { enabledTools }) }),
+      body: JSON.stringify({ messages, tier, modelId, manual, ...(projectId && { projectId }), ...(agentId && { agentId }), ...(enabledTools && { enabledTools }) }),
       signal: ctrl.signal
     }).then(async (res) => {
       if (!res.ok) {

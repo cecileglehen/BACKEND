@@ -21,6 +21,7 @@ import ProjectsSidebar from "../components/ProjectsSidebar.jsx";
 import ProjectSettingsModal from "../components/ProjectSettingsModal.jsx";
 import ManualModelSelector from "../components/ManualModelSelector.jsx";
 import ArtifactViewer from "../components/ArtifactViewer.jsx";
+import OnboardingTour from "../components/OnboardingTour.jsx";
 import { useT } from "../lib/i18n.jsx";
 
 function HamburgerIcon() {
@@ -36,6 +37,13 @@ function PencilIcon() {
   return (
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 20h9M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+    </svg>
+  );
+}
+function ArrowLeftIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 12H5M12 19l-7-7 7-7" />
     </svg>
   );
 }
@@ -62,12 +70,20 @@ function isBrandFamily(model) {
   return Boolean(model?.isBrandFamily || String(model?.id || "").startsWith("brand:"));
 }
 
-export default function ChatPage() {
+export default function ChatPage({ agentIdOverride = null, onExitAgent = null }) {
   const { user, refreshQuota, setCredits } = useAuth();
   const toast = useToast();
   const t = useT();
   const isFree = user?.plan === "FREE";
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // Met à jour les query params en PRÉSERVANT ?chat=<agentId> (mode agent
+  // intégré dans /agents) — sinon sélectionner une conv éjecterait de l'agent.
+  const setParamsKeepAgent = (params, opts) => {
+    const next = { ...params };
+    if (agentIdOverride) next.chat = agentIdOverride;
+    setSearchParams(next, opts);
+  };
 
   // ── Catalog & sélection modèle ──────────────────────────────────────────
   const [catalog, setCatalog] = useState(null);
@@ -118,14 +134,30 @@ export default function ChatPage() {
   const [openArtifact, setOpenArtifact] = useState(null);
   const [deepMode, setDeepMode] = useState(false);
   const [pillsCollapsed, setPillsCollapsed] = useState(() => localStorage.getItem("delt-pills-collapsed") === "1");
+  const [tourOpen, setTourOpen] = useState(() => localStorage.getItem("delt-onboard-tour-seen") !== "1");
+  const closeTour = () => {
+    setTourOpen(false);
+    try { localStorage.setItem("delt-onboard-tour-seen", "1"); } catch {}
+  };
   const [integrations, setIntegrations] = useState([]); // [{ app, label, connected, ... }]
   const [enabledIntegrations, setEnabledIntegrations] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem("delt-enabled-integrations") || "[]")); }
     catch { return new Set(); }
   });
 
+  // ── Agent actif (via prop override depuis /agents, ou ?agent=<id>) ─────
+  const activeAgentId = agentIdOverride || searchParams.get("agent") || null;
+  const [activeAgent, setActiveAgent] = useState(null);
+  useEffect(() => {
+    if (!activeAgentId) { setActiveAgent(null); return; }
+    let alive = true;
+    api.getAgent(activeAgentId).then((a) => { if (alive) setActiveAgent(a); }).catch(() => { if (alive) setActiveAgent(null); });
+    return () => { alive = false; };
+  }, [activeAgentId]);
+
   const chat = useChatStream({
     projectId: activeProjectId,
+    agentId: activeAgentId,
     enabledTools: enabledIntegrations,
     onCreditsUsed,
     onAgeGate: (resume) => {
@@ -178,9 +210,9 @@ export default function ChatPage() {
   useEffect(() => {
     const urlConvId = searchParams.get("c");
     if (activeId && urlConvId !== activeId) {
-      setSearchParams({ c: activeId }, { replace: true });
+      setParamsKeepAgent({ c: activeId }, { replace: true });
     } else if (!activeId && urlConvId) {
-      setSearchParams({}, { replace: true });
+      setParamsKeepAgent({}, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
@@ -233,7 +265,7 @@ export default function ChatPage() {
         toast.error("Cette conversation n'existe pas ou ne t'appartient pas.");
         setActiveId(null);
         chat.setMessages([]);
-        setSearchParams({}, { replace: true });
+        setParamsKeepAgent({}, { replace: true });
         return;
       }
       if (result?.messages) {
@@ -534,10 +566,24 @@ export default function ChatPage() {
   };
 
   // ── Header tools (boutons projets/historique/new) ──────────────────────
+  const exitAgent = () => (onExitAgent ? onExitAgent() : setSearchParams({}));
+
   const HeaderTools = ({ inline = false }) => (
     <div className={inline
       ? "px-3 py-2 flex items-center gap-1.5 overflow-x-auto"
       : "absolute top-2 left-2 sm:top-3 sm:left-3 z-10 flex items-center gap-1.5"}>
+      {activeAgentId ? (
+        <button
+          onClick={exitAgent}
+          className={`h-9 px-3 rounded-full flex items-center gap-1.5 text-delt-text text-sm font-semibold flex-shrink-0 transition-colors ${
+            inline ? "border border-delt-border hover:bg-delt-surface" : "bg-white/95 border border-delt-border hover:bg-delt-surface"
+          }`}
+          aria-label={t("agents.exit_chat")}
+        >
+          <ArrowLeftIcon />
+          <span className="max-w-[9rem] truncate">{activeAgent ? `${activeAgent.icon || "🤖"} ${activeAgent.name}` : t("agents.exit_chat")}</span>
+        </button>
+      ) : (
       <button
         onClick={() => setProjectsOpen(true)}
         className={`h-9 px-3 rounded-full flex items-center gap-1.5 text-delt-muted text-sm font-semibold flex-shrink-0 transition-colors ${
@@ -547,7 +593,8 @@ export default function ChatPage() {
         <span className="text-base">{activeProject?.icon || "📁"}</span>
         <span className="max-w-[8rem] truncate">{activeProject?.name || "Projets"}</span>
       </button>
-      {inline && activeProject && (
+      )}
+      {!activeAgentId && inline && activeProject && (
         <button
           onClick={() => setEditingProject(activeProject)}
           className="h-9 px-3 rounded-full text-sm font-semibold flex items-center gap-1.5 flex-shrink-0 transition-opacity hover:opacity-80"
@@ -558,15 +605,17 @@ export default function ChatPage() {
           <span className="max-w-[9rem] truncate">{activeProject.name}</span>
         </button>
       )}
-      <button
-        onClick={() => setHistoryOpen(true)}
-        className={`w-9 h-9 rounded-full flex items-center justify-center text-delt-muted flex-shrink-0 transition-colors ${
-          inline ? "hover:bg-delt-surface" : "bg-white/95 border border-delt-border hover:bg-delt-surface"
-        }`}
-        aria-label={t("sidebar.history")}
-      >
-        <HamburgerIcon />
-      </button>
+      {!activeAgentId && (
+        <button
+          onClick={() => setHistoryOpen(true)}
+          className={`w-9 h-9 rounded-full flex items-center justify-center text-delt-muted flex-shrink-0 transition-colors ${
+            inline ? "hover:bg-delt-surface" : "bg-white/95 border border-delt-border hover:bg-delt-surface"
+          }`}
+          aria-label={t("sidebar.history")}
+        >
+          <HamburgerIcon />
+        </button>
+      )}
       {inline && (
         <button
           onClick={handleNew}
@@ -659,7 +708,11 @@ export default function ChatPage() {
               </div>
             )}
             <div className="flex-1 min-h-0 overflow-y-auto">
-              <WelcomeScreen />
+              {activeAgent ? (
+                <AgentWelcome agent={activeAgent} onPick={(text) => { setInput(text); }} onExit={() => onExitAgent ? onExitAgent() : setSearchParams({})} />
+              ) : (
+                <WelcomeScreen />
+              )}
             </div>
             <div className="flex-shrink-0 px-2 sm:px-4 pt-2 bg-white safe-pb">
               <div className="max-w-3xl mx-auto">
@@ -690,6 +743,7 @@ export default function ChatPage() {
                 <div className="mt-2 hidden sm:block">
                   <div className="flex justify-end max-w-3xl mx-auto -mb-1">
                     <button
+                      data-tour="pills"
                       type="button"
                       onClick={() => setPillsCollapsed((v) => !v)}
                       className="text-[10px] uppercase tracking-wider text-delt-muted hover:text-delt-text px-2 py-1 rounded-md hover:bg-delt-surface transition-colors flex items-center gap-1"
@@ -768,6 +822,7 @@ export default function ChatPage() {
                 <div className="mt-2 hidden sm:block">
                   <div className="flex justify-end max-w-3xl mx-auto -mb-1">
                     <button
+                      data-tour="pills"
                       type="button"
                       onClick={() => setPillsCollapsed((v) => !v)}
                       className="text-[10px] uppercase tracking-wider text-delt-muted hover:text-delt-text px-2 py-1 rounded-md hover:bg-delt-surface transition-colors flex items-center gap-1"
@@ -892,6 +947,8 @@ export default function ChatPage() {
         from={fallbackInfo.from}
         tier={fallbackInfo.tier}
       />
+
+      <OnboardingTour open={tourOpen} onClose={closeTour} />
     </div>
   );
 }
@@ -902,6 +959,54 @@ function ErrorBanner({ error, onClose }) {
     <div className="mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 flex justify-between items-start gap-2 animate-slideUp">
       <span className="flex-1">{error}</span>
       <button onClick={onClose} className="text-red-400 hover:text-red-600 cursor-pointer flex-shrink-0">✕</button>
+    </div>
+  );
+}
+
+function AgentWelcome({ agent, onPick, onExit }) {
+  const cap = agent.capabilities || {};
+  const badges = [];
+  if (cap.webSearch !== false) badges.push("🔎 Recherche web");
+  if (cap.toolUse !== false && agent.tools?.length) badges.push(`🔌 ${agent.tools.length} intégration${agent.tools.length > 1 ? "s" : ""}`);
+  if (cap.fileGen !== false) badges.push("📄 Fichiers");
+  if (cap.imageGen === true) badges.push("🎨 Images");
+  if (cap.memory !== false && (agent.knowledge?.keyFacts?.length || agent.knowledge?.context)) badges.push("🧠 Connaissances");
+
+  return (
+    <div className="max-w-2xl mx-auto px-4 py-10 sm:py-16 text-center animate-fadeInUp">
+      <div
+        className="w-20 h-20 rounded-3xl mx-auto flex items-center justify-center text-4xl shadow-lg animate-bounceIn"
+        style={{ background: `${agent.color}1a`, border: `2px solid ${agent.color}55` }}
+      >
+        {agent.icon || "🤖"}
+      </div>
+      <h1 className="mt-5 text-2xl sm:text-3xl font-extrabold text-delt-text">{agent.name}</h1>
+      {agent.description && (
+        <p className="mt-2 text-sm sm:text-base text-delt-muted max-w-lg mx-auto leading-relaxed">{agent.description}</p>
+      )}
+      {badges.length > 0 && (
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
+          {badges.map((b) => (
+            <span key={b} className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-delt-surface border border-delt-border text-delt-muted">{b}</span>
+          ))}
+        </div>
+      )}
+      {agent.starters?.length > 0 && (
+        <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-2 stagger-children">
+          {agent.starters.map((s, i) => (
+            <button
+              key={i}
+              onClick={() => onPick(s)}
+              className="text-left text-sm px-4 py-3 rounded-xl border border-delt-border bg-white hover-lift text-delt-text"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+      <button onClick={onExit} className="mt-8 text-xs text-delt-muted hover:text-delt-text underline">
+        Quitter cet agent
+      </button>
     </div>
   );
 }

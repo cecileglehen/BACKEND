@@ -1,19 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { useT, useLocale } from "../lib/i18n.jsx";
-
-const BRAND_LOGO = {
-  OpenAI:     "/brands/openai.svg",
-  Google:     "/brands/gemini-color.svg",
-  Anthropic:  "/brands/claude-color.svg",
-  Mistral:    "/brands/mistral-color.svg",
-  Meta:       "/brands/meta-color.svg",
-  xAI:        "/brands/grok.svg",
-  Perplexity: "/brands/perplexity-color.svg",
-  Venice:     "/brands/venice-color.svg",
-  InclusionAI:"/brands/antgroup-color.svg",
-  Arcee:      "/brands/arcee-color.png",
-};
+import { BRAND_LOGO } from "../lib/brands.js";
 
 const TIER_BADGE = {
   FREE: "", UNCENSORED: "badge-venice", PICO: "badge-pico", NANO: "badge-eco", MINI: "badge-mini",
@@ -29,12 +17,17 @@ const PERIOD_KEYS = [
 
 function brandOf(modelId) {
   if (!modelId) return "Autre";
-  const first = modelId.split("/")[0]?.toLowerCase();
+  const id = modelId.toLowerCase();
+  const first = id.split("/")[0];
+  // amazon/nova-* → Nova (le préfixe ne suffit pas)
+  if (first === "amazon" && id.includes("nova")) return "Nova";
   const map = {
     openai: "OpenAI", anthropic: "Anthropic", google: "Google",
     mistralai: "Mistral", "meta-llama": "Meta", "x-ai": "xAI",
     perplexity: "Perplexity", cognitivecomputations: "Venice",
-    inclusionai: "InclusionAI", "arcee-ai": "Arcee", deepseek: "DeepSeek"
+    inclusionai: "InclusionAI", "arcee-ai": "Arcee", deepseek: "DeepSeek",
+    moonshotai: "Moonshot", qwen: "Qwen", bytedance: "ByteDance",
+    delt: "DELT", suno: "Suno"
   };
   return map[first] || (first ? first.charAt(0).toUpperCase() + first.slice(1) : "Autre");
 }

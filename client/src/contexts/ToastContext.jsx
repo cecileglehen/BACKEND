@@ -66,7 +66,7 @@ function ToastItem({ toast, onClose }) {
   return (
     <div
       role="status"
-      className={`pointer-events-auto ${s.bg} ${s.border} border rounded-xl shadow-lg px-4 py-3 flex items-start gap-3 animate-slideUp`}
+      className={`pointer-events-auto ${s.bg} ${s.border} border rounded-xl shadow-lg px-4 py-3 flex items-start gap-3 animate-slideInRight`}
     >
       <span className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${s.iconColor}`}>
         {s.icon}

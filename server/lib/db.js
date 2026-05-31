@@ -61,6 +61,7 @@ export async function initSchema() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS transcription_month TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS free_nano_tokens INT NOT NULL DEFAULT 10000;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS free_nano_month TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS free_model_tokens JSONB NOT NULL DEFAULT '{}'::jsonb;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS model_preferences JSONB NOT NULL DEFAULT '{}'::jsonb;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarded_models BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;
@@ -82,6 +83,24 @@ export async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id, updated_at DESC);
     ALTER TABLE conversations ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES projects(id) ON DELETE SET NULL;
     CREATE INDEX IF NOT EXISTS idx_conversations_project ON conversations(project_id);
+
+    CREATE TABLE IF NOT EXISTS agents (
+      id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name          TEXT NOT NULL,
+      description   TEXT,
+      color         TEXT DEFAULT '#6366f1',
+      icon          TEXT DEFAULT '🤖',
+      instructions  TEXT,
+      default_model TEXT,
+      tools         JSONB NOT NULL DEFAULT '[]'::jsonb,
+      capabilities  JSONB NOT NULL DEFAULT '{}'::jsonb,
+      knowledge     JSONB NOT NULL DEFAULT '{}'::jsonb,
+      starters      JSONB NOT NULL DEFAULT '[]'::jsonb,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_agents_user ON agents(user_id, updated_at DESC);
 
     CREATE TABLE IF NOT EXISTS usage_log (
       id          BIGSERIAL PRIMARY KEY,
@@ -189,6 +208,17 @@ export async function initSchema() {
       data        JSONB,
       created_at  TIMESTAMPTZ DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS credit_orders (
+      id          TEXT PRIMARY KEY,
+      user_id     UUID REFERENCES users(id) ON DELETE SET NULL,
+      pack_id     TEXT,
+      credits     INT NOT NULL DEFAULT 0,
+      amount_eur  NUMERIC(10,2) NOT NULL DEFAULT 0,
+      status      TEXT NOT NULL DEFAULT 'pending',
+      created_at  TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_credit_orders_user ON credit_orders(user_id, created_at DESC);
 
     CREATE TABLE IF NOT EXISTS audit_logs (
       id          SERIAL PRIMARY KEY,

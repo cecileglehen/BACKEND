@@ -36,7 +36,7 @@ export default function ConversationList({ conversations, activeId, onSelect, on
       </div>
 
       {/* Liste */}
-      <div className="flex-1 overflow-y-auto px-2 pb-3 space-y-0.5">
+      <div className="flex-1 overflow-y-auto px-2 pb-3 space-y-0.5 stagger-children">
         {conversations.length === 0 ? (
           <div className="text-xs text-delt-muted text-center py-8 px-3">
             {t("sidebar.empty")}

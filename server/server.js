@@ -16,7 +16,7 @@ import { chatWithFallback, chatWithTools, streamChat } from "./lib/openrouter.js
 import { getBaseSkillPrompt, parseSkillBlocks } from "./lib/skills.js";
 import { listAvailableApps, listUserIntegrations, initiateConnection, confirmConnection, revokeIntegration, getToolsForUser, executeToolCall } from "./lib/composio.js";
 import { recordUsage, logUsage, quotaSnapshot, resolveTier } from "./lib/windows.js";
-import { getCredits, deductCredits, hasEnoughCredits, grantPlanCredits, resetMonthlyCredits, getApiCredits, transferCredits, getFreeNanoTokens, deductFreeNanoTokens, FREE_NANO_MODEL_ID } from "./lib/credits.js";
+import { getCredits, deductCredits, hasEnoughCredits, grantPlanCredits, resetMonthlyCredits, getApiCredits, transferCredits, getFreeNanoTokens, deductFreeNanoTokens, getFreeModelTokens, deductFreeModelTokens, FREE_NANO_MODEL_ID } from "./lib/credits.js";
 import { computeCreditCost, computeCreditFromCost, FREE_TIER_ONLY_PLANS } from "./config/plans.js";
 import { runDeepSearch } from "./lib/deepSearch.js";
 import { checkThrottle } from "./lib/throttle.js";
@@ -24,7 +24,8 @@ import { compressIfNeeded } from "./lib/context.js";
 import { createCodeSession, editCodeSession, getCodePreviewFile, getCodeZip } from "./lib/codegen.js";
 import { TIER_MODELS, estimateCostEur } from "./config/plans.js";
 import { brandFromAlias, CREATIVE, findModelForBrand, findModelForFamily, findModelInCatalog, familyFromAlias, isBrandAlias, isFamilyAlias, normalizeTier, publicCatalog, supportsVision, pickVisionModelForTier } from "./config/models.js";
-import { createSubscriptionLink, activateSubscription, handleWebhook, PAYPAL_PLAN_IDS } from "./lib/paypal.js";
+import { createSubscriptionLink, activateSubscription, handleWebhook, PAYPAL_PLAN_IDS, createCreditOrder, captureCreditOrder } from "./lib/paypal.js";
+import { CREDIT_PACKS } from "./config/plans.js";
 import { createClient } from "@supabase/supabase-js";
 import { routeMessage as groqRoute } from "./lib/router.js";
 import { createApiKey, listApiKeys, revokeApiKey } from "./lib/apiKeys.js";
@@ -235,6 +236,57 @@ app.put("/api/conversations/:id/project", requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Agents IA personnalisés ─────────────────────────────────────────────────
+app.get("/api/agents", requireAuth, async (req, res) => {
+  try {
+    const { listAgents, getAgentQuota } = await import("./lib/agents.js");
+    const user = await refreshUser(req.user.id, req.user);
+    const [agents, quota] = await Promise.all([
+      listAgents(req.user.id),
+      getAgentQuota(req.user.id, user.plan)
+    ]);
+    res.json({ agents, quota });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/agents/:id", requireAuth, async (req, res) => {
+  try {
+    const { getAgent } = await import("./lib/agents.js");
+    const a = await getAgent(req.user.id, req.params.id);
+    if (!a) return res.status(404).json({ error: "Agent introuvable" });
+    res.json(a);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/agents", requireAuth, async (req, res) => {
+  try {
+    const { createAgent } = await import("./lib/agents.js");
+    const user = await refreshUser(req.user.id, req.user);
+    const agent = await createAgent(req.user.id, user.plan, req.body || {});
+    res.json(agent);
+  } catch (e) {
+    if (e.status === 403) return res.status(403).json({ error: e.message, code: e.code, quota: e.quota });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put("/api/agents/:id", requireAuth, async (req, res) => {
+  try {
+    const { updateAgent } = await import("./lib/agents.js");
+    const agent = await updateAgent(req.user.id, req.params.id, req.body || {});
+    if (!agent) return res.status(404).json({ error: "Agent introuvable" });
+    res.json(agent);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete("/api/agents/:id", requireAuth, async (req, res) => {
+  try {
+    const { deleteAgent } = await import("./lib/agents.js");
+    const ok = await deleteAgent(req.user.id, req.params.id);
+    res.json({ deleted: ok });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── Mémoire utilisateur (nom, intérêts, prefs IA) ───────────────────────────
 app.get("/api/memory", requireAuth, async (req, res) => {
   try {
@@ -345,7 +397,9 @@ function parseInlineToolCalls(content) {
     /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi,
     /<toolcall>\s*([\s\S]*?)\s*<\/toolcall>/gi,
     /<function_call>\s*([\s\S]*?)\s*<\/function_call>/gi,
-    /```(?:tool_call|json)?\s*(\{[\s\S]*?"name"[\s\S]*?\})\s*```/gi
+    /```(?:tool_call|json)?\s*(\{[\s\S]*?"name"[\s\S]*?\})\s*```/gi,
+    // Mistral natif : "[TOOL_CALLS] [ { ... } ]" — array d'appels en JSON
+    /\[TOOL_CALLS\]\s*(\[[\s\S]*?\])/gi
   ];
   for (const re of patterns) {
     let m;
@@ -378,17 +432,20 @@ function parseInlineToolCalls(content) {
 
       try {
         const obj = JSON.parse(payload);
-        const name = obj.name || obj.tool || obj.function?.name;
-        const args = obj.arguments ?? obj.args ?? obj.parameters ?? obj.function?.arguments ?? {};
-        if (!name) continue;
-        results.push({
-          id: `inline_${Date.now()}_${results.length}`,
-          type: "function",
-          function: {
-            name,
-            arguments: typeof args === "string" ? args : JSON.stringify(args)
-          }
-        });
+        const items = Array.isArray(obj) ? obj : [obj];
+        for (const it of items) {
+          const name = it.name || it.tool || it.function?.name;
+          const args = it.arguments ?? it.args ?? it.parameters ?? it.function?.arguments ?? {};
+          if (!name) continue;
+          results.push({
+            id: `inline_${Date.now()}_${results.length}`,
+            type: "function",
+            function: {
+              name,
+              arguments: typeof args === "string" ? args : JSON.stringify(args)
+            }
+          });
+        }
       } catch {
         // payload pas JSON valide → on ignore
       }
@@ -428,7 +485,10 @@ function buildDatePrompt() {
     `Date du jour : ${isoDate} — ${humanDate}.`,
     `Heure actuelle : ~${humanTime} (heure de Paris).`,
     `Tu DOIS utiliser ces infos pour interpréter "récent", "actuel", "maintenant", "ce matin", "ce soir", "cette année".`,
-    `Si un article, prix, événement, ou actu est daté de cette année ou de l'année passée, traite-le comme RÉCENT — ne dis JAMAIS "nous sommes en 2024" ou un autre déni temporel. Ta connaissance interne peut être antérieure : c'est normal, la date du jour ci-dessus est la vérité.`
+    `Si un article, prix, événement, ou actu est daté de cette année ou de l'année passée, traite-le comme RÉCENT — ne dis JAMAIS "nous sommes en 2024" ou un autre déni temporel. Ta connaissance interne peut être antérieure : c'est normal, la date du jour ci-dessus est la vérité.`,
+    ``,
+    `LANGUE : Réponds TOUJOURS dans la langue du dernier message de l'utilisateur. Si l'utilisateur écrit en français → réponse en français. En anglais → en anglais. En espagnol → en espagnol, etc. Détecte la langue du dernier message et adapte la tienne. Ne switche pas de langue à mi-chemin sauf si l'utilisateur switche.`,
+    `LANGUAGE: Always reply in the language of the user's latest message. French → French, English → English, Spanish → Spanish, etc. Detect the language of the latest user message and match it. Don't switch language mid-conversation unless the user does.`
   ].join("\n");
 }
 
@@ -1166,20 +1226,26 @@ app.post("/api/chat", requireAuth, async (req, res) => {
 
 app.post("/api/chat/stream", requireAuth, async (req, res) => {
   try {
-    const { messages, tier: reqTier, modelId, manual = false, projectId, enabledTools } = req.body ?? {};
+    const { messages, tier: reqTier, modelId, manual = false, projectId, agentId, enabledTools } = req.body ?? {};
     const enabledToolSet = new Set(Array.isArray(enabledTools) ? enabledTools : []);
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: "messages requis" });
     }
 
-    // Parallélise les deux DB queries (sinon ~300ms × 2 sur Supabase pooler)
-    const [user, project] = await Promise.all([
+    // Parallélise les DB queries (sinon ~300ms × N sur Supabase pooler)
+    const [user, project, agent] = await Promise.all([
       refreshUser(req.user.id, req.user),
-      projectId ? getProject(req.user.id, projectId) : Promise.resolve(null)
+      projectId ? getProject(req.user.id, projectId) : Promise.resolve(null),
+      agentId ? (await import("./lib/agents.js")).getAgent(req.user.id, agentId) : Promise.resolve(null)
     ]);
 
-    // Si un projet a un défaut model et qu'aucun modèle n'est forcé, utilise-le
-    const effectiveModelId = modelId || project?.defaultModel || null;
+    // L'agent ajoute ses outils autorisés à l'ensemble actif (si capacité activée)
+    if (agent && agent.capabilities?.toolUse !== false && Array.isArray(agent.tools)) {
+      for (const t of agent.tools) enabledToolSet.add(t);
+    }
+
+    // Priorité du modèle : modèle forcé > modèle de l'agent > modèle du projet
+    const effectiveModelId = modelId || agent?.defaultModel || project?.defaultModel || null;
     const selectedModel = effectiveModelId ? resolveRequestedModel(effectiveModelId, reqTier || "NANO") : null;
     const inTier = normalizeTier(selectedModel?.tier || reqTier || "NANO");
 
@@ -1228,20 +1294,24 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
 
     const isFreePlan = FREE_TIER_ONLY_PLANS.has(user.plan);
     const isFreeNanoModel = modelInfo.id === FREE_NANO_MODEL_ID;
-    if (isFreePlan && inTier !== "FREE" && inTier !== "UNCENSORED" && !isFreeNanoModel) {
-      return res.status(403).json({ error: "Plan gratuit : accès aux modèles FREE uniquement. Mistral Small 4 est offert (10K tokens/mois)." });
+    const freeLimit = Number(modelInfo.freeMonthlyTokens || 0);
+    const isFreeQuotaModel = freeLimit > 0;
+    if (isFreePlan && inTier !== "FREE" && inTier !== "UNCENSORED" && !isFreeQuotaModel) {
+      return res.status(403).json({ error: "Plan gratuit : accès aux modèles FREE uniquement. Quelques modèles Mistral sont offerts (tokens/mois)." });
     }
-    if (isFreePlan && isFreeNanoModel) {
-      const remaining = await getFreeNanoTokens(user.id);
+    if (isFreePlan && isFreeQuotaModel) {
+      const remaining = isFreeNanoModel
+        ? await getFreeNanoTokens(user.id)
+        : await getFreeModelTokens(user.id, modelInfo.id, freeLimit);
       if (remaining <= 0) {
-        return res.status(403).json({ error: "Tes 10 000 tokens gratuits Mistral Small 4 sont épuisés ce mois-ci. Passe à BASIC pour continuer." });
+        return res.status(403).json({ error: `Tes ${freeLimit.toLocaleString()} tokens gratuits ${modelInfo.display} sont épuisés ce mois-ci. Passe à BASIC pour continuer.` });
       }
     }
 
     const { throttled, waitMs } = checkThrottle(user.id);
     if (throttled) return res.status(429).json({ error: `Attends ${Math.ceil(waitMs / 1000)}s.`, waitMs });
 
-    const estimatedCost = isFreeNanoModel && isFreePlan ? 0 : computeCreditCost(modelInfo.id, 1000, 500);
+    const estimatedCost = (isFreePlan && isFreeQuotaModel) ? 0 : computeCreditCost(modelInfo.id, 1000, 500);
     if (estimatedCost > 0) {
       const ok = await hasEnoughCredits(user.id, estimatedCost);
       if (!ok) {
@@ -1275,6 +1345,34 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
     if (project) {
       const projectSystem = buildProjectSystemMessage(project);
       if (projectSystem) compressed = [projectSystem, ...compressed];
+    }
+
+    // ─── Injection persona/connaissances de l'agent (prioritaire) ───────────
+    if (agent) {
+      const { buildAgentSystemMessage } = await import("./lib/agents.js");
+      const agentSystem = buildAgentSystemMessage(agent);
+
+      // RAG : récupère les extraits pertinents des fichiers de connaissances
+      let knowledgeMsg = null;
+      if (agent.capabilities?.memory !== false) {
+        try {
+          const lastUser = [...messages].reverse().find((m) => m.role === "user");
+          const queryText = typeof lastUser?.content === "string"
+            ? lastUser.content
+            : (Array.isArray(lastUser?.content) ? lastUser.content.map((p) => p?.text || "").join(" ") : "");
+          if (queryText.trim()) {
+            const { retrieveKnowledge, buildKnowledgeContext } = await import("./lib/agentFiles.js");
+            const chunks = await retrieveKnowledge(agent.id, queryText, 6);
+            const ctx = buildKnowledgeContext(chunks);
+            if (ctx) knowledgeMsg = { role: "system", content: ctx };
+          }
+        } catch (e) { console.warn("[agent-rag]", e.message); }
+      }
+
+      const prepend = [];
+      if (agentSystem) prepend.push(agentSystem);
+      if (knowledgeMsg) prepend.push(knowledgeMsg);
+      if (prepend.length) compressed = [...prepend, ...compressed];
     }
 
     // ─── Skills système (commandes %% : write_file, generate_image) ────────
@@ -1410,6 +1508,7 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
       composioTools = [];
     }
 
+    let directAnswerFromToolLoop = null; // { content, usage } si le modèle a répondu sans tool
     if (composioTools.length > 0) {
       const MAX_TOOL_ROUNDS = 5;
       let round = 0;
@@ -1466,7 +1565,13 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
         }
         if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
           // L'IA ne demande plus de tool → on sort de la boucle.
-          // Le messages array reste tel quel pour le streaming final.
+          // Si aucun tool n'a été exécuté ET que le modèle a produit du contenu
+          // (cas Mistral : "OK je regarde un instant" sans tool_call), on garde
+          // ce contenu pour l'émettre directement et éviter de re-streamChat
+          // sans tools (qui couperait la réponse).
+          if (toolCallsExecuted === 0 && typeof msg?.content === "string" && msg.content.trim().length > 0) {
+            directAnswerFromToolLoop = { content: msg.content.trim(), usage: toolResp?.usage };
+          }
           break;
         }
         // Ajoute le message assistant (avec les tool_calls) à l'historique
@@ -1498,13 +1603,25 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
       }
     }
 
-    await streamChat({
-      modelId: modelInfo.id,
-      messages: compressed,
-      res,
-      onDone: async ({ content, tokensIn, tokensOut, thinkingTokens, costUsd, aborted }) => {
+    // Si la boucle tool s'est terminée sur une réponse texte sans appel d'outil
+    // (cas Mistral : "OK je regarde un instant" puis silence), on émet ce
+    // contenu directement en SSE plutôt que de re-streamer sans tools (ce qui
+    // couperait court).
+    const emitSynthetic = directAnswerFromToolLoop
+      ? async () => {
+          const { content, usage } = directAnswerFromToolLoop;
+          try { res.write(`data: ${JSON.stringify({ delta: content })}\n\n`); } catch {}
+          const tokensIn = usage?.prompt_tokens ?? Math.ceil(JSON.stringify(compressed).length / 4);
+          const tokensOut = usage?.completion_tokens ?? Math.ceil(content.length / 4);
+          const costUsd = Number(usage?.cost) || 0;
+          await streamOnDone({ content, tokensIn, tokensOut, thinkingTokens: 0, costUsd, aborted: false });
+        }
+      : null;
+
+    const streamOnDone = async ({ content, tokensIn, tokensOut, thinkingTokens, costUsd, aborted }) => {
         // 1. Calcule le coût SANS appel DB (instantané) — basé sur le coût réel OpenRouter
-        const creditCost = (isFreePlan && isFreeNanoModel)
+        // Tout modèle à quota gratuit sur plan FREE = 0 Cr (débité en tokens, pas en crédits)
+        const creditCost = (isFreePlan && isFreeQuotaModel)
           ? 0
           : computeCreditFromCost({ costUsd, modelId: modelInfo.id, tokensIn, tokensOut });
         const costEur = estimateCostEur(inTier, tokensIn, tokensOut);
@@ -1573,12 +1690,24 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
         Promise.allSettled([
           isFreePlan && isFreeNanoModel
             ? deductFreeNanoTokens(user.id, tokensIn + tokensOut)
-            : deductCredits(user.id, creditCost + extraImageCost),
+            : (isFreePlan && isFreeQuotaModel
+                ? deductFreeModelTokens(user.id, modelInfo.id, tokensIn + tokensOut)
+                : deductCredits(user.id, creditCost + extraImageCost)),
           recordUsage(user.id, inTier, tokensIn, tokensOut),
           logUsage({ userId: user.id, modelId: modelInfo.id, tier: inTier, tokensIn, tokensOut, costCr: creditCost + extraImageCost, source: aborted ? "chat_aborted" : "chat" })
         ]).catch((e) => console.error("[chat/stream] DB background:", e));
-      }
-    });
+      };
+
+    if (emitSynthetic) {
+      await emitSynthetic();
+    } else {
+      await streamChat({
+        modelId: modelInfo.id,
+        messages: compressed,
+        res,
+        onDone: streamOnDone
+      });
+    }
   } catch (e) {
     console.error("[chat/stream] ERROR:", e?.message || e);
     console.error("[chat/stream] STACK:", e?.stack);
@@ -1655,6 +1784,43 @@ app.get("/api/paypal/config", (_req, res) => {
       ULTRA: process.env[`${prefix}PLAN_ULTRA`] || null
     }
   });
+});
+
+// ─── Packs de crédits prépayés (PAYG / top-up) ───────────────────────────────
+app.get("/api/credits/packs", (_req, res) => {
+  res.json({ packs: Object.values(CREDIT_PACKS) });
+});
+
+// Crée une commande PayPal pour un pack → renvoie l'URL d'approbation
+app.post("/api/credits/order", requireAuth, async (req, res) => {
+  try {
+    const packId = String(req.body?.pack || "");
+    if (!CREDIT_PACKS[packId]) return res.status(400).json({ error: "Pack invalide" });
+    const origin = req.headers.origin || `https://${req.headers.host}`;
+    // PayPal appende ?token=<orderId>&PayerID=... à la return_url → le front capture ensuite
+    const { orderId, approveUrl } = await createCreditOrder(
+      req.user.id,
+      packId,
+      `${origin}/billing?topup=success`,
+      `${origin}/billing?topup=cancel`
+    );
+    res.json({ orderId, approveUrl });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Capture une commande approuvée → crédite l'utilisateur (idempotent)
+app.post("/api/credits/capture", requireAuth, async (req, res) => {
+  try {
+    const orderId = String(req.body?.orderId || "");
+    if (!orderId) return res.status(400).json({ error: "orderId requis" });
+    const result = await captureCreditOrder(req.user.id, orderId);
+    const newBalance = await getCredits(req.user.id);
+    res.json({ ...result, balance: Number(newBalance) });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 // Webhook PayPal (configurer l'URL dans le dashboard PayPal)
@@ -1762,6 +1928,50 @@ app.post("/api/upload", requireAuth, uploadAttachment.single("file"), async (req
     console.error("[upload]", e);
     res.status(400).json({ error: e.message });
   }
+});
+
+// ─── Fichiers de connaissances d'un agent (RAG) ──────────────────────────────
+app.get("/api/agents/:id/files", requireAuth, async (req, res) => {
+  try {
+    const { getAgent } = await import("./lib/agents.js");
+    const agent = await getAgent(req.user.id, req.params.id);
+    if (!agent) return res.status(404).json({ error: "Agent introuvable" });
+    const { listKnowledgeFiles, getKnowledgeQuota } = await import("./lib/agentFiles.js");
+    const user = await refreshUser(req.user.id, req.user);
+    const [files, quota] = await Promise.all([
+      listKnowledgeFiles(req.user.id, req.params.id),
+      getKnowledgeQuota(req.user.id, user.plan)
+    ]);
+    res.json({ files, quota });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/agents/:id/files", requireAuth, uploadAttachment.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "Fichier requis" });
+    const { getAgent } = await import("./lib/agents.js");
+    const agent = await getAgent(req.user.id, req.params.id);
+    if (!agent) return res.status(404).json({ error: "Agent introuvable" });
+    const user = await refreshUser(req.user.id, req.user);
+    const { parseAttachment } = await import("./lib/attachments.js");
+    const parsed = await parseAttachment(req.file.buffer, req.file, user.plan);
+    if (parsed.type === "image") return res.status(400).json({ error: "Les images ne sont pas supportées comme connaissances (utilise PDF, texte, code, CSV…)." });
+    const { addKnowledgeFile } = await import("./lib/agentFiles.js");
+    const file = await addKnowledgeFile(req.user.id, req.params.id, user.plan, parsed);
+    res.json(file);
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message, code: e.code, quota: e.quota });
+    console.error("[agent-files]", e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.delete("/api/agents/:id/files/:fileId", requireAuth, async (req, res) => {
+  try {
+    const { deleteKnowledgeFile } = await import("./lib/agentFiles.js");
+    const ok = await deleteKnowledgeFile(req.user.id, req.params.fileId);
+    res.json({ deleted: ok });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post("/api/transcribe", requireAuth, upload.single("audio"), async (req, res) => {
