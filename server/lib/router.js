@@ -1,6 +1,6 @@
-// Pré-flight de routage via Groq (Llama 4 Scout)
-const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-const ROUTER_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
+// Pré-flight de routage via OpenRouter (Gemini 3.1 Flash Lite)
+const ROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const ROUTER_MODEL = "google/gemini-3.1-flash-lite";
 
 const SYSTEM_PROMPT = `You are an AI router for DELT AI. Analyze the user's request and return ONLY a JSON object with this exact shape:
 
@@ -60,10 +60,10 @@ Pick the BEST model based on these rules :
 Return ONLY the JSON, no other text.`;
 
 export async function routeMessage(userMessage) {
-  const key = (process.env.GROQ_API_KEY || "").trim();
-  if (!key) throw new Error("GROQ_API_KEY manquante");
+  const key = (process.env.OPENROUTER_API_KEY || "").trim();
+  if (!key) throw new Error("OPENROUTER_API_KEY manquante");
 
-  const res = await fetch(GROQ_URL, {
+  const res = await fetch(ROUTER_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -83,7 +83,7 @@ export async function routeMessage(userMessage) {
 
   if (!res.ok) {
     const txt = await res.text();
-    throw new Error(`Groq router ${res.status}: ${txt.slice(0, 200)}`);
+    throw new Error(`OpenRouter router ${res.status}: ${txt.slice(0, 200)}`);
   }
 
   const data = await res.json();

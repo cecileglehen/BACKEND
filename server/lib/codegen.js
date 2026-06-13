@@ -7,15 +7,15 @@ import { zipDirectory } from "./zip.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SESSIONS_ROOT = path.join(__dirname, "..", "data", "code-sessions");
 const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
-const RING_MODEL      = "inclusionai/ring-2.6-1t:free";
+const KIMI_MODEL      = "moonshotai/kimi-k2.7-code";
 const CODESTRAL_MODEL = "mistralai/codestral-2508";
 const GEMINI_MODEL    = "google/gemini-3-flash-preview";
-const ALLOWED_CODE_MODELS = new Set([RING_MODEL, CODESTRAL_MODEL, GEMINI_MODEL]);
+const ALLOWED_CODE_MODELS = new Set([KIMI_MODEL, CODESTRAL_MODEL, GEMINI_MODEL]);
 const MAX_FILE_BYTES = 500_000;
 const MAX_TOTAL_BYTES = 2_000_000;
 const MAX_ACTIONS = 80;
 
-const SYSTEM_PROMPT = `Tu es Ring, un codeur IA. Tu dois répondre uniquement avec un objet JSON valide, sans markdown.
+const SYSTEM_PROMPT = `Tu es Kimi, un codeur IA. Tu dois répondre uniquement avec un objet JSON valide, sans markdown.
 
 Objectif: créer/modifier un petit projet de code téléchargeable.
 
@@ -53,14 +53,14 @@ function parseJsonObject(raw) {
     const start = text.indexOf("{");
     const end = text.lastIndexOf("}");
     if (start >= 0 && end > start) return JSON.parse(text.slice(start, end + 1));
-    throw new Error("Ring n'a pas renvoyé un JSON valide.");
+    throw new Error("Le modèle n'a pas renvoyé un JSON valide.");
   }
 }
 
-async function requestRing(prompt, jsonMode = true, modelId = RING_MODEL) {
+async function requestRing(prompt, jsonMode = true, modelId = KIMI_MODEL) {
   const key = (process.env.OPENROUTER_API_KEY || "").trim();
   if (!key) throw new Error("OPENROUTER_API_KEY manquante");
-  const model = ALLOWED_CODE_MODELS.has(modelId) ? modelId : RING_MODEL;
+  const model = ALLOWED_CODE_MODELS.has(modelId) ? modelId : KIMI_MODEL;
 
   const body = {
     model,
@@ -85,7 +85,7 @@ async function requestRing(prompt, jsonMode = true, modelId = RING_MODEL) {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    const error = new Error(`Ring ${res.status}: ${text.slice(0, 220)}`);
+    const error = new Error(`Codegen ${res.status}: ${text.slice(0, 220)}`);
     error.status = res.status;
     throw error;
   }
@@ -93,7 +93,7 @@ async function requestRing(prompt, jsonMode = true, modelId = RING_MODEL) {
   return res.json();
 }
 
-async function callRing(prompt, modelId = RING_MODEL) {
+async function callRing(prompt, modelId = KIMI_MODEL) {
   let data;
   try {
     data = await requestRing(prompt, true, modelId);
@@ -195,7 +195,7 @@ async function readProjectContext(root) {
   return snippets.join("\n\n");
 }
 
-export async function createCodeSession(userId, prompt, modelId = RING_MODEL) {
+export async function createCodeSession(userId, prompt, modelId = KIMI_MODEL) {
   const id = crypto.randomUUID();
   const root = path.join(SESSIONS_ROOT, String(userId), id);
   await fs.mkdir(root, { recursive: true });
@@ -208,14 +208,14 @@ export async function createCodeSession(userId, prompt, modelId = RING_MODEL) {
   return {
     id,
     model: modelId,
-    summary: String(plan.summary || "Projet généré par Ring"),
+    summary: String(plan.summary || "Projet généré par Kimi"),
     run: plan.run ?? null,
     files,
     tokensOut
   };
 }
 
-export async function editCodeSession(userId, sessionId, prompt, modelId = RING_MODEL) {
+export async function editCodeSession(userId, sessionId, prompt, modelId = KIMI_MODEL) {
   const id = String(sessionId || "");
   if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Session invalide");
   const root = path.join(SESSIONS_ROOT, String(userId), id);
@@ -231,7 +231,7 @@ export async function editCodeSession(userId, sessionId, prompt, modelId = RING_
   return {
     id,
     model: modelId,
-    summary: String(plan.summary || "Projet modifié par Ring"),
+    summary: String(plan.summary || "Projet modifié par Kimi"),
     run: plan.run ?? null,
     files,
     tokensOut
