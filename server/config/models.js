@@ -126,6 +126,7 @@ export const CATEGORIES = {
     levelRange: [9, 10],
     models: [
       { id: "openai/gpt-5.5", brand: "OpenAI", display: "GPT-5.5", price: { in: 5.00, out: 30.00 }, ctx: 400000, vision: true },
+      { id: "anthropic/claude-fable-5", brand: "Anthropic", display: "Claude Fable 5", price: { in: 10.00, out: 50.00 }, ctx: 1000000, vision: true, tagline: "Le plus intelligent d'Anthropic — très cher (2× Opus)" },
       { id: "qwen/qwen3-max-thinking",         brand: "Qwen", display: "Qwen3 Max Thinking", price: { in: 3.00, out: 15.00 }, ctx: 1000000, tagline: "Raisonnement profond" },
       { id: "qwen/qwen3-vl-235b-a22b-thinking",brand: "Qwen", display: "Qwen3 VL 235B Thinking", price: { in: 2.50, out: 12.00 }, ctx: 256000, vision: true, tagline: "Vision + raisonnement, MoE 235B" },
       { id: "anthropic/claude-opus-4.8", brand: "Anthropic", display: "Claude Opus 4.8", price: { in: 5.00, out: 25.00 }, ctx: 1000000, vision: true },
@@ -290,7 +291,8 @@ const FAMILY_RULES = {
   Anthropic: [
     { id: "haiku",     label: "Claude Haiku",  test: (id) => /claude-haiku/.test(id) },
     { id: "sonnet",    label: "Claude Sonnet", test: (id) => /claude-sonnet/.test(id) },
-    { id: "opus",      label: "Claude Opus",   test: (id) => /claude-opus/.test(id) }
+    { id: "opus",      label: "Claude Opus",   test: (id) => /claude-opus/.test(id) },
+    { id: "fable",     label: "Claude Fable",  test: (id) => /claude-fable/.test(id) }
   ],
   Google: [
     { id: "gemini-3.5",label: "Gemini 3.5",  test: (id) => /gemini-3\.5/.test(id) },
