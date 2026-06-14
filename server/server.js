@@ -21,7 +21,8 @@ import { computeCreditCost, computeCreditFromCost, FREE_TIER_ONLY_PLANS } from "
 import { runDeepSearch } from "./lib/deepSearch.js";
 import { checkThrottle } from "./lib/throttle.js";
 import { compressIfNeeded } from "./lib/context.js";
-import { createCodeSession, editCodeSession, getCodePreviewFile, getCodeZip } from "./lib/codegen.js";
+import { createCodeSession, editCodeSession, createCodeSessionStream, editCodeSessionStream, getCodePreviewFile, getCodeZip, getCodeSessionFiles, listCodeSessions, deleteCodeSession, renameCodeSession } from "./lib/codegen.js";
+import { deploySite, DEPLOYS_ROOT } from "./lib/deploy.js";
 import { TIER_MODELS, estimateCostEur } from "./config/plans.js";
 import { brandFromAlias, CREATIVE, findModelForBrand, findModelForFamily, findModelInCatalog, familyFromAlias, isBrandAlias, isFamilyAlias, normalizeTier, publicCatalog, supportsVision, pickVisionModelForTier } from "./config/models.js";
 import { createSubscriptionLink, activateSubscription, handleWebhook, PAYPAL_PLAN_IDS, createCreditOrder, captureCreditOrder } from "./lib/paypal.js";
@@ -909,13 +910,36 @@ app.delete("/api/conversations/:id", requireAuth, async (req, res) => {
 
 // ─── Code Studio ─────────────────────────────────────────────────────────────
 
+// Facture une session de code (génération ou édition) au coût réel, comme le chat.
+async function billCodeSession(userId, session, source = "launch") {
+  const u = session?.usage || {};
+  const tier = "MINI"; // les modèles code sont des modèles rapides/éco
+  const creditCost = computeCreditFromCost({
+    costUsd: Number(u.costUsd) || 0,
+    modelId: session?.model,
+    tokensIn: u.tokensIn || 0,
+    tokensOut: u.tokensOut || 0
+  });
+  const creditsLeft = await deductCredits(userId, creditCost);
+  await Promise.allSettled([
+    recordUsage(userId, tier, u.tokensIn || 0, u.tokensOut || 0),
+    logUsage({ userId, modelId: session?.model, tier, tokensIn: u.tokensIn || 0, tokensOut: u.tokensOut || 0, costCr: creditCost, source })
+  ]);
+  return { creditCost, creditsLeft };
+}
+
 app.post("/api/code/session", requireAuth, async (req, res) => {
   try {
     const prompt = String(req.body?.prompt || "").trim();
     if (!prompt) return res.status(400).json({ error: "prompt requis" });
     const modelId = String(req.body?.modelId || "").trim() || undefined;
-    const session = await createCodeSession(req.user.id, prompt, modelId);
-    res.json(session);
+    const mode = req.body?.mode === "react" ? "react" : "static";
+    if (!(await hasEnoughCredits(req.user.id, 0.1))) {
+      return res.status(402).json({ error: "Crédits insuffisants." });
+    }
+    const session = await createCodeSession(req.user.id, prompt, modelId, mode);
+    const billed = await billCodeSession(req.user.id, session, "launch");
+    res.json({ ...session, ...billed });
   } catch (e) {
     console.error("[code/session]", e);
     res.status(500).json({ error: e.message });
@@ -927,11 +951,118 @@ app.post("/api/code/session/:id/edit", requireAuth, async (req, res) => {
     const prompt = String(req.body?.prompt || "").trim();
     if (!prompt) return res.status(400).json({ error: "prompt requis" });
     const modelId = String(req.body?.modelId || "").trim() || undefined;
-    const session = await editCodeSession(req.user.id, req.params.id, prompt, modelId);
-    res.json(session);
+    const mode = req.body?.mode === "react" ? "react" : "static";
+    if (!(await hasEnoughCredits(req.user.id, 0.1))) {
+      return res.status(402).json({ error: "Crédits insuffisants." });
+    }
+    const session = await editCodeSession(req.user.id, req.params.id, prompt, modelId, mode);
+    const billed = await billCodeSession(req.user.id, session, "launch");
+    res.json({ ...session, ...billed });
   } catch (e) {
     console.error("[code/edit]", e);
     res.status(500).json({ error: e.message });
+  }
+});
+
+// Variantes SSE streaming (progression "Création de…" + diffs par fichier)
+function startSSE(res) {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders?.();
+  return (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+}
+
+app.post("/api/code/session/stream", requireAuth, async (req, res) => {
+  const send = startSSE(res);
+  try {
+    const prompt = String(req.body?.prompt || "").trim();
+    if (!prompt) { send({ type: "error", error: "prompt requis" }); return res.end(); }
+    const modelId = String(req.body?.modelId || "").trim() || undefined;
+    const mode = req.body?.mode === "react" ? "react" : "static";
+    if (!(await hasEnoughCredits(req.user.id, 0.1))) { send({ type: "error", error: "Crédits insuffisants." }); return res.end(); }
+    const session = await createCodeSessionStream(req.user.id, prompt, modelId, mode, send);
+    const billed = await billCodeSession(req.user.id, session, "launch");
+    send({ type: "done", session: { ...session, ...billed } });
+    res.end();
+  } catch (e) {
+    console.error("[code/stream]", e);
+    send({ type: "error", error: e.message });
+    res.end();
+  }
+});
+
+app.post("/api/code/session/:id/edit/stream", requireAuth, async (req, res) => {
+  const send = startSSE(res);
+  try {
+    const prompt = String(req.body?.prompt || "").trim();
+    if (!prompt) { send({ type: "error", error: "prompt requis" }); return res.end(); }
+    const modelId = String(req.body?.modelId || "").trim() || undefined;
+    const mode = req.body?.mode === "react" ? "react" : "static";
+    if (!(await hasEnoughCredits(req.user.id, 0.1))) { send({ type: "error", error: "Crédits insuffisants." }); return res.end(); }
+    const session = await editCodeSessionStream(req.user.id, req.params.id, prompt, modelId, mode, send);
+    const billed = await billCodeSession(req.user.id, session, "launch");
+    send({ type: "done", session: { ...session, ...billed } });
+    res.end();
+  } catch (e) {
+    console.error("[code/edit/stream]", e);
+    send({ type: "error", error: e.message });
+    res.end();
+  }
+});
+
+// ─── Launch : déploiement 1-clic ─────────────────────────────────────────────
+app.post("/api/launch/deploy", requireAuth, async (req, res) => {
+  try {
+    const slug = String(req.body?.slug || "").trim();
+    const files = Array.isArray(req.body?.files) ? req.body.files : [];
+    const result = await deploySite(req.user.id, slug, files);
+    res.json(result);
+  } catch (e) {
+    console.error("[launch/deploy]", e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// Sites déployés (statique). En prod, on pourra mapper deltai.fr/<slug> dessus.
+app.use("/sites", express.static(DEPLOYS_ROOT, { index: "index.html", extensions: ["html"] }));
+
+app.get("/api/code/session/:id/files", requireAuth, async (req, res) => {
+  try {
+    const files = await getCodeSessionFiles(req.user.id, req.params.id);
+    res.json({ files });
+  } catch (e) {
+    console.error("[code/files]", e);
+    res.status(404).json({ error: e.message });
+  }
+});
+
+// Liste / suppression / renommage des projets sauvegardés
+app.get("/api/code/sessions", requireAuth, async (req, res) => {
+  try {
+    res.json({ sessions: await listCodeSessions(req.user.id) });
+  } catch (e) {
+    console.error("[code/sessions]", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/code/session/:id", requireAuth, async (req, res) => {
+  try {
+    res.json(await deleteCodeSession(req.user.id, req.params.id));
+  } catch (e) {
+    console.error("[code/delete]", e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.patch("/api/code/session/:id", requireAuth, async (req, res) => {
+  try {
+    const name = String(req.body?.name || "").trim();
+    res.json(await renameCodeSession(req.user.id, req.params.id, name));
+  } catch (e) {
+    console.error("[code/rename]", e);
+    res.status(400).json({ error: e.message });
   }
 });
 
