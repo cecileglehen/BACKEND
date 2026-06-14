@@ -92,6 +92,12 @@ Règles:
 - Si tu as besoin d'une dépendance npm, RÉÉCRIS package.json en l'ajoutant aux dependencies (version exacte connue et stable).
 - Pas de chemin absolu, jamais de .. dans les paths.
 - Garde l'app compacte mais réelle et belle.
+- Auth managée : un SDK src/launch.js est FOURNI automatiquement (ne le crée pas, ne le modifie pas).
+  Pour ajouter login/inscription, importe-le : import { LaunchAuth } from "./launch.js";
+  Méthodes : await LaunchAuth.signup(email, password, name), await LaunchAuth.login(email, password),
+  LaunchAuth.loginWithGoogle(), await LaunchAuth.me() (→ user ou null), LaunchAuth.logout(),
+  LaunchAuth.isLoggedIn(). Les sessions sont persistées automatiquement. Utilise-le dès que
+  l'app a besoin de comptes utilisateurs — ne réimplémente JAMAIS l'auth toi-même.
 - Images IA (Flux Schnell) : pour toute image (héros, illustration, vignette, avatar, fond),
   utilise DIRECTEMENT cette URL dans un tag <img> — pas de fetch, pas de clé requise :
   <img src="${PUBLIC_API}/api/launch/img?prompt=PROMPT_ENCODE" alt="..." />
@@ -305,6 +311,50 @@ function scaffoldMap() {
   return new Map(Object.entries(REACT_SCAFFOLD));
 }
 
+// SDK d'auth managée injecté dans chaque app (projectId baké). L'app importe
+// { LaunchAuth } from "./launch.js" — auth login/signup/google sans config.
+function launchSdkSource(projectId) {
+  return `// SDK Launch — auth managée (auto-généré, ne pas modifier).
+const API = "${PUBLIC_API}";
+const PROJECT = "${projectId}";
+const KEY = "launch_token_" + PROJECT;
+const getToken = () => localStorage.getItem(KEY);
+const setToken = (t) => t ? localStorage.setItem(KEY, t) : localStorage.removeItem(KEY);
+
+// Récupère le token au retour OAuth (?launch_token=...)
+(function () {
+  try {
+    const u = new URL(window.location.href);
+    const t = u.searchParams.get("launch_token");
+    if (t) { setToken(t); u.searchParams.delete("launch_token"); window.history.replaceState({}, "", u.toString()); }
+  } catch (e) {}
+})();
+
+async function req(path, opts) {
+  opts = opts || {};
+  const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+  if (getToken()) headers.Authorization = "Bearer " + getToken();
+  const r = await fetch(API + "/api/launch/" + PROJECT + path, Object.assign({}, opts, { headers }));
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || r.statusText);
+  return d;
+}
+
+export const LaunchAuth = {
+  async signup(email, password, name) { const d = await req("/auth/signup", { method: "POST", body: JSON.stringify({ email, password, name }) }); setToken(d.token); return d.user; },
+  async login(email, password) { const d = await req("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }); setToken(d.token); return d.user; },
+  loginWithGoogle() { window.location.href = API + "/api/launch/auth/google?projectId=" + PROJECT + "&redirect=" + encodeURIComponent(window.location.href); },
+  async me() { if (!getToken()) return null; try { const d = await req("/auth/me"); return d.user; } catch (e) { setToken(null); return null; } },
+  logout() { setToken(null); },
+  isLoggedIn() { return !!getToken(); }
+};
+`;
+}
+
+function injectLaunchSdk(map, projectId) {
+  map.set("src/launch.js", launchSdkSource(projectId));
+}
+
 // Map(path → content) → applique les actions du modèle (mutation en place).
 function applyActionsToMap(map, actions) {
   if (!Array.isArray(actions) || actions.length === 0) throw new Error("Aucune action de code reçue.");
@@ -460,6 +510,7 @@ export async function createCodeSession(userId, prompt, modelId = KIMI_MODEL, mo
   const usage = extractUsage(raw, plan);
   const summary = String(plan.summary || "Projet généré par Kimi");
   const id = await insertProject(userId, { summary, prompt, mode, run: plan.run });
+  injectLaunchSdk(map, id);
   await saveFilesMap(id, map);
   return { id, model: modelId, mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: usage.tokensOut, usage };
 }
@@ -474,6 +525,7 @@ export async function editCodeSession(userId, sessionId, prompt, modelId = KIMI_
   const usage = extractUsage(raw, plan);
   const summary = String(plan.summary || "Projet modifié par Kimi");
   await touchProject(userId, sessionId, { summary, run: plan.run });
+  injectLaunchSdk(map, sessionId);
   await saveFilesMap(sessionId, map);
   return { id: sessionId, model: modelId, mode: proj.mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: usage.tokensOut, usage };
 }
@@ -493,6 +545,7 @@ export async function createCodeSessionStream(userId, prompt, modelId, mode, emi
   emitDiffs(plan, oldMap, emit);
   const summary = String(plan.summary || "Projet généré");
   const id = await insertProject(userId, { summary, prompt, mode, run: plan.run });
+  injectLaunchSdk(map, id);
   await saveFilesMap(id, map);
   const u = extractUsage({ usage }, plan);
   return { id, model: modelId, mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: u.tokensOut, usage: u };
@@ -515,6 +568,7 @@ export async function editCodeSessionStream(userId, sessionId, prompt, modelId, 
   emitDiffs(plan, oldMap, emit);
   const summary = String(plan.summary || "Projet modifié");
   await touchProject(userId, sessionId, { summary, run: plan.run });
+  injectLaunchSdk(map, sessionId);
   await saveFilesMap(sessionId, map);
   const u = extractUsage({ usage }, plan);
   return { id: sessionId, model: modelId, mode: proj.mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: u.tokensOut, usage: u };

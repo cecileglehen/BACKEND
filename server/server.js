@@ -23,6 +23,7 @@ import { checkThrottle } from "./lib/throttle.js";
 import { compressIfNeeded } from "./lib/context.js";
 import { createCodeSession, editCodeSession, createCodeSessionStream, editCodeSessionStream, getCodePreviewFile, getCodeZip, getCodeSessionFiles, listCodeSessions, deleteCodeSession, renameCodeSession } from "./lib/codegen.js";
 import { deploySite, getDeployFile } from "./lib/deploy.js";
+import { signupAppUser, loginAppUser, getAppUserFromToken, googleAuthUrl, handleGoogleCallback } from "./lib/launchAuth.js";
 import { TIER_MODELS, estimateCostEur } from "./config/plans.js";
 import { brandFromAlias, CREATIVE, findModelForBrand, findModelForFamily, findModelInCatalog, familyFromAlias, isBrandAlias, isFamilyAlias, normalizeTier, publicCatalog, supportsVision, pickVisionModelForTier } from "./config/models.js";
 import { createSubscriptionLink, activateSubscription, handleWebhook, PAYPAL_PLAN_IDS, createCreditOrder, captureCreditOrder } from "./lib/paypal.js";
@@ -1021,6 +1022,65 @@ app.post("/api/launch/deploy", requireAuth, async (req, res) => {
   } catch (e) {
     console.error("[launch/deploy]", e);
     res.status(400).json({ error: e.message });
+  }
+});
+
+// ─── Launch Auth : auth managée des apps générées (scopée par projet) ────────
+// Google (central proxy) — déclaré AVANT les routes :projectId pour éviter tout shadow.
+app.get("/api/launch/auth/google", async (req, res) => {
+  try {
+    const projectId = String(req.query?.projectId || "");
+    const redirect = String(req.query?.redirect || "");
+    res.redirect(302, await googleAuthUrl(projectId, redirect));
+  } catch (e) {
+    res.status(400).send(e.message);
+  }
+});
+
+app.get("/api/launch/auth/google/callback", async (req, res) => {
+  try {
+    const code = String(req.query?.code || "");
+    const state = String(req.query?.state || "");
+    if (!code || !state) return res.status(400).send("Paramètres OAuth manquants");
+    const { token, redirect } = await handleGoogleCallback(code, state);
+    if (redirect) {
+      const u = new URL(redirect);
+      u.searchParams.set("launch_token", token);
+      return res.redirect(302, u.toString());
+    }
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(`<!doctype html><meta charset="utf-8"><body style="font-family:system-ui;padding:40px">✓ Connecté. Tu peux fermer cette fenêtre.<script>localStorage.setItem("launch_token",${JSON.stringify(token)});</script></body>`);
+  } catch (e) {
+    console.error("[launch/google/callback]", e);
+    res.status(400).send(`Erreur de connexion : ${e.message}`);
+  }
+});
+
+app.post("/api/launch/:projectId/auth/signup", async (req, res) => {
+  try {
+    const { email, password, name } = req.body ?? {};
+    res.json(await signupAppUser(req.params.projectId, email, password, name));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post("/api/launch/:projectId/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body ?? {};
+    res.json(await loginAppUser(req.params.projectId, email, password));
+  } catch (e) {
+    res.status(401).json({ error: e.message });
+  }
+});
+
+app.get("/api/launch/:projectId/auth/me", async (req, res) => {
+  try {
+    const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+    if (!token) return res.status(401).json({ error: "Non authentifié" });
+    res.json({ user: await getAppUserFromToken(token) });
+  } catch {
+    res.status(401).json({ error: "Session invalide" });
   }
 });
 
