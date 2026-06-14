@@ -12,10 +12,11 @@
 **Cible** : cliquer sur un élément dans la preview → poignées pour changer **texte, couleur, taille, espacement** en direct, **sans prompt ni crédits**.
 **Comment** : injecter un petit agent dans l'iframe preview (postMessage) qui surligne l'élément survolé, renvoie son sélecteur/source map ; un panneau d'édition applique un `edit_file` ciblé (ou patch CSS inline) sans appeler le LLM pour les changements simples.
 
-### 🔴 2. Auto-fix autonome des erreurs
-**Manque** : bouton « Réparer avec l'IA » manuel.
-**Cible** : quand `npm install`/build/runtime échoue → l'IA lit l'erreur du terminal et **corrige automatiquement** (boucle, max 2-3 essais) avant de rendre la main.
-**Comment** : on a déjà le flux terminal WebContainer ; détecter les patterns d'erreur → déclencher une édition auto avec l'erreur en contexte.
+### ✅ 2. Auto-fix autonome des erreurs — **FAIT**
+Quand le dev server WebContainer émet une erreur (compile/runtime), l'IDE la détecte
+(patterns dans le flux terminal), débounce 1,5 s, et déclenche une **correction automatique**
+via le flux d'édition (max 2 essais par erreur, reset quand l'app redevient saine).
+Feedback dans le chat : « 🔧 Erreur détectée — correction automatique… » → « ✅ Correction appliquée ».
 
 ### 🔴 3. Intégrations dans les apps générées (Gmail, Slack, Calendar, Stripe…)
 **Manque** : les apps Launch n'ont pas d'intégrations tierces. **Mais on a déjà Composio côté DELT** (Gmail, Drive, Calendar, Slack, Notion, GitHub…).
@@ -40,8 +41,10 @@
 **Manque** : on part toujours de zéro.
 **Cible** : galerie de templates (SaaS, dashboard, landing, blog, e-shop, kanban…) → clone + personnalisation.
 
-### 🟢 8. Mobile (Expo)
-**Cible** : cible « app mobile » (React Native/Expo) avec preview device. (Gros chantier, plus tard.)
+### 🟢 8. Mobile — **React Native / Expo** (PAS Flutter)
+**Note** : pas d'équivalent WebContainer pour Flutter (Dart nécessite une compilation cloud :
+Zapp.run/DartPad compilent côté serveur). Comme on est déjà en React, la cible mobile =
+**React Native + Expo** (Expo Snack : preview navigateur + device via QR), c'est aussi l'approche de Bolt.
 
 ### 🟢 9. Figma import
 **Cible** : importer un design Figma → générer l'UI.
