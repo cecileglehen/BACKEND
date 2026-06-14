@@ -450,7 +450,17 @@ function projectContext(map) {
 async function getProject(userId, id) {
   if (!UUID_RE.test(String(id))) throw new Error("Session invalide");
   const db = getDb();
-  const { rows } = await db.query(`SELECT id, mode FROM launch_projects WHERE id=$1 AND user_id=$2`, [id, userId]);
+  const { rows } = await db.query(`SELECT id, mode, slug FROM launch_projects WHERE id=$1 AND user_id=$2`, [id, userId]);
+  if (!rows[0]) throw new Error("Projet introuvable");
+  return rows[0];
+}
+
+// Résout un slug → projet (pour l'URL launch.../p/<slug>).
+export async function getProjectBySlug(userId, slug) {
+  const { rows } = await getDb().query(
+    `SELECT id, name, summary, mode, slug FROM launch_projects WHERE user_id=$1 AND slug=$2`,
+    [userId, String(slug || "")]
+  );
   if (!rows[0]) throw new Error("Projet introuvable");
   return rows[0];
 }
@@ -498,12 +508,13 @@ export async function getCodeSessionFiles(userId, sessionId) {
 export async function listCodeSessions(userId) {
   const db = getDb();
   const { rows } = await db.query(
-    `SELECT id, name, summary, mode, created_at, updated_at
+    `SELECT id, name, summary, mode, slug, created_at, updated_at
      FROM launch_projects WHERE user_id=$1 ORDER BY updated_at DESC LIMIT 100`,
     [userId]
   );
   return rows.map((r) => ({
     id: r.id,
+    slug: r.slug || null,
     name: r.name || r.summary || "Projet sans nom",
     summary: r.summary || "",
     mode: r.mode || "react",
@@ -529,15 +540,34 @@ export async function renameCodeSession(userId, sessionId, name) {
   return { ok: true };
 }
 
-// Crée la ligne projet + persiste les fichiers. Renvoie l'id.
+function slugify(s) {
+  return String(s || "")
+    .toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40) || "app";
+}
+
+// Crée la ligne projet (slug unique) + renvoie { id, slug }.
 async function insertProject(userId, { summary, prompt, mode, run }) {
   const db = getDb();
-  const { rows } = await db.query(
-    `INSERT INTO launch_projects (user_id, name, summary, prompt, mode, run)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-    [userId, summary.slice(0, 80), summary, String(prompt || "").slice(0, 300), mode, run ? JSON.stringify(run) : null]
-  );
-  return rows[0].id;
+  const base = slugify(summary);
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const slug = attempt === 0 ? base : `${base}-${Math.random().toString(36).slice(2, 6)}`;
+    try {
+      const { rows } = await db.query(
+        `INSERT INTO launch_projects (user_id, name, summary, prompt, mode, run, slug)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, slug`,
+        [userId, summary.slice(0, 80), summary, String(prompt || "").slice(0, 300), mode, run ? JSON.stringify(run) : null, slug]
+      );
+      return rows[0];
+    } catch (e) {
+      if (e.code === "23505" && attempt < 5) continue; // collision slug → suffixe
+      throw e;
+    }
+  }
+  throw new Error("Impossible de générer un slug unique");
 }
 
 async function touchProject(userId, id, { summary, run }) {
@@ -555,10 +585,10 @@ export async function createCodeSession(userId, prompt, modelId = KIMI_MODEL, mo
   applyActionsToMap(map, plan.actions);
   const usage = extractUsage(raw, plan);
   const summary = String(plan.summary || "Projet généré par Kimi");
-  const id = await insertProject(userId, { summary, prompt, mode, run: plan.run });
+  const { id, slug } = await insertProject(userId, { summary, prompt, mode, run: plan.run });
   injectLaunchSdk(map, id);
   await saveFilesMap(id, map);
-  return { id, model: modelId, mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: usage.tokensOut, usage };
+  return { id, slug, model: modelId, mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: usage.tokensOut, usage };
 }
 
 export async function editCodeSession(userId, sessionId, prompt, modelId = KIMI_MODEL, mode = "static") {
@@ -573,7 +603,7 @@ export async function editCodeSession(userId, sessionId, prompt, modelId = KIMI_
   await touchProject(userId, sessionId, { summary, run: plan.run });
   injectLaunchSdk(map, sessionId);
   await saveFilesMap(sessionId, map);
-  return { id: sessionId, model: modelId, mode: proj.mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: usage.tokensOut, usage };
+  return { id: sessionId, slug: proj.slug, model: modelId, mode: proj.mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: usage.tokensOut, usage };
 }
 
 export async function createCodeSessionStream(userId, prompt, modelId, mode, emit) {
@@ -590,11 +620,11 @@ export async function createCodeSessionStream(userId, prompt, modelId, mode, emi
   applyActionsToMap(map, plan.actions);
   emitDiffs(plan, oldMap, emit);
   const summary = String(plan.summary || "Projet généré");
-  const id = await insertProject(userId, { summary, prompt, mode, run: plan.run });
+  const { id, slug } = await insertProject(userId, { summary, prompt, mode, run: plan.run });
   injectLaunchSdk(map, id);
   await saveFilesMap(id, map);
   const u = extractUsage({ usage }, plan);
-  return { id, model: modelId, mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: u.tokensOut, usage: u };
+  return { id, slug, model: modelId, mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: u.tokensOut, usage: u };
 }
 
 export async function editCodeSessionStream(userId, sessionId, prompt, modelId, mode, emit) {
@@ -617,7 +647,7 @@ export async function editCodeSessionStream(userId, sessionId, prompt, modelId, 
   injectLaunchSdk(map, sessionId);
   await saveFilesMap(sessionId, map);
   const u = extractUsage({ usage }, plan);
-  return { id: sessionId, model: modelId, mode: proj.mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: u.tokensOut, usage: u };
+  return { id: sessionId, slug: proj.slug, model: modelId, mode: proj.mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: u.tokensOut, usage: u };
 }
 
 export async function getCodeZip(userId, sessionId) {
