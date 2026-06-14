@@ -22,7 +22,7 @@ import { runDeepSearch } from "./lib/deepSearch.js";
 import { checkThrottle } from "./lib/throttle.js";
 import { compressIfNeeded } from "./lib/context.js";
 import { createCodeSession, editCodeSession, createCodeSessionStream, editCodeSessionStream, getCodePreviewFile, getCodeZip, getCodeSessionFiles, listCodeSessions, deleteCodeSession, renameCodeSession, getProjectBySlug } from "./lib/codegen.js";
-import { deploySite, getDeployFile } from "./lib/deploy.js";
+import { deploySite, undeploySite, getProjectDeploy, getDeployFile } from "./lib/deploy.js";
 import { signupAppUser, loginAppUser, getAppUserFromToken, googleAuthUrl, handleGoogleCallback, verifyAppToken } from "./lib/launchAuth.js";
 import { listDocs, createDoc, getDoc, updateDoc, deleteDoc } from "./lib/launchData.js";
 import { createConnectLink, getConnectStatus, createCheckout, handleWebhook as handleLaunchPayWebhook } from "./lib/launchPay.js";
@@ -1017,14 +1017,28 @@ app.post("/api/code/session/:id/edit/stream", requireAuth, async (req, res) => {
 // ─── Launch : déploiement 1-clic ─────────────────────────────────────────────
 app.post("/api/launch/deploy", requireAuth, async (req, res) => {
   try {
+    const projectId = String(req.body?.projectId || "");
     const slug = String(req.body?.slug || "").trim();
     const files = Array.isArray(req.body?.files) ? req.body.files : [];
-    const result = await deploySite(req.user.id, slug, files);
+    const result = await deploySite(req.user.id, projectId, slug, files);
     res.json(result);
   } catch (e) {
     console.error("[launch/deploy]", e);
     res.status(400).json({ error: e.message });
   }
+});
+
+// État du déploiement + shutdown (1 déploiement max par projet)
+app.get("/api/launch/:projectId/deploy", requireAuth, async (req, res) => {
+  try {
+    res.json(await getProjectDeploy(req.user.id, req.params.projectId));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.delete("/api/launch/:projectId/deploy", requireAuth, async (req, res) => {
+  try {
+    res.json(await undeploySite(req.user.id, req.params.projectId));
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 // ─── Launch Auth : auth managée des apps générées (scopée par projet) ────────

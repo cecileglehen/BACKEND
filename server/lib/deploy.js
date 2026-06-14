@@ -39,24 +39,35 @@ function cleanPath(p) {
   return c;
 }
 
-export async function deploySite(userId, slugRaw, files) {
-  const slug = normalizeSlug(slugRaw);
-  if (!SLUG_RE.test(slug)) throw new Error("Slug invalide (a-z, 0-9, tirets, 2-40 caractères).");
+const UUID_RE = /^[0-9a-f-]{36}$/i;
+
+export async function deploySite(userId, projectId, slugRaw, files) {
+  if (!UUID_RE.test(String(projectId))) throw new Error("Projet invalide");
   if (!Array.isArray(files) || files.length === 0) throw new Error("Aucun fichier à déployer.");
   if (files.length > MAX_FILES) throw new Error("Trop de fichiers.");
 
   const db = getDb();
 
-  // Vérifie la propriété si le slug existe déjà
-  const { rows: existing } = await db.query(`SELECT user_id FROM launch_deploys WHERE slug=$1`, [slug]);
-  if (existing[0] && String(existing[0].user_id) !== String(userId)) throw new Error("Ce nom est déjà pris.");
+  // Le projet doit appartenir à l'utilisateur
+  const { rows: proj } = await db.query(`SELECT id FROM launch_projects WHERE id=$1 AND user_id=$2`, [projectId, userId]);
+  if (!proj[0]) throw new Error("Projet introuvable");
 
-  // Upsert du déploiement
-  await db.query(
-    `INSERT INTO launch_deploys (slug, user_id, updated_at) VALUES ($1, $2, NOW())
-     ON CONFLICT (slug) DO UPDATE SET updated_at = NOW()`,
-    [slug, userId]
-  );
+  // 1 déploiement max par projet : réutilise le slug existant, sinon en crée un.
+  const { rows: cur } = await db.query(`SELECT slug FROM launch_deploys WHERE project_id=$1`, [projectId]);
+  let slug;
+  if (cur[0]) {
+    slug = cur[0].slug;
+    await db.query(`UPDATE launch_deploys SET updated_at=NOW() WHERE slug=$1`, [slug]);
+  } else {
+    slug = normalizeSlug(slugRaw);
+    if (!SLUG_RE.test(slug)) throw new Error("Slug invalide (a-z, 0-9, tirets, 2-40 caractères).");
+    const { rows: taken } = await db.query(`SELECT 1 FROM launch_deploys WHERE slug=$1`, [slug]);
+    if (taken[0]) throw new Error("Ce nom est déjà pris.");
+    await db.query(
+      `INSERT INTO launch_deploys (slug, user_id, project_id, updated_at) VALUES ($1, $2, $3, NOW())`,
+      [slug, userId, projectId]
+    );
+  }
 
   // Réécrit les fichiers à neuf
   await db.query(`DELETE FROM launch_deploy_files WHERE slug=$1`, [slug]);
@@ -79,6 +90,28 @@ export async function deploySite(userId, slugRaw, files) {
   );
 
   return { slug, url: `/sites/${slug}/` };
+}
+
+// Shutdown : retire le déploiement d'un projet (supprime site + fichiers).
+export async function undeploySite(userId, projectId) {
+  if (!UUID_RE.test(String(projectId))) throw new Error("Projet invalide");
+  const db = getDb();
+  const { rows } = await db.query(
+    `SELECT slug FROM launch_deploys WHERE project_id=$1 AND user_id=$2`, [projectId, userId]
+  );
+  if (!rows[0]) return { ok: true, deployed: false };
+  await db.query(`DELETE FROM launch_deploys WHERE slug=$1`, [rows[0].slug]); // cascade → fichiers
+  return { ok: true, deployed: false };
+}
+
+// État du déploiement d'un projet (pour l'IDE).
+export async function getProjectDeploy(userId, projectId) {
+  if (!UUID_RE.test(String(projectId))) return { deployed: false };
+  const { rows } = await getDb().query(
+    `SELECT slug FROM launch_deploys WHERE project_id=$1 AND user_id=$2`, [projectId, userId]
+  );
+  if (!rows[0]) return { deployed: false };
+  return { deployed: true, slug: rows[0].slug, url: `/sites/${rows[0].slug}/` };
 }
 
 // Sert un fichier d'un site déployé (avec fallback index.html à la racine).

@@ -156,6 +156,9 @@ export async function initSchema() {
       content_type TEXT,
       PRIMARY KEY (slug, path)
     );
+    -- 1 seul déploiement par projet (anti-flood) : project_id unique.
+    ALTER TABLE launch_deploys ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES launch_projects(id) ON DELETE CASCADE;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_launch_deploys_project ON launch_deploys(project_id);
 
     -- Utilisateurs DES apps générées (auth managée, scopée par projet).
     -- Distincts des utilisateurs DELT (table users).
