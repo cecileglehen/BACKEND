@@ -396,6 +396,24 @@ function injectLaunchSdk(map, projectId) {
   map.set("src/launch.js", launchSdkSource(projectId));
 }
 
+// Titre d'onglet = nom de l'app + favicon SVG distinct (lettre + couleur dérivée du nom).
+function setAppBranding(map, name) {
+  let html = map.get("index.html");
+  if (!html) return;
+  const clean = String(name || "App").slice(0, 60).replace(/[<>]/g, "").trim() || "App";
+  html = html.replace(/<title>[\s\S]*?<\/title>/, `<title>${clean}</title>`);
+  if (!/rel=["']icon["']/.test(html)) {
+    const palette = ["#6366f1", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#0ea5e9"];
+    const hash = [...clean].reduce((a, c) => a + c.charCodeAt(0), 0);
+    const color = palette[hash % palette.length];
+    const letter = clean[0].toUpperCase();
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="${color}"/><text x="16" y="22" font-size="18" font-family="sans-serif" font-weight="700" fill="white" text-anchor="middle">${letter}</text></svg>`;
+    const link = `<link rel="icon" href="data:image/svg+xml,${encodeURIComponent(svg)}" />`;
+    html = html.replace(/<\/head>/, `    ${link}\n  </head>`);
+  }
+  map.set("index.html", html);
+}
+
 // Applique un bloc search/replace (exact, puis tolérant aux espaces de fin de ligne).
 function applyEditBlock(content, search, replace) {
   if (!search) return null;
@@ -606,6 +624,7 @@ export async function createCodeSession(userId, prompt, modelId = KIMI_MODEL, mo
   const usage = extractUsage(raw, plan);
   const summary = String(plan.summary || "Projet généré par Kimi");
   const { id, slug } = await insertProject(userId, { summary, prompt, mode, run: plan.run });
+  setAppBranding(map, plan.appName || summary.split(/[\s,.:;—-]+/).slice(0, 2).join(" "));
   injectLaunchSdk(map, id);
   await saveFilesMap(id, map);
   return { id, slug, model: modelId, mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: usage.tokensOut, usage };
@@ -639,6 +658,7 @@ export async function createCodeSessionStream(userId, prompt, modelId, mode, emi
   emitTouchedDiffs(touched, oldMap, map, emit);
   const summary = String(plan.summary || "Projet généré");
   const { id, slug } = await insertProject(userId, { summary, prompt, mode, run: plan.run });
+  setAppBranding(map, plan.appName || summary.split(/[\s,.:;—-]+/).slice(0, 2).join(" "));
   injectLaunchSdk(map, id);
   await saveFilesMap(id, map);
   if (!u.tokensOut) u.tokensOut = Math.ceil(JSON.stringify(plan).length / 4);

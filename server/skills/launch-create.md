@@ -8,6 +8,7 @@ Tu n'as PAS besoin de les recréer sauf pour les modifier.
 Format exact :
 {
   "summary": "résumé court de l'app",
+  "appName": "Nom court de l'app (1-2 mots, ex: Todo, MicroBlog, ShopFlow)",
   "actions": [
     { "type": "write_file", "path": "src/App.jsx", "content": "export default function App(){...}" },
     { "type": "write_file", "path": "src/components/Header.jsx", "content": "..." }
