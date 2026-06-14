@@ -21,7 +21,7 @@ import { computeCreditCost, computeCreditFromCost, FREE_TIER_ONLY_PLANS } from "
 import { runDeepSearch } from "./lib/deepSearch.js";
 import { checkThrottle } from "./lib/throttle.js";
 import { compressIfNeeded } from "./lib/context.js";
-import { createCodeSession, editCodeSession, createCodeSessionStream, editCodeSessionStream, getCodePreviewFile, getCodeZip, getCodeSessionFiles, listCodeSessions, deleteCodeSession, renameCodeSession } from "./lib/codegen.js";
+import { createCodeSession, editCodeSession, createCodeSessionStream, editCodeSessionStream, getCodePreviewFile, getCodeZip, getCodeSessionFiles, listCodeSessions, deleteCodeSession, renameCodeSession, getProjectBySlug } from "./lib/codegen.js";
 import { deploySite, getDeployFile } from "./lib/deploy.js";
 import { signupAppUser, loginAppUser, getAppUserFromToken, googleAuthUrl, handleGoogleCallback, verifyAppToken } from "./lib/launchAuth.js";
 import { listDocs, createDoc, getDoc, updateDoc, deleteDoc } from "./lib/launchData.js";
@@ -1213,6 +1213,15 @@ app.get(/^\/sites\/([a-z0-9-]+)(?:\/(.*))?$/, async (req, res) => {
     res.send(file.content);
   } catch (e) {
     res.status(404).send(e.message);
+  }
+});
+
+// Résout le slug de l'URL /p/<slug> → projet (propriétaire)
+app.get("/api/launch/by-slug/:slug", requireAuth, async (req, res) => {
+  try {
+    res.json(await getProjectBySlug(req.user.id, req.params.slug));
+  } catch (e) {
+    res.status(404).json({ error: e.message });
   }
 });
 
