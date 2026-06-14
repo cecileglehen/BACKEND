@@ -619,6 +619,24 @@ export async function deleteProjectFile(userId, projectId, filePath) {
   return { ok: true };
 }
 
+// Visual Edits — remplacement de texte direct dans le source (gratuit, sans IA).
+// Renvoie { found } : si le texte exact n'est pas trouvé, le client bascule sur l'IA.
+export async function visualTextEdit(userId, projectId, oldText, newText) {
+  await getProject(userId, projectId);
+  const o = String(oldText ?? "");
+  const n = String(newText ?? "");
+  if (!o.trim()) throw new Error("Texte source vide");
+  const map = await loadFilesMap(projectId);
+  let changed = false;
+  for (const [path, content] of map) {
+    if (path === "src/launch.js") continue;
+    if (content.includes(o)) { map.set(path, content.split(o).join(n)); changed = true; }
+  }
+  if (!changed) return { found: false };
+  await saveFilesMap(projectId, map);
+  return { found: true };
+}
+
 // Définit une image du projet comme favicon/logo (met à jour index.html).
 export async function setProjectFavicon(userId, projectId, imagePath) {
   await getProject(userId, projectId);
