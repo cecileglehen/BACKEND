@@ -153,6 +153,19 @@ export async function initSchema() {
       content_type TEXT,
       PRIMARY KEY (slug, path)
     );
+
+    -- Utilisateurs DES apps générées (auth managée, scopée par projet).
+    -- Distincts des utilisateurs DELT (table users).
+    CREATE TABLE IF NOT EXISTS launch_app_users (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id  UUID NOT NULL REFERENCES launch_projects(id) ON DELETE CASCADE,
+      email       TEXT NOT NULL,
+      password    TEXT,
+      name        TEXT,
+      provider    TEXT NOT NULL DEFAULT 'email',
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (project_id, email)
+    );
     ALTER TABLE users ADD COLUMN IF NOT EXISTS secret_key TEXT;
     ALTER TABLE users ALTER COLUMN plan SET DEFAULT 'FREE';
     UPDATE users SET plan = 'FREE' WHERE plan = 'LITE';
