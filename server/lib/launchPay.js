@@ -17,26 +17,20 @@ function stripe() {
   return _stripe;
 }
 
-async function getOwnedProject(userId, projectId) {
-  if (!UUID_RE.test(String(projectId))) throw new Error("Projet introuvable");
-  const { rows } = await getDb().query(
-    `SELECT id, user_id, stripe_account_id FROM launch_projects WHERE id=$1`, [projectId]
-  );
-  const p = rows[0];
-  if (!p) throw new Error("Projet introuvable");
-  if (String(p.user_id) !== String(userId)) throw new Error("Accès refusé");
-  return p;
+// Récupère (ou crée) le compte Stripe DU CRÉATEUR (1 par user, tous projets confondus).
+async function getUserAccount(userId) {
+  const { rows } = await getDb().query(`SELECT launch_stripe_account_id FROM users WHERE id=$1`, [userId]);
+  return rows[0]?.launch_stripe_account_id || null;
 }
 
-// ─── Onboarding du créateur (Express) ─────────────────────────────────────────
-export async function createConnectLink(userId, projectId, { returnUrl, refreshUrl } = {}) {
-  const p = await getOwnedProject(userId, projectId);
+// ─── Onboarding du créateur (Express) — 1 seule fois par utilisateur ──────────
+export async function createConnectLink(userId, { returnUrl, refreshUrl } = {}) {
   const s = stripe();
-  let acct = p.stripe_account_id;
+  let acct = await getUserAccount(userId);
   if (!acct) {
-    const account = await s.accounts.create({ type: "express", metadata: { projectId } });
+    const account = await s.accounts.create({ type: "express", metadata: { userId: String(userId) } });
     acct = account.id;
-    await getDb().query(`UPDATE launch_projects SET stripe_account_id=$2 WHERE id=$1`, [projectId, acct]);
+    await getDb().query(`UPDATE users SET launch_stripe_account_id=$2 WHERE id=$1`, [userId, acct]);
   }
   const link = await s.accountLinks.create({
     account: acct,
@@ -47,25 +41,30 @@ export async function createConnectLink(userId, projectId, { returnUrl, refreshU
   return { url: link.url };
 }
 
-export async function getConnectStatus(userId, projectId) {
-  const p = await getOwnedProject(userId, projectId);
-  if (!p.stripe_account_id) return { connected: false, chargesEnabled: false, payoutsEnabled: false };
-  const acct = await stripe().accounts.retrieve(p.stripe_account_id);
+export async function getConnectStatus(userId) {
+  const acct = await getUserAccount(userId);
+  if (!acct) return { connected: false, chargesEnabled: false, payoutsEnabled: false };
+  const account = await stripe().accounts.retrieve(acct);
   return {
     connected: true,
-    chargesEnabled: !!acct.charges_enabled,
-    payoutsEnabled: !!acct.payouts_enabled,
-    detailsSubmitted: !!acct.details_submitted
+    chargesEnabled: !!account.charges_enabled,
+    payoutsEnabled: !!account.payouts_enabled,
+    detailsSubmitted: !!account.details_submitted
   };
 }
 
 // ─── Paiement client (Checkout, destination charge + commission) ──────────────
 export async function createCheckout(projectId, { amount, label, currency, quantity, successUrl, cancelUrl }, appUserId) {
   if (!UUID_RE.test(String(projectId))) throw new Error("Projet introuvable");
-  const { rows } = await getDb().query(`SELECT stripe_account_id FROM launch_projects WHERE id=$1`, [projectId]);
+  // Le compte qui encaisse = celui du PROPRIÉTAIRE du projet (1 par user).
+  const { rows } = await getDb().query(
+    `SELECT u.launch_stripe_account_id AS acct
+     FROM launch_projects p JOIN users u ON u.id = p.user_id WHERE p.id=$1`,
+    [projectId]
+  );
   const p = rows[0];
   if (!p) throw new Error("Projet introuvable");
-  if (!p.stripe_account_id) throw new Error("Paiements non configurés pour cette app.");
+  if (!p.acct) throw new Error("Paiements non configurés pour cette app.");
 
   const cents = Math.round(Number(amount));
   if (!Number.isFinite(cents) || cents < 50) throw new Error("Montant invalide (min 50).");
@@ -74,7 +73,7 @@ export async function createCheckout(projectId, { amount, label, currency, quant
   const fee = Math.floor((cents * qty * FEE_PCT) / 100);
 
   const s = stripe();
-  const acct = await s.accounts.retrieve(p.stripe_account_id);
+  const acct = await s.accounts.retrieve(p.acct);
   if (!acct.charges_enabled) throw new Error("Le compte Stripe du créateur n'est pas encore actif.");
 
   const session = await s.checkout.sessions.create({
@@ -85,7 +84,7 @@ export async function createCheckout(projectId, { amount, label, currency, quant
     }],
     payment_intent_data: {
       application_fee_amount: fee,
-      transfer_data: { destination: p.stripe_account_id }
+      transfer_data: { destination: p.acct }
     },
     success_url: successUrl || "https://deltai.fr",
     cancel_url: cancelUrl || successUrl || "https://deltai.fr"
