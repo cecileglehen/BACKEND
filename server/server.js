@@ -931,6 +931,14 @@ async function billCodeSession(userId, session, source = "launch") {
   return { creditCost, creditsLeft };
 }
 
+// Facture les tokens consommés même quand la génération a échoué (l'erreur porte .usage).
+async function billOnError(userId, err, modelId) {
+  if (!err?.usage) return null;
+  try {
+    return await billCodeSession(userId, { usage: err.usage, model: modelId }, "launch-error");
+  } catch { return null; }
+}
+
 app.post("/api/code/session", requireAuth, async (req, res) => {
   try {
     const prompt = String(req.body?.prompt || "").trim();
@@ -978,10 +986,11 @@ function startSSE(res) {
 
 app.post("/api/code/session/stream", requireAuth, async (req, res) => {
   const send = startSSE(res);
+  let modelId;
   try {
     const prompt = String(req.body?.prompt || "").trim();
     if (!prompt) { send({ type: "error", error: "prompt requis" }); return res.end(); }
-    const modelId = String(req.body?.modelId || "").trim() || undefined;
+    modelId = String(req.body?.modelId || "").trim() || undefined;
     const mode = req.body?.mode === "react" ? "react" : "static";
     if (!(await hasEnoughCredits(req.user.id, 0.1))) { send({ type: "error", error: "Crédits insuffisants." }); return res.end(); }
     const session = await createCodeSessionStream(req.user.id, prompt, modelId, mode, send);
@@ -990,17 +999,19 @@ app.post("/api/code/session/stream", requireAuth, async (req, res) => {
     res.end();
   } catch (e) {
     console.error("[code/stream]", e);
-    send({ type: "error", error: e.message });
+    const billed = await billOnError(req.user.id, e, modelId);
+    send({ type: "error", error: e.message, ...(billed && { creditsLeft: billed.creditsLeft, creditCost: billed.creditCost }) });
     res.end();
   }
 });
 
 app.post("/api/code/session/:id/edit/stream", requireAuth, async (req, res) => {
   const send = startSSE(res);
+  let modelId;
   try {
     const prompt = String(req.body?.prompt || "").trim();
     if (!prompt) { send({ type: "error", error: "prompt requis" }); return res.end(); }
-    const modelId = String(req.body?.modelId || "").trim() || undefined;
+    modelId = String(req.body?.modelId || "").trim() || undefined;
     const mode = req.body?.mode === "react" ? "react" : "static";
     if (!(await hasEnoughCredits(req.user.id, 0.1))) { send({ type: "error", error: "Crédits insuffisants." }); return res.end(); }
     const session = await editCodeSessionStream(req.user.id, req.params.id, prompt, modelId, mode, send);
@@ -1009,7 +1020,8 @@ app.post("/api/code/session/:id/edit/stream", requireAuth, async (req, res) => {
     res.end();
   } catch (e) {
     console.error("[code/edit/stream]", e);
-    send({ type: "error", error: e.message });
+    const billed = await billOnError(req.user.id, e, modelId);
+    send({ type: "error", error: e.message, ...(billed && { creditsLeft: billed.creditsLeft, creditCost: billed.creditCost }) });
     res.end();
   }
 });

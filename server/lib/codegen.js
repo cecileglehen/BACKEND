@@ -302,6 +302,37 @@ async function streamModel({ prompt, modelId, systemPrompt, onPath }) {
   return { content, usage };
 }
 
+// Stream + parse JSON avec auto-retry : si le modèle renvoie un JSON invalide,
+// on lui renvoie l'erreur pour qu'il se corrige. L'usage est cumulé sur toutes
+// les tentatives ; en cas d'échec final, l'erreur PORTE l'usage (pour facturer).
+async function streamAndParse({ prompt, modelId, systemPrompt, onPath }) {
+  const total = { tokensIn: 0, tokensOut: 0, costUsd: 0 };
+  const add = (u) => {
+    if (!u) return;
+    total.tokensIn += Number(u.prompt_tokens) || 0;
+    total.tokensOut += Number(u.completion_tokens) || 0;
+    total.costUsd += Number(u.cost) || 0;
+  };
+
+  const first = await streamModel({ prompt, modelId, systemPrompt, onPath });
+  add(first.usage);
+  try {
+    return { plan: parseJsonObject(first.content), usage: total };
+  } catch (e1) {
+    const retryPrompt = `${prompt}\n\n⚠️ Ta réponse précédente n'était PAS un objet JSON valide (erreur: ${e1.message}). Renvoie UNIQUEMENT l'objet JSON valide demandé, rien avant ni après, sans texte ni markdown.`;
+    const second = await streamModel({ prompt: retryPrompt, modelId, systemPrompt, onPath });
+    add(second.usage);
+    try {
+      return { plan: parseJsonObject(second.content), usage: total };
+    } catch (e2) {
+      const err = new Error("L'IA n'a pas réussi à produire un code valide. Réessaie ou reformule.");
+      err.usage = total;       // pour facturer les tokens consommés malgré l'échec
+      err.code = "BAD_JSON";
+      throw err;
+    }
+  }
+}
+
 // Extrait tokens + coût réel ($) de la réponse OpenRouter, pour la facturation.
 function extractUsage(raw, plan) {
   const u = raw?.usage || {};
@@ -611,19 +642,18 @@ export async function createCodeSessionStream(userId, prompt, modelId, mode, emi
   const map = isReact ? scaffoldMap() : new Map();
   const oldMap = new Map(map);
   emit?.({ type: "status", text: "Génération du code…" });
-  const { content, usage } = await streamModel({
+  const { plan, usage: u } = await streamAndParse({
     prompt, modelId,
     systemPrompt: isReact ? REACT_SYSTEM_PROMPT : SYSTEM_PROMPT,
     onPath: (p) => emit?.({ type: "action", path: p })
   });
-  const plan = parseJsonObject(content);
   applyActionsToMap(map, plan.actions);
   emitDiffs(plan, oldMap, emit);
   const summary = String(plan.summary || "Projet généré");
   const { id, slug } = await insertProject(userId, { summary, prompt, mode, run: plan.run });
   injectLaunchSdk(map, id);
   await saveFilesMap(id, map);
-  const u = extractUsage({ usage }, plan);
+  if (!u.tokensOut) u.tokensOut = Math.ceil(JSON.stringify(plan).length / 4);
   return { id, slug, model: modelId, mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: u.tokensOut, usage: u };
 }
 
@@ -634,19 +664,18 @@ export async function editCodeSessionStream(userId, sessionId, prompt, modelId, 
   const oldMap = new Map(map);
   const editPrompt = `Projet actuel:\n${projectContext(map)}\n\nModification demandée:\n${String(prompt || "").slice(0, 12000)}\n\nRéponds avec le même JSON d'actions. Modifie uniquement ce qui est nécessaire.`;
   emit?.({ type: "status", text: "Application des modifications…" });
-  const { content, usage } = await streamModel({
+  const { plan, usage: u } = await streamAndParse({
     prompt: editPrompt, modelId,
     systemPrompt: isReact ? REACT_SYSTEM_PROMPT : SYSTEM_PROMPT,
     onPath: (p) => emit?.({ type: "action", path: p })
   });
-  const plan = parseJsonObject(content);
   applyActionsToMap(map, plan.actions);
   emitDiffs(plan, oldMap, emit);
   const summary = String(plan.summary || "Projet modifié");
   await touchProject(userId, sessionId, { summary, run: plan.run });
   injectLaunchSdk(map, sessionId);
   await saveFilesMap(sessionId, map);
-  const u = extractUsage({ usage }, plan);
+  if (!u.tokensOut) u.tokensOut = Math.ceil(JSON.stringify(plan).length / 4);
   return { id: sessionId, slug: proj.slug, model: modelId, mode: proj.mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: u.tokensOut, usage: u };
 }
 
