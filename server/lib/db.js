@@ -166,6 +166,19 @@ export async function initSchema() {
       created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (project_id, email)
     );
+
+    -- Données des apps générées (base "no-code" auto, scopée projet + collection).
+    CREATE TABLE IF NOT EXISTS launch_app_data (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id  UUID NOT NULL REFERENCES launch_projects(id) ON DELETE CASCADE,
+      collection  TEXT NOT NULL,
+      owner_id    UUID,
+      data        JSONB NOT NULL DEFAULT '{}',
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_launch_app_data
+      ON launch_app_data(project_id, collection, created_at DESC);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS secret_key TEXT;
     ALTER TABLE users ALTER COLUMN plan SET DEFAULT 'FREE';
     UPDATE users SET plan = 'FREE' WHERE plan = 'LITE';

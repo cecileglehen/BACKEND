@@ -98,6 +98,14 @@ Règles:
   LaunchAuth.loginWithGoogle(), await LaunchAuth.me() (→ user ou null), LaunchAuth.logout(),
   LaunchAuth.isLoggedIn(). Les sessions sont persistées automatiquement. Utilise-le dès que
   l'app a besoin de comptes utilisateurs — ne réimplémente JAMAIS l'auth toi-même.
+- Base de données managée : le même src/launch.js exporte LaunchDB (persistance auto, pas de backend à écrire).
+  import { LaunchDB } from "./launch.js";
+  await LaunchDB.list("todos")            → tableau de documents { id, ...champs }
+  await LaunchDB.list("todos", { mine:true }) → seulement ceux de l'utilisateur connecté
+  await LaunchDB.create("todos", { text:"...", done:false }) → document créé (avec id)
+  await LaunchDB.update("todos", id, { done:true }) ; await LaunchDB.remove("todos", id)
+  Utilise LaunchDB pour TOUTE persistance (listes, posts, paramètres…) — n'utilise PAS localStorage
+  pour les données partagées, ni une API/DB inventée.
 - Images IA (Flux Schnell) : pour toute image (héros, illustration, vignette, avatar, fond),
   utilise DIRECTEMENT cette URL dans un tag <img> — pas de fetch, pas de clé requise :
   <img src="${PUBLIC_API}/api/launch/img?prompt=PROMPT_ENCODE" alt="..." />
@@ -347,6 +355,22 @@ export const LaunchAuth = {
   async me() { if (!getToken()) return null; try { const d = await req("/auth/me"); return d.user; } catch (e) { setToken(null); return null; } },
   logout() { setToken(null); },
   isLoggedIn() { return !!getToken(); }
+};
+
+// Base de données managée (documents). Persiste automatiquement, scopé à l'app.
+export const LaunchDB = {
+  async list(collection, opts) {
+    opts = opts || {};
+    const q = [];
+    if (opts.mine) q.push("mine=1");
+    if (opts.limit) q.push("limit=" + opts.limit);
+    const d = await req("/db/" + collection + (q.length ? "?" + q.join("&") : ""));
+    return d.items;
+  },
+  create(collection, data) { return req("/db/" + collection, { method: "POST", body: JSON.stringify(data) }); },
+  get(collection, id) { return req("/db/" + collection + "/" + id); },
+  update(collection, id, data) { return req("/db/" + collection + "/" + id, { method: "PATCH", body: JSON.stringify(data) }); },
+  remove(collection, id) { return req("/db/" + collection + "/" + id, { method: "DELETE" }); }
 };
 `;
 }
