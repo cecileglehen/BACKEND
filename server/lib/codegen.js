@@ -27,7 +27,9 @@ const REACT_SCAFFOLD = {
   "vite.config.js": `import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-export default defineConfig({ plugins: [react()], server: { host: true } });
+// base "./" : assets en chemins relatifs → le build fonctionne servi sous un
+// sous-dossier (deltai.fr/<slug> ou /sites/<slug>).
+export default defineConfig({ base: "./", plugins: [react()], server: { host: true } });
 `,
   "index.html": `<!doctype html>
 <html lang="fr">
