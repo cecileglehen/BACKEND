@@ -186,7 +186,9 @@ export async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_launch_app_data
       ON launch_app_data(project_id, collection, created_at DESC);
 
-    -- Stripe Connect : compte connecté du créateur du projet + paiements reçus.
+    -- Stripe Connect : 1 compte connecté PAR créateur (réutilisé sur tous ses projets).
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS launch_stripe_account_id TEXT;
+    -- (legacy, conservé) ancien compte par projet
     ALTER TABLE launch_projects ADD COLUMN IF NOT EXISTS stripe_account_id TEXT;
 
     CREATE TABLE IF NOT EXISTS launch_payments (

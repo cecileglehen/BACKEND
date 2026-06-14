@@ -1155,17 +1155,17 @@ app.post("/api/launch/pay/webhook", async (req, res) => {
   }
 });
 
-// Le CRÉATEUR connecte son compte Stripe (Express) — authed DELT, propriétaire du projet.
-app.post("/api/launch/:projectId/pay/connect", requireAuth, async (req, res) => {
+// Le CRÉATEUR connecte son compte Stripe (Express) UNE fois — réutilisé sur tous ses projets.
+app.post("/api/launch/pay/connect", requireAuth, async (req, res) => {
   try {
     const { returnUrl, refreshUrl } = req.body ?? {};
-    res.json(await createConnectLink(req.user.id, req.params.projectId, { returnUrl, refreshUrl }));
+    res.json(await createConnectLink(req.user.id, { returnUrl, refreshUrl }));
   } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
 });
 
-app.get("/api/launch/:projectId/pay/status", requireAuth, async (req, res) => {
+app.get("/api/launch/pay/status", requireAuth, async (req, res) => {
   try {
-    res.json(await getConnectStatus(req.user.id, req.params.projectId));
+    res.json(await getConnectStatus(req.user.id));
   } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
 });
 
