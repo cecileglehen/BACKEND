@@ -179,6 +179,24 @@ export async function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_launch_app_data
       ON launch_app_data(project_id, collection, created_at DESC);
+
+    -- Stripe Connect : compte connecté du créateur du projet + paiements reçus.
+    ALTER TABLE launch_projects ADD COLUMN IF NOT EXISTS stripe_account_id TEXT;
+
+    CREATE TABLE IF NOT EXISTS launch_payments (
+      id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id    UUID NOT NULL REFERENCES launch_projects(id) ON DELETE CASCADE,
+      app_user_id   UUID,
+      session_id    TEXT UNIQUE,
+      amount        INT NOT NULL DEFAULT 0,
+      currency      TEXT NOT NULL DEFAULT 'eur',
+      fee           INT NOT NULL DEFAULT 0,
+      label         TEXT,
+      status        TEXT NOT NULL DEFAULT 'pending',
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_launch_payments_project
+      ON launch_payments(project_id, created_at DESC);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS secret_key TEXT;
     ALTER TABLE users ALTER COLUMN plan SET DEFAULT 'FREE';
     UPDATE users SET plan = 'FREE' WHERE plan = 'LITE';

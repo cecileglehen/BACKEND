@@ -25,6 +25,7 @@ import { createCodeSession, editCodeSession, createCodeSessionStream, editCodeSe
 import { deploySite, getDeployFile } from "./lib/deploy.js";
 import { signupAppUser, loginAppUser, getAppUserFromToken, googleAuthUrl, handleGoogleCallback, verifyAppToken } from "./lib/launchAuth.js";
 import { listDocs, createDoc, getDoc, updateDoc, deleteDoc } from "./lib/launchData.js";
+import { createConnectLink, getConnectStatus, createCheckout, handleWebhook as handleLaunchPayWebhook } from "./lib/launchPay.js";
 import { TIER_MODELS, estimateCostEur } from "./config/plans.js";
 import { brandFromAlias, CREATIVE, findModelForBrand, findModelForFamily, findModelInCatalog, familyFromAlias, isBrandAlias, isFamilyAlias, normalizeTier, publicCatalog, supportsVision, pickVisionModelForTier } from "./config/models.js";
 import { createSubscriptionLink, activateSubscription, handleWebhook, PAYPAL_PLAN_IDS, createCreditOrder, captureCreditOrder } from "./lib/paypal.js";
@@ -46,7 +47,7 @@ import { shouldSearchHeuristic, performWebSearch, buildSearchSystemPrompt } from
 const app = express();
 app.set("trust proxy", 1);
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "2mb", verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
 function cookieValue(req, name) {
   const cookies = String(req.headers.cookie || "").split(";").map((part) => part.trim());
@@ -1125,6 +1126,40 @@ app.patch("/api/launch/:projectId/db/:collection/:id", async (req, res) => {
 app.delete("/api/launch/:projectId/db/:collection/:id", async (req, res) => {
   try {
     res.json(await deleteDoc(req.params.projectId, req.params.collection, req.params.id, launchAppUserId(req)));
+  } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
+});
+
+// ─── Launch Pay : Stripe Connect (paiements des apps) ────────────────────────
+// Webhook Stripe (4 segments — déclaré avant les routes :projectId).
+app.post("/api/launch/pay/webhook", async (req, res) => {
+  try {
+    const sig = req.headers["stripe-signature"];
+    res.json(await handleLaunchPayWebhook(req.rawBody, sig));
+  } catch (e) {
+    console.error("[launch/pay/webhook]", e.message);
+    res.status(400).send(`Webhook error: ${e.message}`);
+  }
+});
+
+// Le CRÉATEUR connecte son compte Stripe (Express) — authed DELT, propriétaire du projet.
+app.post("/api/launch/:projectId/pay/connect", requireAuth, async (req, res) => {
+  try {
+    const { returnUrl, refreshUrl } = req.body ?? {};
+    res.json(await createConnectLink(req.user.id, req.params.projectId, { returnUrl, refreshUrl }));
+  } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
+});
+
+app.get("/api/launch/:projectId/pay/status", requireAuth, async (req, res) => {
+  try {
+    res.json(await getConnectStatus(req.user.id, req.params.projectId));
+  } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
+});
+
+// L'app (client final) lance un paiement → renvoie l'URL Stripe Checkout.
+app.post("/api/launch/:projectId/pay/checkout", async (req, res) => {
+  try {
+    const { amount, label, currency, quantity, successUrl, cancelUrl } = req.body ?? {};
+    res.json(await createCheckout(req.params.projectId, { amount, label, currency, quantity, successUrl, cancelUrl }, launchAppUserId(req)));
   } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
 });
 

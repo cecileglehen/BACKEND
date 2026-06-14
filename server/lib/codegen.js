@@ -106,6 +106,12 @@ Règles:
   await LaunchDB.update("todos", id, { done:true }) ; await LaunchDB.remove("todos", id)
   Utilise LaunchDB pour TOUTE persistance (listes, posts, paramètres…) — n'utilise PAS localStorage
   pour les données partagées, ni une API/DB inventée.
+- Paiements : le même src/launch.js exporte LaunchPay. Pour vendre quelque chose :
+  import { LaunchPay } from "./launch.js";
+  await LaunchPay.checkout(amountCents, "Nom du produit")   // amountCents en centimes : 999 = 9,99€
+  → redirige vers Stripe Checkout puis revient sur l'app. N'invente pas d'intégration Stripe toi-même.
+  (Si le créateur n'a pas connecté Stripe, l'appel renvoie une erreur "Paiements non configurés" — gère-la
+  proprement avec un message.)
 - Images IA (Flux Schnell) : pour toute image (héros, illustration, vignette, avatar, fond),
   utilise DIRECTEMENT cette URL dans un tag <img> — pas de fetch, pas de clé requise :
   <img src="${PUBLIC_API}/api/launch/img?prompt=PROMPT_ENCODE" alt="..." />
@@ -371,6 +377,22 @@ export const LaunchDB = {
   get(collection, id) { return req("/db/" + collection + "/" + id); },
   update(collection, id, data) { return req("/db/" + collection + "/" + id, { method: "PATCH", body: JSON.stringify(data) }); },
   remove(collection, id) { return req("/db/" + collection + "/" + id, { method: "DELETE" }); }
+};
+
+// Paiements (Stripe). amount en centimes. Redirige vers Stripe Checkout.
+export const LaunchPay = {
+  async checkout(amount, label, opts) {
+    opts = opts || {};
+    const d = await req("/pay/checkout", { method: "POST", body: JSON.stringify({
+      amount, label,
+      currency: opts.currency || "eur",
+      quantity: opts.quantity || 1,
+      successUrl: opts.successUrl || window.location.href,
+      cancelUrl: opts.cancelUrl || window.location.href
+    }) });
+    if (d.url) window.location.href = d.url;
+    return d;
+  }
 };
 `;
 }
