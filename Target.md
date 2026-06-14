@@ -7,10 +7,13 @@
 
 ## A. NOS RETARDS (à combler)
 
-### 🔴 1. Visual Edits (clic-to-edit) — *killer feature de Lovable*
-**Manque** : on ne peut modifier l'UI que par prompt.
-**Cible** : cliquer sur un élément dans la preview → poignées pour changer **texte, couleur, taille, espacement** en direct, **sans prompt ni crédits**.
-**Comment** : injecter un petit agent dans l'iframe preview (postMessage) qui surligne l'élément survolé, renvoie son sélecteur/source map ; un panneau d'édition applique un `edit_file` ciblé (ou patch CSS inline) sans appeler le LLM pour les changements simples.
+### ✅ 1. Visual Edits (clic-to-edit) — **FAIT (V1)**
+Bouton **🎯 Édition visuelle** → clique un élément dans la preview (highlight via script
+injecté + postMessage, hors build persisté) → panneau **texte / couleur texte / couleur fond /
+taille** avec **live preview**. Persistance : **texte = remplacement direct gratuit** (sans IA,
+fallback IA si introuvable), **style = 1 édition IA ciblée**.
+**V2 (plus tard)** : data-attributes au build pour mapper précisément la source (styles gratuits aussi),
+poignées de drag/resize, édition d'espacement/police.
 
 ### ✅ 2. Auto-fix autonome des erreurs — **FAIT**
 Quand le dev server WebContainer émet une erreur (compile/runtime), l'IDE la détecte
