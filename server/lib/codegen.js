@@ -523,21 +523,56 @@ export async function getProjectBySlug(userId, slug) {
   return rows[0];
 }
 
+// Charge UNIQUEMENT les fichiers texte (éditables par l'IA). Les binaires (images)
+// sont gérés à part et ne passent jamais dans la map de l'IA.
 async function loadFilesMap(projectId) {
   const db = getDb();
-  const { rows } = await db.query(`SELECT path, content FROM launch_files WHERE project_id=$1`, [projectId]);
+  const { rows } = await db.query(
+    `SELECT path, content FROM launch_files WHERE project_id=$1 AND encoding='utf8'`, [projectId]
+  );
   return new Map(rows.map((r) => [r.path, r.content]));
 }
 
+// Persiste les fichiers texte SANS toucher aux binaires (qui survivent aux éditions IA).
 async function saveFilesMap(projectId, map) {
   const db = getDb();
-  await db.query(`DELETE FROM launch_files WHERE project_id=$1`, [projectId]);
+  await db.query(`DELETE FROM launch_files WHERE project_id=$1 AND encoding='utf8'`, [projectId]);
   const entries = [...map.entries()];
   if (entries.length === 0) return;
-  const tuples = entries.map((_, i) => `($1, $${i * 3 + 2}, $${i * 3 + 3}, $${i * 3 + 4})`);
+  const tuples = entries.map((_, i) => `($1, $${i * 3 + 2}, $${i * 3 + 3}, $${i * 3 + 4}, 'utf8')`);
   const vals = [];
   for (const [p, content] of entries) vals.push(p, content, Buffer.byteLength(content, "utf8"));
-  await db.query(`INSERT INTO launch_files (project_id, path, content, bytes) VALUES ${tuples.join(",")}`, [projectId, ...vals]);
+  await db.query(`INSERT INTO launch_files (project_id, path, content, bytes, encoding) VALUES ${tuples.join(",")}`, [projectId, ...vals]);
+}
+
+// Liste les chemins des fichiers binaires (pour le contexte IA + l'arbre).
+async function listBinaryPaths(projectId) {
+  const { rows } = await getDb().query(
+    `SELECT path FROM launch_files WHERE project_id=$1 AND encoding='base64'`, [projectId]
+  );
+  return rows.map((r) => r.path);
+}
+
+// Ajoute/remplace un fichier binaire (image, logo…) en base64.
+export async function addBinaryFile(userId, projectId, filePath, base64, contentType) {
+  await getProject(userId, projectId);
+  const clean = cleanRelPath(filePath);
+  const bytes = Math.floor((String(base64).length * 3) / 4);
+  if (bytes > MAX_FILE_BYTES) throw new Error("Fichier trop volumineux (max 500 Ko).");
+  await getDb().query(
+    `INSERT INTO launch_files (project_id, path, content, bytes, encoding, content_type)
+     VALUES ($1,$2,$3,$4,'base64',$5)
+     ON CONFLICT (project_id, path) DO UPDATE SET content=$3, bytes=$4, encoding='base64', content_type=$5`,
+    [projectId, clean, String(base64), bytes, contentType || "application/octet-stream"]
+  );
+  return { path: clean, bytes };
+}
+
+export async function deleteProjectFile(userId, projectId, filePath) {
+  await getProject(userId, projectId);
+  const clean = cleanRelPath(filePath);
+  await getDb().query(`DELETE FROM launch_files WHERE project_id=$1 AND path=$2`, [projectId, clean]);
+  return { ok: true };
 }
 
 // Émet les diffs (lignes +/-) pour chaque fichier touché (avant vs après).
@@ -556,9 +591,11 @@ function emitTouchedDiffs(touched, oldMap, newMap, emit) {
 
 export async function getCodeSessionFiles(userId, sessionId) {
   await getProject(userId, sessionId);
-  const map = await loadFilesMap(sessionId);
-  return [...map.entries()]
-    .map(([p, content]) => ({ path: p, content, bytes: Buffer.byteLength(content, "utf8") }))
+  const { rows } = await getDb().query(
+    `SELECT path, content, bytes, encoding, content_type FROM launch_files WHERE project_id=$1`, [sessionId]
+  );
+  return rows
+    .map((r) => ({ path: r.path, content: r.content, bytes: r.bytes, encoding: r.encoding || "utf8", contentType: r.content_type || null }))
     .sort((a, b) => a.path.localeCompare(b.path));
 }
 
@@ -709,6 +746,7 @@ export async function editCodeSessionStream(userId, sessionId, prompt, modelId, 
   const baseMap = await loadFilesMap(sessionId);
   const oldMap = new Map(baseMap);
   const request = String(prompt || "").slice(0, 12000);
+  const binaryPaths = await listBinaryPaths(sessionId);
   const fileList = [...baseMap.keys()];
 
   // Étape 1 : sélection des fichiers concernés (focalise le contexte → fiable + économe)
@@ -718,8 +756,13 @@ export async function editCodeSessionStream(userId, sessionId, prompt, modelId, 
   const ctxPaths = (targets.length ? targets : fileList).filter((p, i, a) => a.indexOf(p) === i).slice(0, 12);
   const focus = ctxPaths.map((p) => `--- ${p} ---\n${baseMap.get(p) ?? "(nouveau fichier à créer)"}`).join("\n\n");
 
+  // Note sur les images dispo (uploadées/générées) — référençables, non éditables.
+  const imagesNote = binaryPaths.length
+    ? `\n\nImages disponibles (réfère-les via leur URL racine, ex: <img src="/${binaryPaths[0].replace(/^public\//, "")}" />) : ${binaryPaths.map((p) => "/" + p.replace(/^public\//, "")).join(", ")}`
+    : "";
+
   // Étape 2 : édition focalisée sur ces seuls fichiers
-  const editPrompt = `Fichier(s) concerné(s) par la tâche :\n\n${focus}\n\n════════ TÂCHE À RÉALISER ════════\n${request}\n\nApplique UNIQUEMENT cette tâche : edit_file pour modifier un fichier existant, write_file pour un nouveau. Ne touche à rien d'autre.`;
+  const editPrompt = `Fichier(s) concerné(s) par la tâche :\n\n${focus}${imagesNote}\n\n════════ TÂCHE À RÉALISER ════════\n${request}\n\nApplique UNIQUEMENT cette tâche : edit_file pour modifier un fichier existant, write_file pour un nouveau. Ne touche à rien d'autre.`;
   emit?.({ type: "status", text: "Application des modifications…" });
   const { plan, map, touched, usage: u } = await generatePlan({
     prompt: editPrompt, modelId, baseMap,
@@ -773,7 +816,14 @@ export async function getCodeZip(userId, sessionId) {
 export async function getCodePreviewFile(userId, sessionId, filePath) {
   await getProject(userId, sessionId);
   const clean = cleanRelPath(filePath || "index.html");
-  const map = await loadFilesMap(sessionId);
-  if (!map.has(clean)) throw new Error("Fichier preview introuvable");
-  return { path: clean, content: map.get(clean) };
+  const { rows } = await getDb().query(
+    `SELECT content, encoding, content_type FROM launch_files WHERE project_id=$1 AND path=$2`, [sessionId, clean]
+  );
+  if (!rows[0]) throw new Error("Fichier preview introuvable");
+  const r = rows[0];
+  return {
+    path: clean,
+    content: r.encoding === "base64" ? Buffer.from(r.content, "base64") : r.content,
+    contentType: r.content_type || null
+  };
 }

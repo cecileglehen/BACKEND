@@ -143,6 +143,9 @@ export async function initSchema() {
       bytes       INT  NOT NULL DEFAULT 0,
       PRIMARY KEY (project_id, path)
     );
+    -- encoding : 'utf8' (texte éditable par l'IA) ou 'base64' (binaire : images, logo)
+    ALTER TABLE launch_files ADD COLUMN IF NOT EXISTS encoding TEXT NOT NULL DEFAULT 'utf8';
+    ALTER TABLE launch_files ADD COLUMN IF NOT EXISTS content_type TEXT;
 
     CREATE TABLE IF NOT EXISTS launch_deploys (
       slug        TEXT PRIMARY KEY,

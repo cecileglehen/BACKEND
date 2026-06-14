@@ -21,7 +21,7 @@ import { computeCreditCost, computeCreditFromCost, FREE_TIER_ONLY_PLANS } from "
 import { runDeepSearch } from "./lib/deepSearch.js";
 import { checkThrottle } from "./lib/throttle.js";
 import { compressIfNeeded } from "./lib/context.js";
-import { createCodeSession, editCodeSession, createCodeSessionStream, editCodeSessionStream, getCodePreviewFile, getCodeZip, getCodeSessionFiles, listCodeSessions, deleteCodeSession, renameCodeSession, getProjectBySlug, planChat, getProjectChat, saveProjectChat } from "./lib/codegen.js";
+import { createCodeSession, editCodeSession, createCodeSessionStream, editCodeSessionStream, getCodePreviewFile, getCodeZip, getCodeSessionFiles, listCodeSessions, deleteCodeSession, renameCodeSession, getProjectBySlug, planChat, getProjectChat, saveProjectChat, addBinaryFile, deleteProjectFile } from "./lib/codegen.js";
 import { deploySite, undeploySite, getProjectDeploy, getDeployFile } from "./lib/deploy.js";
 import { signupAppUser, loginAppUser, getAppUserFromToken, googleAuthUrl, handleGoogleCallback, verifyAppToken } from "./lib/launchAuth.js";
 import { listDocs, createDoc, getDoc, updateDoc, deleteDoc } from "./lib/launchData.js";
@@ -1275,6 +1275,22 @@ app.post("/api/launch/plan", requireAuth, async (req, res) => {
   }
 });
 
+// Upload d'un fichier binaire (image, logo) dans le projet (base64)
+app.post("/api/launch/:projectId/upload", requireAuth, async (req, res) => {
+  try {
+    const { path: filePath, base64, contentType } = req.body ?? {};
+    if (!filePath || !base64) return res.status(400).json({ error: "path et base64 requis" });
+    res.json(await addBinaryFile(req.user.id, req.params.projectId, filePath, base64, contentType));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.delete("/api/launch/:projectId/file", requireAuth, async (req, res) => {
+  try {
+    const filePath = String(req.query?.path || req.body?.path || "");
+    res.json(await deleteProjectFile(req.user.id, req.params.projectId, filePath));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 // Chat persisté par projet (Code + Plan)
 app.get("/api/launch/:projectId/chat", requireAuth, async (req, res) => {
   try {
@@ -1353,7 +1369,7 @@ app.get("/api/code/session/:id/preview/*", requirePreviewAuth, async (req, res) 
     const requestedPath = req.params[0] || "index.html";
     const file = await getCodePreviewFile(req.user.id, req.params.id, requestedPath);
     const ext = path.extname(file.path).toLowerCase();
-    res.setHeader("Content-Type", PREVIEW_TYPES[ext] || "application/octet-stream");
+    res.setHeader("Content-Type", file.contentType || PREVIEW_TYPES[ext] || "application/octet-stream");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.send(file.content);
   } catch (e) {
