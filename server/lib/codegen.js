@@ -493,6 +493,26 @@ async function getProject(userId, id) {
   return rows[0];
 }
 
+// ─── Chat persisté par projet ─────────────────────────────────────────────────
+export async function getProjectChat(userId, projectId) {
+  if (!UUID_RE.test(String(projectId))) return [];
+  const { rows } = await getDb().query(
+    `SELECT chat FROM launch_projects WHERE id=$1 AND user_id=$2`, [projectId, userId]
+  );
+  const chat = rows[0]?.chat;
+  return Array.isArray(chat) ? chat : [];
+}
+
+export async function saveProjectChat(userId, projectId, chat) {
+  if (!UUID_RE.test(String(projectId))) throw new Error("Projet invalide");
+  const trimmed = (Array.isArray(chat) ? chat : []).slice(-60); // garde les 60 derniers messages
+  await getDb().query(
+    `UPDATE launch_projects SET chat=$3 WHERE id=$1 AND user_id=$2`,
+    [projectId, userId, JSON.stringify(trimmed)]
+  );
+  return { ok: true };
+}
+
 // Résout un slug → projet (pour l'URL launch.../p/<slug>).
 export async function getProjectBySlug(userId, slug) {
   const { rows } = await getDb().query(
