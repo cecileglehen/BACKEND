@@ -21,7 +21,7 @@ import { computeCreditCost, computeCreditFromCost, FREE_TIER_ONLY_PLANS } from "
 import { runDeepSearch } from "./lib/deepSearch.js";
 import { checkThrottle } from "./lib/throttle.js";
 import { compressIfNeeded } from "./lib/context.js";
-import { createCodeSession, editCodeSession, createCodeSessionStream, editCodeSessionStream, getCodePreviewFile, getCodeZip, getCodeSessionFiles, listCodeSessions, deleteCodeSession, renameCodeSession, getProjectBySlug } from "./lib/codegen.js";
+import { createCodeSession, editCodeSession, createCodeSessionStream, editCodeSessionStream, getCodePreviewFile, getCodeZip, getCodeSessionFiles, listCodeSessions, deleteCodeSession, renameCodeSession, getProjectBySlug, planChat } from "./lib/codegen.js";
 import { deploySite, undeploySite, getProjectDeploy, getDeployFile } from "./lib/deploy.js";
 import { signupAppUser, loginAppUser, getAppUserFromToken, googleAuthUrl, handleGoogleCallback, verifyAppToken } from "./lib/launchAuth.js";
 import { listDocs, createDoc, getDoc, updateDoc, deleteDoc } from "./lib/launchData.js";
@@ -1239,6 +1239,22 @@ app.get(/^\/sites\/([a-z0-9-]+)(?:\/(.*))?$/, async (req, res) => {
     res.send(file.content);
   } catch (e) {
     res.status(404).send(e.message);
+  }
+});
+
+// Mode Plan : brainstorm + questions (aucun code écrit)
+app.post("/api/launch/plan", requireAuth, async (req, res) => {
+  try {
+    const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
+    const projectId = req.body?.projectId || null;
+    const modelId = String(req.body?.modelId || "").trim() || undefined;
+    if (!(await hasEnoughCredits(req.user.id, 0.1))) return res.status(402).json({ error: "Crédits insuffisants." });
+    const r = await planChat(req.user.id, projectId, messages, modelId);
+    const billed = await billCodeSession(req.user.id, { usage: r.usage, model: modelId }, "launch-plan");
+    res.json({ message: r.message, questions: r.questions, ...billed });
+  } catch (e) {
+    console.error("[launch/plan]", e);
+    res.status(500).json({ error: e.message });
   }
 });
 

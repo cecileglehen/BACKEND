@@ -696,6 +696,34 @@ export async function editCodeSessionStream(userId, sessionId, prompt, modelId, 
   return { id: sessionId, slug: proj.slug, model: modelId, mode: proj.mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: u.tokensOut, usage: u };
 }
 
+// Mode Plan : l'IA brainstorme et pose des questions, sans écrire de code.
+// Renvoie { message, questions: [{question, options}], usage }.
+export async function planChat(userId, projectId, messages, modelId) {
+  let context = "";
+  if (projectId && UUID_RE.test(String(projectId))) {
+    try {
+      const map = await loadFilesMap(projectId);
+      if (map.size) context = `Projet existant (fichiers) :\n${[...map.keys()].join("\n")}\n\n`;
+    } catch { /* pas de projet */ }
+  }
+  const convo = (messages || []).slice(-12)
+    .map((m) => `${m.role === "user" ? "Utilisateur" : "Assistant"}: ${String(m.text || "").slice(0, 2000)}`)
+    .join("\n");
+  const prompt = `${context}Conversation :\n${convo}\n\nRéponds avec le JSON { message, questions }.`;
+  const { plan, raw } = await callRing(prompt, modelId, loadSkill("launch-plan"));
+  const usage = extractUsage(raw, plan);
+  return {
+    message: String(plan.message || ""),
+    questions: Array.isArray(plan.questions)
+      ? plan.questions.filter((q) => q && q.question).map((q) => ({
+          question: String(q.question),
+          options: Array.isArray(q.options) ? q.options.map(String).slice(0, 4) : []
+        })).slice(0, 3)
+      : [],
+    usage
+  };
+}
+
 export async function getCodeZip(userId, sessionId) {
   await getProject(userId, sessionId);
   const map = await loadFilesMap(sessionId);
