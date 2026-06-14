@@ -16,7 +16,20 @@ const TYPES = {
   ".txt": "text/plain; charset=utf-8",
   ".ico": "image/x-icon",
   ".webmanifest": "application/manifest+json",
-  ".map": "application/json"
+  ".map": "application/json",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".avif": "image/avif",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
+  ".mp4": "video/mp4",
+  ".mp3": "audio/mpeg",
+  ".pdf": "application/pdf"
 };
 
 function contentType(path) {
@@ -77,15 +90,16 @@ export async function deploySite(userId, projectId, slugRaw, files) {
   for (const f of files) {
     const path = cleanPath(f.path);
     const content = String(f.content ?? "");
-    total += Buffer.byteLength(content, "utf8");
+    const encoding = f.encoding === "base64" ? "base64" : "utf8";
+    total += content.length;
     if (total > MAX_TOTAL_BYTES) throw new Error("Build trop volumineux.");
-    rows.push([path, content, contentType(path)]);
+    rows.push([path, content, contentType(path), encoding]);
   }
 
-  const tuples = rows.map((_, i) => `($1, $${i * 3 + 2}, $${i * 3 + 3}, $${i * 3 + 4})`);
+  const tuples = rows.map((_, i) => `($1, $${i * 4 + 2}, $${i * 4 + 3}, $${i * 4 + 4}, $${i * 4 + 5})`);
   const vals = rows.flat();
   await db.query(
-    `INSERT INTO launch_deploy_files (slug, path, content, content_type) VALUES ${tuples.join(",")}`,
+    `INSERT INTO launch_deploy_files (slug, path, content, content_type, encoding) VALUES ${tuples.join(",")}`,
     [slug, ...vals]
   );
 
@@ -123,16 +137,20 @@ export async function getDeployFile(slug, requestedPath) {
 
   const db = getDb();
   let { rows } = await db.query(
-    `SELECT content, content_type FROM launch_deploy_files WHERE slug=$1 AND path=$2`,
+    `SELECT content, content_type, encoding FROM launch_deploy_files WHERE slug=$1 AND path=$2`,
     [s, path]
   );
   // Fallback SPA : sert index.html si le fichier exact n'existe pas
   if (!rows[0]) {
     ({ rows } = await db.query(
-      `SELECT content, content_type FROM launch_deploy_files WHERE slug=$1 AND path='index.html'`,
+      `SELECT content, content_type, encoding FROM launch_deploy_files WHERE slug=$1 AND path='index.html'`,
       [s]
     ));
   }
   if (!rows[0]) return null;
-  return { content: rows[0].content, contentType: rows[0].content_type || "text/html; charset=utf-8" };
+  const r = rows[0];
+  return {
+    content: r.encoding === "base64" ? Buffer.from(r.content, "base64") : r.content,
+    contentType: r.content_type || "text/html; charset=utf-8"
+  };
 }

@@ -161,6 +161,7 @@ export async function initSchema() {
       content_type TEXT,
       PRIMARY KEY (slug, path)
     );
+    ALTER TABLE launch_deploy_files ADD COLUMN IF NOT EXISTS encoding TEXT NOT NULL DEFAULT 'utf8';
     -- 1 seul déploiement par projet (anti-flood) : project_id unique.
     ALTER TABLE launch_deploys ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES launch_projects(id) ON DELETE CASCADE;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_launch_deploys_project ON launch_deploys(project_id);
