@@ -23,7 +23,8 @@ import { checkThrottle } from "./lib/throttle.js";
 import { compressIfNeeded } from "./lib/context.js";
 import { createCodeSession, editCodeSession, createCodeSessionStream, editCodeSessionStream, getCodePreviewFile, getCodeZip, getCodeSessionFiles, listCodeSessions, deleteCodeSession, renameCodeSession } from "./lib/codegen.js";
 import { deploySite, getDeployFile } from "./lib/deploy.js";
-import { signupAppUser, loginAppUser, getAppUserFromToken, googleAuthUrl, handleGoogleCallback } from "./lib/launchAuth.js";
+import { signupAppUser, loginAppUser, getAppUserFromToken, googleAuthUrl, handleGoogleCallback, verifyAppToken } from "./lib/launchAuth.js";
+import { listDocs, createDoc, getDoc, updateDoc, deleteDoc } from "./lib/launchData.js";
 import { TIER_MODELS, estimateCostEur } from "./config/plans.js";
 import { brandFromAlias, CREATIVE, findModelForBrand, findModelForFamily, findModelInCatalog, familyFromAlias, isBrandAlias, isFamilyAlias, normalizeTier, publicCatalog, supportsVision, pickVisionModelForTier } from "./config/models.js";
 import { createSubscriptionLink, activateSubscription, handleWebhook, PAYPAL_PLAN_IDS, createCreditOrder, captureCreditOrder } from "./lib/paypal.js";
@@ -1082,6 +1083,49 @@ app.get("/api/launch/:projectId/auth/me", async (req, res) => {
   } catch {
     res.status(401).json({ error: "Session invalide" });
   }
+});
+
+// ─── Launch DB : base no-code managée (scopée projet + collection) ───────────
+function launchAppUserId(req) {
+  const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+  if (!token) return null;
+  try { return verifyAppToken(token).sub; } catch { return null; }
+}
+
+app.get("/api/launch/:projectId/db/:collection", async (req, res) => {
+  try {
+    const mine = req.query?.mine === "1" || req.query?.mine === "true";
+    const items = await listDocs(req.params.projectId, req.params.collection, {
+      mine, ownerId: launchAppUserId(req), limit: req.query?.limit
+    });
+    res.json({ items });
+  } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
+});
+
+app.post("/api/launch/:projectId/db/:collection", async (req, res) => {
+  try {
+    const data = req.body?.data ?? req.body;
+    res.json(await createDoc(req.params.projectId, req.params.collection, data, launchAppUserId(req)));
+  } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
+});
+
+app.get("/api/launch/:projectId/db/:collection/:id", async (req, res) => {
+  try {
+    res.json(await getDoc(req.params.projectId, req.params.collection, req.params.id));
+  } catch (e) { res.status(e.status || 404).json({ error: e.message }); }
+});
+
+app.patch("/api/launch/:projectId/db/:collection/:id", async (req, res) => {
+  try {
+    const data = req.body?.data ?? req.body;
+    res.json(await updateDoc(req.params.projectId, req.params.collection, req.params.id, data, launchAppUserId(req)));
+  } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
+});
+
+app.delete("/api/launch/:projectId/db/:collection/:id", async (req, res) => {
+  try {
+    res.json(await deleteDoc(req.params.projectId, req.params.collection, req.params.id, launchAppUserId(req)));
+  } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
 });
 
 // Génération d'images Flux Schnell embeddable (sans token) pour les apps Launch.
