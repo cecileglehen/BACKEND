@@ -49,6 +49,40 @@ function u32(value) {
   return b;
 }
 
+// Construit un zip à partir d'une liste { path, content } (contenu en mémoire/DB).
+export function zipFiles(entries) {
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+  const { time, day } = dosTime();
+
+  for (const entry of entries) {
+    const name = Buffer.from(entry.path, "utf8");
+    const data = Buffer.isBuffer(entry.content) ? entry.content : Buffer.from(String(entry.content ?? ""), "utf8");
+    const crc = crc32(data);
+
+    const localHeader = Buffer.concat([
+      u32(0x04034b50), u16(20), u16(0x0800), u16(0), u16(time), u16(day),
+      u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0), name
+    ]);
+    localParts.push(localHeader, data);
+
+    centralParts.push(Buffer.concat([
+      u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), u16(time), u16(day),
+      u32(crc), u32(data.length), u32(data.length), u16(name.length),
+      u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset), name
+    ]));
+    offset += localHeader.length + data.length;
+  }
+
+  const central = Buffer.concat(centralParts);
+  const end = Buffer.concat([
+    u32(0x06054b50), u16(0), u16(0), u16(entries.length), u16(entries.length),
+    u32(central.length), u32(offset), u16(0)
+  ]);
+  return Buffer.concat([...localParts, central, end]);
+}
+
 export async function zipDirectory(root) {
   const files = await collectFiles(root);
   const localParts = [];

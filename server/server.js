@@ -22,7 +22,7 @@ import { runDeepSearch } from "./lib/deepSearch.js";
 import { checkThrottle } from "./lib/throttle.js";
 import { compressIfNeeded } from "./lib/context.js";
 import { createCodeSession, editCodeSession, createCodeSessionStream, editCodeSessionStream, getCodePreviewFile, getCodeZip, getCodeSessionFiles, listCodeSessions, deleteCodeSession, renameCodeSession } from "./lib/codegen.js";
-import { deploySite, DEPLOYS_ROOT } from "./lib/deploy.js";
+import { deploySite, getDeployFile } from "./lib/deploy.js";
 import { TIER_MODELS, estimateCostEur } from "./config/plans.js";
 import { brandFromAlias, CREATIVE, findModelForBrand, findModelForFamily, findModelInCatalog, familyFromAlias, isBrandAlias, isFamilyAlias, normalizeTier, publicCatalog, supportsVision, pickVisionModelForTier } from "./config/models.js";
 import { createSubscriptionLink, activateSubscription, handleWebhook, PAYPAL_PLAN_IDS, createCreditOrder, captureCreditOrder } from "./lib/paypal.js";
@@ -1025,7 +1025,18 @@ app.post("/api/launch/deploy", requireAuth, async (req, res) => {
 });
 
 // Sites déployés (statique). En prod, on pourra mapper deltai.fr/<slug> dessus.
-app.use("/sites", express.static(DEPLOYS_ROOT, { index: "index.html", extensions: ["html"] }));
+// Sites déployés (servis depuis la DB). /sites/<slug>/<chemin>
+app.get(/^\/sites\/([a-z0-9-]+)(?:\/(.*))?$/, async (req, res) => {
+  try {
+    const file = await getDeployFile(req.params[0], req.params[1] || "index.html");
+    if (!file) return res.status(404).send("Site introuvable");
+    res.setHeader("Content-Type", file.contentType);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.send(file.content);
+  } catch (e) {
+    res.status(404).send(e.message);
+  }
+});
 
 app.get("/api/code/session/:id/files", requireAuth, async (req, res) => {
   try {
@@ -1085,7 +1096,7 @@ app.get("/api/code/session/:id/preview/*", requirePreviewAuth, async (req, res) 
     const ext = path.extname(file.path).toLowerCase();
     res.setHeader("Content-Type", PREVIEW_TYPES[ext] || "application/octet-stream");
     res.setHeader("X-Content-Type-Options", "nosniff");
-    res.sendFile(file.target);
+    res.send(file.content);
   } catch (e) {
     console.error("[code/preview]", e);
     res.status(404).send(e.message);

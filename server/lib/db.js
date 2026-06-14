@@ -115,6 +115,44 @@ export async function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_usage_log_user_date ON usage_log(user_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_usage_log_user_model ON usage_log(user_id, model_id);
+
+    -- Launch (Bolt-like) : projets, fichiers, déploiements — persistés en DB
+    -- (le filesystem Render est éphémère).
+    CREATE TABLE IF NOT EXISTS launch_projects (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name        TEXT,
+      summary     TEXT,
+      prompt      TEXT,
+      mode        TEXT NOT NULL DEFAULT 'react',
+      run         JSONB,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_launch_projects_user ON launch_projects(user_id, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS launch_files (
+      project_id  UUID NOT NULL REFERENCES launch_projects(id) ON DELETE CASCADE,
+      path        TEXT NOT NULL,
+      content     TEXT NOT NULL DEFAULT '',
+      bytes       INT  NOT NULL DEFAULT 0,
+      PRIMARY KEY (project_id, path)
+    );
+
+    CREATE TABLE IF NOT EXISTS launch_deploys (
+      slug        TEXT PRIMARY KEY,
+      user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS launch_deploy_files (
+      slug         TEXT NOT NULL REFERENCES launch_deploys(slug) ON DELETE CASCADE,
+      path         TEXT NOT NULL,
+      content      TEXT NOT NULL DEFAULT '',
+      content_type TEXT,
+      PRIMARY KEY (slug, path)
+    );
     ALTER TABLE users ADD COLUMN IF NOT EXISTS secret_key TEXT;
     ALTER TABLE users ALTER COLUMN plan SET DEFAULT 'FREE';
     UPDATE users SET plan = 'FREE' WHERE plan = 'LITE';

@@ -1,11 +1,7 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-import crypto from "node:crypto";
-import { fileURLToPath } from "node:url";
-import { zipDirectory } from "./zip.js";
+import { getDb } from "./db.js";
+import { zipFiles } from "./zip.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SESSIONS_ROOT = path.join(__dirname, "..", "data", "code-sessions");
+// Stockage 100 % DB (Supabase/Postgres) : le filesystem Render est éphémère.
 const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
 const KIMI_MODEL      = "moonshotai/kimi-k2.7-code";
 const CODESTRAL_MODEL = "mistralai/codestral-2508";
@@ -282,280 +278,196 @@ function extractUsage(raw, plan) {
   };
 }
 
-// Écrit les fichiers de base d'un projet Vite+React (avant les actions du modèle)
-async function scaffoldReact(root) {
-  for (const [rel, content] of Object.entries(REACT_SCAFFOLD)) {
-    const { target } = safeTarget(root, rel);
-    await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, content, "utf8");
-  }
+// ─── Helpers stockage DB ──────────────────────────────────────────────────────
+const UUID_RE = /^[0-9a-f-]{36}$/i;
+
+function cleanRelPath(p) {
+  const c = String(p || "").replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!c || c.includes("\0") || c.split("/").includes("..")) throw new Error(`Chemin refusé: ${p}`);
+  return c;
 }
 
-// Lit le contenu de tous les fichiers (pour montage WebContainer)
-async function readAllFiles(root) {
-  const files = await listProjectFiles(root);
-  const out = [];
-  for (const file of files) {
-    if (file.bytes > MAX_FILE_BYTES) continue;
-    const content = await fs.readFile(path.join(root, file.path), "utf8").catch(() => "");
-    out.push({ path: file.path, content, bytes: file.bytes });
-  }
-  return out;
+function scaffoldMap() {
+  return new Map(Object.entries(REACT_SCAFFOLD));
 }
 
-export async function getCodeSessionFiles(userId, sessionId) {
-  const id = String(sessionId || "");
-  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Session invalide");
-  const root = path.join(SESSIONS_ROOT, String(userId), id);
-  await fs.access(root);
-  return readAllFiles(root);
-}
-
-// ─── Persistance des projets (métadonnées hors arbre de fichiers) ────────────
-const META_DIR = "_meta";
-
-async function writeMeta(userId, id, data) {
-  const dir = path.join(SESSIONS_ROOT, String(userId), META_DIR);
-  await fs.mkdir(dir, { recursive: true });
-  const file = path.join(dir, `${id}.json`);
-  let prev = {};
-  try { prev = JSON.parse(await fs.readFile(file, "utf8")); } catch { /* nouveau */ }
-  const merged = { ...prev, ...data };
-  await fs.writeFile(file, JSON.stringify(merged), "utf8");
-  return merged;
-}
-
-async function readMeta(userId, id) {
-  try {
-    return JSON.parse(await fs.readFile(path.join(SESSIONS_ROOT, String(userId), META_DIR, `${id}.json`), "utf8"));
-  } catch { return null; }
-}
-
-export async function listCodeSessions(userId) {
-  const base = path.join(SESSIONS_ROOT, String(userId));
-  let entries = [];
-  try { entries = await fs.readdir(base, { withFileTypes: true }); } catch { return []; }
-  const out = [];
-  for (const e of entries) {
-    if (!e.isDirectory() || !/^[0-9a-f-]{36}$/i.test(e.name)) continue;
-    const meta = await readMeta(userId, e.name);
-    out.push({
-      id: e.name,
-      name: meta?.name || meta?.summary || "Projet sans nom",
-      summary: meta?.summary || "",
-      mode: meta?.mode || "react",
-      createdAt: meta?.createdAt || 0,
-      updatedAt: meta?.updatedAt || meta?.createdAt || 0
-    });
-  }
-  out.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-  return out;
-}
-
-export async function deleteCodeSession(userId, sessionId) {
-  const id = String(sessionId || "");
-  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Session invalide");
-  await fs.rm(path.join(SESSIONS_ROOT, String(userId), id), { recursive: true, force: true });
-  await fs.rm(path.join(SESSIONS_ROOT, String(userId), META_DIR, `${id}.json`), { force: true });
-  return { ok: true };
-}
-
-export async function renameCodeSession(userId, sessionId, name) {
-  const id = String(sessionId || "");
-  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Session invalide");
-  return writeMeta(userId, id, { name: String(name || "").slice(0, 80) || "Projet", updatedAt: Date.now() });
-}
-
-function safeTarget(root, relativePath) {
-  const clean = String(relativePath || "").replace(/\\/g, "/").replace(/^\/+/, "");
-  if (!clean || clean.includes("\0") || clean.split("/").includes("..")) {
-    throw new Error(`Chemin refusé: ${relativePath}`);
-  }
-  const target = path.resolve(root, clean);
-  if (!target.startsWith(root + path.sep) && target !== root) {
-    throw new Error(`Chemin hors session refusé: ${relativePath}`);
-  }
-  return { clean, target };
-}
-
-async function applyActions(root, actions) {
+// Map(path → content) → applique les actions du modèle (mutation en place).
+function applyActionsToMap(map, actions) {
   if (!Array.isArray(actions) || actions.length === 0) throw new Error("Aucune action de code reçue.");
   if (actions.length > MAX_ACTIONS) throw new Error("Trop d'actions générées.");
-
-  const files = [];
-  let totalBytes = 0;
-
   for (const action of actions) {
     const type = String(action?.type || "");
-    const { clean, target } = safeTarget(root, action?.path);
-
-    if (type === "create_folder") {
-      await fs.mkdir(target, { recursive: true });
-      continue;
-    }
-
-    if (type === "delete_file") {
-      await fs.rm(target, { force: true });
-      continue;
-    }
-
+    if (type === "create_folder") continue;
+    const clean = cleanRelPath(action?.path);
+    if (type === "delete_file") { map.delete(clean); continue; }
     if (type === "delete_folder") {
-      await fs.rm(target, { recursive: true, force: true });
+      for (const k of [...map.keys()]) if (k === clean || k.startsWith(clean + "/")) map.delete(k);
       continue;
     }
-
     if (type === "write_file") {
       const content = String(action?.content ?? "");
-      const bytes = Buffer.byteLength(content, "utf8");
-      if (bytes > MAX_FILE_BYTES) throw new Error(`Fichier trop gros: ${clean}`);
-      totalBytes += bytes;
-      if (totalBytes > MAX_TOTAL_BYTES) throw new Error("Projet généré trop volumineux.");
-      await fs.mkdir(path.dirname(target), { recursive: true });
-      await fs.writeFile(target, content, "utf8");
-      files.push({ path: clean, bytes });
+      if (Buffer.byteLength(content, "utf8") > MAX_FILE_BYTES) throw new Error(`Fichier trop gros: ${clean}`);
+      map.set(clean, content);
       continue;
     }
-
     throw new Error(`Action inconnue: ${type}`);
   }
-
-  return files;
-}
-
-async function listProjectFiles(root, dir = root) {
-  const entries = await fs.readdir(dir, { withFileTypes: true });
-  const files = [];
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...await listProjectFiles(root, fullPath));
-    } else if (entry.isFile()) {
-      const stat = await fs.stat(fullPath);
-      files.push({
-        path: path.relative(root, fullPath).split(path.sep).join("/"),
-        bytes: stat.size
-      });
-    }
+  let total = 0;
+  for (const c of map.values()) {
+    total += Buffer.byteLength(c, "utf8");
+    if (total > MAX_TOTAL_BYTES) throw new Error("Projet généré trop volumineux.");
   }
-  return files.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-async function readProjectContext(root) {
-  const files = await listProjectFiles(root);
+function filesList(map) {
+  return [...map.entries()]
+    .map(([p, content]) => ({ path: p, bytes: Buffer.byteLength(content, "utf8") }))
+    .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function projectContext(map) {
   const snippets = [];
   let total = 0;
-  for (const file of files) {
-    if (file.bytes > 80_000) continue;
-    const target = path.join(root, file.path);
-    const content = await fs.readFile(target, "utf8").catch(() => "");
+  for (const [p, content] of map) {
+    if (Buffer.byteLength(content, "utf8") > 80_000) continue;
     total += content.length;
     if (total > 180_000) break;
-    snippets.push(`--- ${file.path} ---\n${content}`);
+    snippets.push(`--- ${p} ---\n${content}`);
   }
   return snippets.join("\n\n");
 }
 
+async function getProject(userId, id) {
+  if (!UUID_RE.test(String(id))) throw new Error("Session invalide");
+  const db = getDb();
+  const { rows } = await db.query(`SELECT id, mode FROM launch_projects WHERE id=$1 AND user_id=$2`, [id, userId]);
+  if (!rows[0]) throw new Error("Projet introuvable");
+  return rows[0];
+}
+
+async function loadFilesMap(projectId) {
+  const db = getDb();
+  const { rows } = await db.query(`SELECT path, content FROM launch_files WHERE project_id=$1`, [projectId]);
+  return new Map(rows.map((r) => [r.path, r.content]));
+}
+
+async function saveFilesMap(projectId, map) {
+  const db = getDb();
+  await db.query(`DELETE FROM launch_files WHERE project_id=$1`, [projectId]);
+  const entries = [...map.entries()];
+  if (entries.length === 0) return;
+  const tuples = entries.map((_, i) => `($1, $${i * 3 + 2}, $${i * 3 + 3}, $${i * 3 + 4})`);
+  const vals = [];
+  for (const [p, content] of entries) vals.push(p, content, Buffer.byteLength(content, "utf8"));
+  await db.query(`INSERT INTO launch_files (project_id, path, content, bytes) VALUES ${tuples.join(",")}`, [projectId, ...vals]);
+}
+
+// Émet les diffs (lignes +/-) par fichier touché.
+function emitDiffs(plan, oldMap, emit) {
+  for (const action of (plan.actions || [])) {
+    if (action?.type === "write_file") {
+      const p = cleanRelPath(action.path);
+      const { added, removed } = lineDiffStats(oldMap.get(p) || "", String(action.content ?? ""));
+      emit?.({ type: "file", path: p, op: oldMap.has(p) ? "update" : "create", added, removed });
+    } else if (action?.type === "delete_file") {
+      const p = cleanRelPath(action.path);
+      emit?.({ type: "file", path: p, op: "delete", added: 0, removed: String(oldMap.get(p) || "").split("\n").length });
+    }
+  }
+}
+
+export async function getCodeSessionFiles(userId, sessionId) {
+  await getProject(userId, sessionId);
+  const map = await loadFilesMap(sessionId);
+  return [...map.entries()]
+    .map(([p, content]) => ({ path: p, content, bytes: Buffer.byteLength(content, "utf8") }))
+    .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+// ─── Persistance des projets (table launch_projects + launch_files) ──────────
+export async function listCodeSessions(userId) {
+  const db = getDb();
+  const { rows } = await db.query(
+    `SELECT id, name, summary, mode, created_at, updated_at
+     FROM launch_projects WHERE user_id=$1 ORDER BY updated_at DESC LIMIT 100`,
+    [userId]
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name || r.summary || "Projet sans nom",
+    summary: r.summary || "",
+    mode: r.mode || "react",
+    createdAt: new Date(r.created_at).getTime(),
+    updatedAt: new Date(r.updated_at).getTime()
+  }));
+}
+
+export async function deleteCodeSession(userId, sessionId) {
+  if (!UUID_RE.test(String(sessionId))) throw new Error("Session invalide");
+  const db = getDb();
+  await db.query(`DELETE FROM launch_projects WHERE id=$1 AND user_id=$2`, [sessionId, userId]);
+  return { ok: true };
+}
+
+export async function renameCodeSession(userId, sessionId, name) {
+  if (!UUID_RE.test(String(sessionId))) throw new Error("Session invalide");
+  const db = getDb();
+  await db.query(
+    `UPDATE launch_projects SET name=$3, updated_at=NOW() WHERE id=$1 AND user_id=$2`,
+    [sessionId, userId, String(name || "").slice(0, 80) || "Projet"]
+  );
+  return { ok: true };
+}
+
+// Crée la ligne projet + persiste les fichiers. Renvoie l'id.
+async function insertProject(userId, { summary, prompt, mode, run }) {
+  const db = getDb();
+  const { rows } = await db.query(
+    `INSERT INTO launch_projects (user_id, name, summary, prompt, mode, run)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+    [userId, summary.slice(0, 80), summary, String(prompt || "").slice(0, 300), mode, run ? JSON.stringify(run) : null]
+  );
+  return rows[0].id;
+}
+
+async function touchProject(userId, id, { summary, run }) {
+  const db = getDb();
+  await db.query(
+    `UPDATE launch_projects SET summary=$3, run=COALESCE($4, run), updated_at=NOW() WHERE id=$1 AND user_id=$2`,
+    [id, userId, summary, run ? JSON.stringify(run) : null]
+  );
+}
+
 export async function createCodeSession(userId, prompt, modelId = KIMI_MODEL, mode = "static") {
-  const id = crypto.randomUUID();
-  const root = path.join(SESSIONS_ROOT, String(userId), id);
-  await fs.mkdir(root, { recursive: true });
-
   const isReact = mode === "react";
-  if (isReact) await scaffoldReact(root);
-
+  const map = isReact ? scaffoldMap() : new Map();
   const { plan, raw } = await callRing(prompt, modelId, isReact ? REACT_SYSTEM_PROMPT : SYSTEM_PROMPT);
-  await applyActions(root, plan.actions);
-  const files = await listProjectFiles(root);
+  applyActionsToMap(map, plan.actions);
   const usage = extractUsage(raw, plan);
-
   const summary = String(plan.summary || "Projet généré par Kimi");
-  const now = Date.now();
-  await writeMeta(userId, id, {
-    name: summary.slice(0, 80),
-    summary,
-    prompt: String(prompt || "").slice(0, 300),
-    mode,
-    createdAt: now,
-    updatedAt: now
-  });
-
-  return {
-    id,
-    model: modelId,
-    mode,
-    summary,
-    run: plan.run ?? null,
-    files,
-    tokensOut: usage.tokensOut,
-    usage
-  };
+  const id = await insertProject(userId, { summary, prompt, mode, run: plan.run });
+  await saveFilesMap(id, map);
+  return { id, model: modelId, mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: usage.tokensOut, usage };
 }
 
 export async function editCodeSession(userId, sessionId, prompt, modelId = KIMI_MODEL, mode = "static") {
-  const id = String(sessionId || "");
-  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Session invalide");
-  const root = path.join(SESSIONS_ROOT, String(userId), id);
-  await fs.access(root);
-
-  const isReact = mode === "react";
-  const currentProject = await readProjectContext(root);
-  const editPrompt = `Projet actuel:\n${currentProject}\n\nModification demandée:\n${String(prompt || "").slice(0, 12000)}\n\nRéponds avec le même JSON d'actions. Modifie uniquement ce qui est nécessaire.`;
+  const proj = await getProject(userId, sessionId);
+  const isReact = mode === "react" || proj.mode === "react";
+  const map = await loadFilesMap(sessionId);
+  const editPrompt = `Projet actuel:\n${projectContext(map)}\n\nModification demandée:\n${String(prompt || "").slice(0, 12000)}\n\nRéponds avec le même JSON d'actions. Modifie uniquement ce qui est nécessaire.`;
   const { plan, raw } = await callRing(editPrompt, modelId, isReact ? REACT_SYSTEM_PROMPT : SYSTEM_PROMPT);
-  await applyActions(root, plan.actions);
-  const files = await listProjectFiles(root);
+  applyActionsToMap(map, plan.actions);
   const usage = extractUsage(raw, plan);
-
   const summary = String(plan.summary || "Projet modifié par Kimi");
-  await writeMeta(userId, id, { summary, updatedAt: Date.now() });
-
-  return {
-    id,
-    model: modelId,
-    mode,
-    summary,
-    run: plan.run ?? null,
-    files,
-    tokensOut: usage.tokensOut,
-    usage
-  };
-}
-
-// Construit un objet session à partir d'un plan + applique les actions, en émettant
-// les diffs par fichier. `emit` : callback SSE. `oldMap` : contenus avant édition.
-async function finalizePlan({ userId, id, root, plan, modelId, mode, oldMap, emit, isEdit }) {
-  await applyActions(root, plan.actions);
-
-  for (const action of (plan.actions || [])) {
-    if (action?.type !== "write_file") continue;
-    const p = String(action.path || "").replace(/^\/+/, "");
-    const { added, removed } = lineDiffStats(oldMap[p] || "", String(action.content ?? ""));
-    emit?.({ type: "file", path: p, op: oldMap[p] != null ? "update" : "create", added, removed });
-  }
-  for (const action of (plan.actions || [])) {
-    if (action?.type === "delete_file") {
-      const p = String(action.path || "").replace(/^\/+/, "");
-      const removed = String(oldMap[p] || "").split("\n").length;
-      emit?.({ type: "file", path: p, op: "delete", added: 0, removed });
-    }
-  }
-
-  const files = await listProjectFiles(root);
-  const summary = String(plan.summary || (isEdit ? "Projet modifié" : "Projet généré"));
-  if (isEdit) await writeMeta(userId, id, { summary, updatedAt: Date.now() });
-  else await writeMeta(userId, id, { name: summary.slice(0, 80), summary, mode, createdAt: Date.now(), updatedAt: Date.now() });
-
-  return { id, model: modelId, mode, summary, run: plan.run ?? null, files };
+  await touchProject(userId, sessionId, { summary, run: plan.run });
+  await saveFilesMap(sessionId, map);
+  return { id: sessionId, model: modelId, mode: proj.mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: usage.tokensOut, usage };
 }
 
 export async function createCodeSessionStream(userId, prompt, modelId, mode, emit) {
-  const id = crypto.randomUUID();
-  const root = path.join(SESSIONS_ROOT, String(userId), id);
-  await fs.mkdir(root, { recursive: true });
-
   const isReact = mode === "react";
-  if (isReact) await scaffoldReact(root);
-  const oldMap = Object.fromEntries((await readAllFiles(root)).map((f) => [f.path, f.content]));
-
+  const map = isReact ? scaffoldMap() : new Map();
+  const oldMap = new Map(map);
   emit?.({ type: "status", text: "Génération du code…" });
   const { content, usage } = await streamModel({
     prompt, modelId,
@@ -563,23 +475,21 @@ export async function createCodeSessionStream(userId, prompt, modelId, mode, emi
     onPath: (p) => emit?.({ type: "action", path: p })
   });
   const plan = parseJsonObject(content);
-  const session = await finalizePlan({ userId, id, root, plan, modelId, mode, oldMap, emit, isEdit: false });
+  applyActionsToMap(map, plan.actions);
+  emitDiffs(plan, oldMap, emit);
+  const summary = String(plan.summary || "Projet généré");
+  const id = await insertProject(userId, { summary, prompt, mode, run: plan.run });
+  await saveFilesMap(id, map);
   const u = extractUsage({ usage }, plan);
-  return { ...session, tokensOut: u.tokensOut, usage: u };
+  return { id, model: modelId, mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: u.tokensOut, usage: u };
 }
 
 export async function editCodeSessionStream(userId, sessionId, prompt, modelId, mode, emit) {
-  const id = String(sessionId || "");
-  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Session invalide");
-  const root = path.join(SESSIONS_ROOT, String(userId), id);
-  await fs.access(root);
-
-  const isReact = mode === "react";
-  const oldFiles = await readAllFiles(root);
-  const oldMap = Object.fromEntries(oldFiles.map((f) => [f.path, f.content]));
-  const currentProject = oldFiles.map((f) => `--- ${f.path} ---\n${f.content}`).join("\n\n");
-  const editPrompt = `Projet actuel:\n${currentProject}\n\nModification demandée:\n${String(prompt || "").slice(0, 12000)}\n\nRéponds avec le même JSON d'actions. Modifie uniquement ce qui est nécessaire.`;
-
+  const proj = await getProject(userId, sessionId);
+  const isReact = mode === "react" || proj.mode === "react";
+  const map = await loadFilesMap(sessionId);
+  const oldMap = new Map(map);
+  const editPrompt = `Projet actuel:\n${projectContext(map)}\n\nModification demandée:\n${String(prompt || "").slice(0, 12000)}\n\nRéponds avec le même JSON d'actions. Modifie uniquement ce qui est nécessaire.`;
   emit?.({ type: "status", text: "Application des modifications…" });
   const { content, usage } = await streamModel({
     prompt: editPrompt, modelId,
@@ -587,25 +497,25 @@ export async function editCodeSessionStream(userId, sessionId, prompt, modelId, 
     onPath: (p) => emit?.({ type: "action", path: p })
   });
   const plan = parseJsonObject(content);
-  const session = await finalizePlan({ userId, id, root, plan, modelId, mode, oldMap, emit, isEdit: true });
+  applyActionsToMap(map, plan.actions);
+  emitDiffs(plan, oldMap, emit);
+  const summary = String(plan.summary || "Projet modifié");
+  await touchProject(userId, sessionId, { summary, run: plan.run });
+  await saveFilesMap(sessionId, map);
   const u = extractUsage({ usage }, plan);
-  return { ...session, tokensOut: u.tokensOut, usage: u };
+  return { id: sessionId, model: modelId, mode: proj.mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: u.tokensOut, usage: u };
 }
 
 export async function getCodeZip(userId, sessionId) {
-  const id = String(sessionId || "");
-  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Session invalide");
-  const root = path.join(SESSIONS_ROOT, String(userId), id);
-  await fs.access(root);
-  return zipDirectory(root);
+  await getProject(userId, sessionId);
+  const map = await loadFilesMap(sessionId);
+  return zipFiles([...map.entries()].map(([p, content]) => ({ path: p, content })));
 }
 
 export async function getCodePreviewFile(userId, sessionId, filePath) {
-  const id = String(sessionId || "");
-  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Session invalide");
-  const root = path.join(SESSIONS_ROOT, String(userId), id);
-  const { clean, target } = safeTarget(root, filePath || "index.html");
-  const stat = await fs.stat(target);
-  if (!stat.isFile()) throw new Error("Fichier preview introuvable");
-  return { path: clean, target };
+  await getProject(userId, sessionId);
+  const clean = cleanRelPath(filePath || "index.html");
+  const map = await loadFilesMap(sessionId);
+  if (!map.has(clean)) throw new Error("Fichier preview introuvable");
+  return { path: clean, content: map.get(clean) };
 }
