@@ -21,7 +21,7 @@ import { computeCreditCost, computeCreditFromCost, FREE_TIER_ONLY_PLANS } from "
 import { runDeepSearch } from "./lib/deepSearch.js";
 import { checkThrottle } from "./lib/throttle.js";
 import { compressIfNeeded } from "./lib/context.js";
-import { createCodeSession, editCodeSession, createCodeSessionStream, editCodeSessionStream, getCodePreviewFile, getCodeZip, getCodeSessionFiles, listCodeSessions, deleteCodeSession, renameCodeSession, getProjectBySlug, planChat } from "./lib/codegen.js";
+import { createCodeSession, editCodeSession, createCodeSessionStream, editCodeSessionStream, getCodePreviewFile, getCodeZip, getCodeSessionFiles, listCodeSessions, deleteCodeSession, renameCodeSession, getProjectBySlug, planChat, getProjectChat, saveProjectChat } from "./lib/codegen.js";
 import { deploySite, undeploySite, getProjectDeploy, getDeployFile } from "./lib/deploy.js";
 import { signupAppUser, loginAppUser, getAppUserFromToken, googleAuthUrl, handleGoogleCallback, verifyAppToken } from "./lib/launchAuth.js";
 import { listDocs, createDoc, getDoc, updateDoc, deleteDoc } from "./lib/launchData.js";
@@ -1273,6 +1273,19 @@ app.post("/api/launch/plan", requireAuth, async (req, res) => {
     console.error("[launch/plan]", e);
     res.status(500).json({ error: e.message });
   }
+});
+
+// Chat persisté par projet (Code + Plan)
+app.get("/api/launch/:projectId/chat", requireAuth, async (req, res) => {
+  try {
+    res.json({ chat: await getProjectChat(req.user.id, req.params.projectId) });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.put("/api/launch/:projectId/chat", requireAuth, async (req, res) => {
+  try {
+    res.json(await saveProjectChat(req.user.id, req.params.projectId, req.body?.chat));
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 // Résout le slug de l'URL /p/<slug> → projet (propriétaire)

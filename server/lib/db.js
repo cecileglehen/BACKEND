@@ -133,6 +133,8 @@ export async function initSchema() {
     -- Slug lisible pour l'URL du projet : launch.<domaine>/p/<slug>
     ALTER TABLE launch_projects ADD COLUMN IF NOT EXISTS slug TEXT;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_launch_projects_slug ON launch_projects(slug);
+    -- Conversation IA (Code + Plan) persistée par projet
+    ALTER TABLE launch_projects ADD COLUMN IF NOT EXISTS chat JSONB;
 
     CREATE TABLE IF NOT EXISTS launch_files (
       project_id  UUID NOT NULL REFERENCES launch_projects(id) ON DELETE CASCADE,
