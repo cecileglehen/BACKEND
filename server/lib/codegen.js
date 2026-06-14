@@ -396,6 +396,50 @@ function injectLaunchSdk(map, projectId) {
   map.set("src/launch.js", launchSdkSource(projectId));
 }
 
+// Matérialise les images IA : remplace les URLs /api/launch/img?prompt=... par de
+// vrais fichiers (public/ai-N.jpg) générés via Flux et stockés en binaire.
+async function materializeAiImages(projectId, map) {
+  const re = /(?:https?:\/\/[^\s"'`)]+)?\/api\/launch\/img\?prompt=([^\s"'`)]+)/g;
+  const urls = new Map(); // fullUrl -> encodedPrompt
+  for (const content of map.values()) {
+    let m;
+    while ((m = re.exec(content))) urls.set(m[0], m[1]);
+  }
+  if (!urls.size) return;
+
+  const { falGenerateImage } = await import("./fal.js");
+  const entries = [...urls.entries()].slice(0, 8); // cap anti-coût/latence
+  const results = await Promise.all(entries.map(async ([fullUrl, enc], idx) => {
+    try {
+      const prompt = decodeURIComponent(enc.replace(/\+/g, " "));
+      const { url } = await falGenerateImage("fal-ai/flux-1/schnell", prompt);
+      if (!url) return null;
+      const resp = await fetch(url);
+      if (!resp.ok) return null;
+      const buf = Buffer.from(await resp.arrayBuffer());
+      if (buf.length > MAX_FILE_BYTES) return null;
+      const ext = (url.match(/\.(jpe?g|png|webp|gif)/i)?.[1] || "jpg").toLowerCase();
+      const fname = `ai-${idx + 1}.${ext}`;
+      await getDb().query(
+        `INSERT INTO launch_files (project_id, path, content, bytes, encoding, content_type)
+         VALUES ($1,$2,$3,$4,'base64',$5)
+         ON CONFLICT (project_id, path) DO UPDATE SET content=$3, bytes=$4, encoding='base64', content_type=$5`,
+        [projectId, `public/${fname}`, buf.toString("base64"), buf.length, `image/${ext === "jpg" ? "jpeg" : ext}`]
+      );
+      return { fullUrl, localPath: `/${fname}` };
+    } catch { return null; }
+  }));
+
+  const replacements = new Map();
+  for (const r of results) if (r) replacements.set(r.fullUrl, r.localPath);
+  if (!replacements.size) return;
+  for (const [path, content] of map) {
+    let c = content;
+    for (const [fullUrl, localPath] of replacements) c = c.split(fullUrl).join(localPath);
+    if (c !== content) map.set(path, c);
+  }
+}
+
 // Titre d'onglet = nom de l'app + favicon SVG distinct (lettre + couleur dérivée du nom).
 function setAppBranding(map, name) {
   let html = map.get("index.html");
@@ -575,6 +619,23 @@ export async function deleteProjectFile(userId, projectId, filePath) {
   return { ok: true };
 }
 
+// Définit une image du projet comme favicon/logo (met à jour index.html).
+export async function setProjectFavicon(userId, projectId, imagePath) {
+  await getProject(userId, projectId);
+  const map = await loadFilesMap(projectId);
+  let html = map.get("index.html");
+  if (!html) throw new Error("index.html introuvable");
+  const href = "/" + cleanRelPath(imagePath).replace(/^public\//, "");
+  if (/<link[^>]*rel=["']icon["'][^>]*>/.test(html)) {
+    html = html.replace(/<link[^>]*rel=["']icon["'][^>]*>/, `<link rel="icon" href="${href}" />`);
+  } else {
+    html = html.replace(/<\/head>/, `    <link rel="icon" href="${href}" />\n  </head>`);
+  }
+  map.set("index.html", html);
+  await saveFilesMap(projectId, map);
+  return { ok: true, href };
+}
+
 // Émet les diffs (lignes +/-) pour chaque fichier touché (avant vs après).
 function emitTouchedDiffs(touched, oldMap, newMap, emit) {
   for (const p of touched) {
@@ -682,6 +743,7 @@ export async function createCodeSession(userId, prompt, modelId = KIMI_MODEL, mo
   const summary = String(plan.summary || "Projet généré par Kimi");
   const { id, slug } = await insertProject(userId, { summary, prompt, mode, run: plan.run });
   setAppBranding(map, plan.appName || summary.split(/[\s,.:;—-]+/).slice(0, 2).join(" "));
+  await materializeAiImages(id, map).catch(() => {});
   injectLaunchSdk(map, id);
   await saveFilesMap(id, map);
   return { id, slug, model: modelId, mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: usage.tokensOut, usage };
@@ -716,6 +778,8 @@ export async function createCodeSessionStream(userId, prompt, modelId, mode, emi
   const summary = String(plan.summary || "Projet généré");
   const { id, slug } = await insertProject(userId, { summary, prompt, mode, run: plan.run });
   setAppBranding(map, plan.appName || summary.split(/[\s,.:;—-]+/).slice(0, 2).join(" "));
+  emit?.({ type: "status", text: "Génération des images…" });
+  await materializeAiImages(id, map).catch(() => {});
   injectLaunchSdk(map, id);
   await saveFilesMap(id, map);
   if (!u.tokensOut) u.tokensOut = Math.ceil(JSON.stringify(plan).length / 4);
@@ -773,6 +837,7 @@ export async function editCodeSessionStream(userId, sessionId, prompt, modelId, 
   emitTouchedDiffs(touched, oldMap, map, emit);
   const summary = String(plan.summary || "Projet modifié");
   await touchProject(userId, sessionId, { summary, run: plan.run });
+  await materializeAiImages(sessionId, map).catch(() => {});
   injectLaunchSdk(map, sessionId);
   await saveFilesMap(sessionId, map);
   if (!u.tokensOut) u.tokensOut = Math.ceil(JSON.stringify(plan).length / 4);

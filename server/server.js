@@ -21,7 +21,7 @@ import { computeCreditCost, computeCreditFromCost, FREE_TIER_ONLY_PLANS } from "
 import { runDeepSearch } from "./lib/deepSearch.js";
 import { checkThrottle } from "./lib/throttle.js";
 import { compressIfNeeded } from "./lib/context.js";
-import { createCodeSession, editCodeSession, createCodeSessionStream, editCodeSessionStream, getCodePreviewFile, getCodeZip, getCodeSessionFiles, listCodeSessions, deleteCodeSession, renameCodeSession, getProjectBySlug, planChat, getProjectChat, saveProjectChat, addBinaryFile, deleteProjectFile } from "./lib/codegen.js";
+import { createCodeSession, editCodeSession, createCodeSessionStream, editCodeSessionStream, getCodePreviewFile, getCodeZip, getCodeSessionFiles, listCodeSessions, deleteCodeSession, renameCodeSession, getProjectBySlug, planChat, getProjectChat, saveProjectChat, addBinaryFile, deleteProjectFile, setProjectFavicon } from "./lib/codegen.js";
 import { deploySite, undeploySite, getProjectDeploy, getDeployFile } from "./lib/deploy.js";
 import { signupAppUser, loginAppUser, getAppUserFromToken, googleAuthUrl, handleGoogleCallback, verifyAppToken } from "./lib/launchAuth.js";
 import { listDocs, createDoc, getDoc, updateDoc, deleteDoc } from "./lib/launchData.js";
@@ -1288,6 +1288,12 @@ app.delete("/api/launch/:projectId/file", requireAuth, async (req, res) => {
   try {
     const filePath = String(req.query?.path || req.body?.path || "");
     res.json(await deleteProjectFile(req.user.id, req.params.projectId, filePath));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.post("/api/launch/:projectId/favicon", requireAuth, async (req, res) => {
+  try {
+    res.json(await setProjectFavicon(req.user.id, req.params.projectId, String(req.body?.path || "")));
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
