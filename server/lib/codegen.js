@@ -1,5 +1,22 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { getDb } from "./db.js";
 import { zipFiles } from "./zip.js";
+
+// Skills = instructions de codage externalisées (server/skills/*.md), éditables
+// sans toucher au code. Chargées et fournies à l'IA comme prompt système.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const SKILLS_DIR = path.join(__dirname, "..", "skills");
+const skillCache = new Map();
+function loadSkill(name) {
+  if (skillCache.has(name)) return skillCache.get(name);
+  let txt = "";
+  try { txt = fs.readFileSync(path.join(SKILLS_DIR, `${name}.md`), "utf8"); } catch { txt = ""; }
+  txt = txt.split("${PUBLIC_API}").join(PUBLIC_API);
+  skillCache.set(name, txt);
+  return txt;
+}
 
 // Stockage 100 % DB (Supabase/Postgres) : le filesystem Render est éphémère.
 const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -67,58 +84,6 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
 }
 `
 };
-
-const REACT_SYSTEM_PROMPT = `Tu es Kimi, un codeur IA full-stack. Tu réponds uniquement avec un objet JSON valide, sans markdown.
-
-Objectif: créer/modifier une vraie application web Vite + React 18 (exécutée en live dans le navigateur via WebContainer).
-
-Le scaffold de base existe déjà : package.json, vite.config.js, index.html, src/main.jsx, src/index.css, src/App.jsx.
-Tu n'as donc PAS besoin de les recréer sauf si tu veux les modifier.
-
-Format exact:
-{
-  "summary": "résumé court de l'app",
-  "actions": [
-    { "type": "write_file", "path": "src/App.jsx", "content": "export default function App(){...}" },
-    { "type": "write_file", "path": "src/components/Header.jsx", "content": "..." }
-  ],
-  "run": { "entry": "src/App.jsx", "instructions": "npm install && npm run dev" }
-}
-
-Règles:
-- Écris une app React fonctionnelle et complète dans src/ (App.jsx + composants dans src/components/).
-- Utilise des imports relatifs (./components/X.jsx, ./index.css).
-- Style : CSS dans src/index.css ou style inline. N'utilise PAS Tailwind ni de lib CSS externe (pas de build dispo).
-- Si tu as besoin d'une dépendance npm, RÉÉCRIS package.json en l'ajoutant aux dependencies (version exacte connue et stable).
-- Pas de chemin absolu, jamais de .. dans les paths.
-- Garde l'app compacte mais réelle et belle.
-- Auth managée : un SDK src/launch.js est FOURNI automatiquement (ne le crée pas, ne le modifie pas).
-  Pour ajouter login/inscription, importe-le : import { LaunchAuth } from "./launch.js";
-  Méthodes : await LaunchAuth.signup(email, password, name), await LaunchAuth.login(email, password),
-  LaunchAuth.loginWithGoogle(), await LaunchAuth.me() (→ user ou null), LaunchAuth.logout(),
-  LaunchAuth.isLoggedIn(). Les sessions sont persistées automatiquement. Utilise-le dès que
-  l'app a besoin de comptes utilisateurs — ne réimplémente JAMAIS l'auth toi-même.
-- Base de données managée : le même src/launch.js exporte LaunchDB (persistance auto, pas de backend à écrire).
-  import { LaunchDB } from "./launch.js";
-  await LaunchDB.list("todos")            → tableau de documents { id, ...champs }
-  await LaunchDB.list("todos", { mine:true }) → seulement ceux de l'utilisateur connecté
-  await LaunchDB.create("todos", { text:"...", done:false }) → document créé (avec id)
-  await LaunchDB.update("todos", id, { done:true }) ; await LaunchDB.remove("todos", id)
-  Utilise LaunchDB pour TOUTE persistance (listes, posts, paramètres…) — n'utilise PAS localStorage
-  pour les données partagées, ni une API/DB inventée.
-- Paiements : le même src/launch.js exporte LaunchPay. Pour vendre quelque chose :
-  import { LaunchPay } from "./launch.js";
-  await LaunchPay.checkout(amountCents, "Nom du produit")   // amountCents en centimes : 999 = 9,99€
-  → redirige vers Stripe Checkout puis revient sur l'app. N'invente pas d'intégration Stripe toi-même.
-  (Si le créateur n'a pas connecté Stripe, l'appel renvoie une erreur "Paiements non configurés" — gère-la
-  proprement avec un message.)
-- Images IA (Flux Schnell) : pour toute image (héros, illustration, vignette, avatar, fond),
-  utilise DIRECTEMENT cette URL dans un tag <img> — pas de fetch, pas de clé requise :
-  <img src="${PUBLIC_API}/api/launch/img?prompt=PROMPT_ENCODE" alt="..." />
-  où PROMPT_ENCODE est encodeURIComponent(ta description en anglais). Exemple :
-  <img src="${PUBLIC_API}/api/launch/img?prompt=modern%20minimalist%20office%20hero%20banner" />
-  Rapide et économique. Utilise-le librement pour rendre les apps belles et illustrées.
-- Réponds uniquement JSON.`;
 
 const SYSTEM_PROMPT = `Tu es Kimi, un codeur IA. Tu dois répondre uniquement avec un objet JSON valide, sans markdown.
 
@@ -302,10 +267,11 @@ async function streamModel({ prompt, modelId, systemPrompt, onPath }) {
   return { content, usage };
 }
 
-// Stream + parse JSON avec auto-retry : si le modèle renvoie un JSON invalide,
-// on lui renvoie l'erreur pour qu'il se corrige. L'usage est cumulé sur toutes
-// les tentatives ; en cas d'échec final, l'erreur PORTE l'usage (pour facturer).
-async function streamAndParse({ prompt, modelId, systemPrompt, onPath }) {
+// Stream → parse JSON → applique les actions sur une COPIE de baseMap, avec retry.
+// Si le JSON est invalide OU si un edit_file ne matche pas, on renvoie l'erreur au
+// modèle pour qu'il se corrige. L'usage est cumulé ; en échec final l'erreur le porte
+// (pour facturer les tokens consommés). Application transactionnelle (copie → commit).
+async function generatePlan({ prompt, modelId, systemPrompt, baseMap, onPath }) {
   const total = { tokensIn: 0, tokensOut: 0, costUsd: 0 };
   const add = (u) => {
     if (!u) return;
@@ -313,24 +279,22 @@ async function streamAndParse({ prompt, modelId, systemPrompt, onPath }) {
     total.tokensOut += Number(u.completion_tokens) || 0;
     total.costUsd += Number(u.cost) || 0;
   };
-
-  const first = await streamModel({ prompt, modelId, systemPrompt, onPath });
-  add(first.usage);
-  try {
-    return { plan: parseJsonObject(first.content), usage: total };
-  } catch (e1) {
-    const retryPrompt = `${prompt}\n\n⚠️ Ta réponse précédente n'était PAS un objet JSON valide (erreur: ${e1.message}). Renvoie UNIQUEMENT l'objet JSON valide demandé, rien avant ni après, sans texte ni markdown.`;
-    const second = await streamModel({ prompt: retryPrompt, modelId, systemPrompt, onPath });
-    add(second.usage);
+  let lastErr = "";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const p = attempt === 0 ? prompt
+      : `${prompt}\n\n⚠️ Erreur sur ta réponse précédente: ${lastErr}\nRenvoie UNIQUEMENT le JSON valide demandé. Pour edit_file, "search" doit être un extrait EXACT (copié caractère pour caractère) du fichier actuel.`;
+    const { content, usage } = await streamModel({ prompt: p, modelId, systemPrompt, onPath });
+    add(usage);
     try {
-      return { plan: parseJsonObject(second.content), usage: total };
-    } catch (e2) {
-      const err = new Error("L'IA n'a pas réussi à produire un code valide. Réessaie ou reformule.");
-      err.usage = total;       // pour facturer les tokens consommés malgré l'échec
-      err.code = "BAD_JSON";
-      throw err;
-    }
+      const plan = parseJsonObject(content);
+      const map = new Map(baseMap);               // copie : on ne commit qu'en cas de succès
+      const touched = applyActionsToMap(map, plan.actions);
+      return { plan, map, touched, usage: total };
+    } catch (e) { lastErr = e.message; }
   }
+  const err = new Error(`L'IA n'a pas produit une modification valide (${lastErr}). Réessaie ou reformule.`);
+  err.usage = total;
+  throw err;
 }
 
 // Extrait tokens + coût réel ($) de la réponse OpenRouter, pour la facturation.
@@ -432,23 +396,47 @@ function injectLaunchSdk(map, projectId) {
   map.set("src/launch.js", launchSdkSource(projectId));
 }
 
+// Applique un bloc search/replace (exact, puis tolérant aux espaces de fin de ligne).
+function applyEditBlock(content, search, replace) {
+  if (!search) return null;
+  if (content.includes(search)) return content.replace(search, replace);
+  const norm = (s) => String(s).replace(/\r\n/g, "\n").replace(/[ \t]+$/gm, "");
+  const nc = norm(content), ns = norm(search);
+  if (ns && nc.includes(ns)) return nc.replace(ns, norm(replace));
+  return null;
+}
+
 // Map(path → content) → applique les actions du modèle (mutation en place).
+// Renvoie l'ensemble des chemins touchés (pour les diffs).
 function applyActionsToMap(map, actions) {
   if (!Array.isArray(actions) || actions.length === 0) throw new Error("Aucune action de code reçue.");
   if (actions.length > MAX_ACTIONS) throw new Error("Trop d'actions générées.");
+  const touched = new Set();
   for (const action of actions) {
     const type = String(action?.type || "");
     if (type === "create_folder") continue;
     const clean = cleanRelPath(action?.path);
-    if (type === "delete_file") { map.delete(clean); continue; }
+    if (type === "delete_file") { map.delete(clean); touched.add(clean); continue; }
     if (type === "delete_folder") {
-      for (const k of [...map.keys()]) if (k === clean || k.startsWith(clean + "/")) map.delete(k);
+      for (const k of [...map.keys()]) if (k === clean || k.startsWith(clean + "/")) { map.delete(k); touched.add(k); }
       continue;
     }
     if (type === "write_file") {
       const content = String(action?.content ?? "");
       if (Buffer.byteLength(content, "utf8") > MAX_FILE_BYTES) throw new Error(`Fichier trop gros: ${clean}`);
-      map.set(clean, content);
+      map.set(clean, content); touched.add(clean);
+      continue;
+    }
+    if (type === "edit_file") {
+      const cur = map.get(clean);
+      if (cur == null) throw new Error(`edit_file sur un fichier inexistant: ${clean}`);
+      const next = applyEditBlock(cur, String(action?.search ?? ""), String(action?.replace ?? ""));
+      if (next == null) {
+        const err = new Error(`Bloc à remplacer introuvable dans ${clean} (le "search" doit être un extrait EXACT du fichier).`);
+        err.code = "EDIT_NOT_FOUND";
+        throw err;
+      }
+      map.set(clean, next); touched.add(clean);
       continue;
     }
     throw new Error(`Action inconnue: ${type}`);
@@ -458,6 +446,7 @@ function applyActionsToMap(map, actions) {
     total += Buffer.byteLength(c, "utf8");
     if (total > MAX_TOTAL_BYTES) throw new Error("Projet généré trop volumineux.");
   }
+  return touched;
 }
 
 function filesList(map) {
@@ -513,16 +502,16 @@ async function saveFilesMap(projectId, map) {
   await db.query(`INSERT INTO launch_files (project_id, path, content, bytes) VALUES ${tuples.join(",")}`, [projectId, ...vals]);
 }
 
-// Émet les diffs (lignes +/-) par fichier touché.
-function emitDiffs(plan, oldMap, emit) {
-  for (const action of (plan.actions || [])) {
-    if (action?.type === "write_file") {
-      const p = cleanRelPath(action.path);
-      const { added, removed } = lineDiffStats(oldMap.get(p) || "", String(action.content ?? ""));
-      emit?.({ type: "file", path: p, op: oldMap.has(p) ? "update" : "create", added, removed });
-    } else if (action?.type === "delete_file") {
-      const p = cleanRelPath(action.path);
-      emit?.({ type: "file", path: p, op: "delete", added: 0, removed: String(oldMap.get(p) || "").split("\n").length });
+// Émet les diffs (lignes +/-) pour chaque fichier touché (avant vs après).
+function emitTouchedDiffs(touched, oldMap, newMap, emit) {
+  for (const p of touched) {
+    const before = oldMap.get(p);
+    const after = newMap.get(p);
+    if (after == null) {
+      emit?.({ type: "file", path: p, op: "delete", added: 0, removed: String(before || "").split("\n").length });
+    } else {
+      const { added, removed } = lineDiffStats(before || "", after);
+      emit?.({ type: "file", path: p, op: before == null ? "create" : "update", added, removed });
     }
   }
 }
@@ -612,7 +601,7 @@ async function touchProject(userId, id, { summary, run }) {
 export async function createCodeSession(userId, prompt, modelId = KIMI_MODEL, mode = "static") {
   const isReact = mode === "react";
   const map = isReact ? scaffoldMap() : new Map();
-  const { plan, raw } = await callRing(prompt, modelId, isReact ? REACT_SYSTEM_PROMPT : SYSTEM_PROMPT);
+  const { plan, raw } = await callRing(prompt, modelId, isReact ? loadSkill("launch-create") : SYSTEM_PROMPT);
   applyActionsToMap(map, plan.actions);
   const usage = extractUsage(raw, plan);
   const summary = String(plan.summary || "Projet généré par Kimi");
@@ -627,7 +616,7 @@ export async function editCodeSession(userId, sessionId, prompt, modelId = KIMI_
   const isReact = mode === "react" || proj.mode === "react";
   const map = await loadFilesMap(sessionId);
   const editPrompt = `Projet actuel:\n${projectContext(map)}\n\nModification demandée:\n${String(prompt || "").slice(0, 12000)}\n\nRéponds avec le même JSON d'actions. Modifie uniquement ce qui est nécessaire.`;
-  const { plan, raw } = await callRing(editPrompt, modelId, isReact ? REACT_SYSTEM_PROMPT : SYSTEM_PROMPT);
+  const { plan, raw } = await callRing(editPrompt, modelId, isReact ? loadSkill("launch-edit") : SYSTEM_PROMPT);
   applyActionsToMap(map, plan.actions);
   const usage = extractUsage(raw, plan);
   const summary = String(plan.summary || "Projet modifié par Kimi");
@@ -639,16 +628,15 @@ export async function editCodeSession(userId, sessionId, prompt, modelId = KIMI_
 
 export async function createCodeSessionStream(userId, prompt, modelId, mode, emit) {
   const isReact = mode === "react";
-  const map = isReact ? scaffoldMap() : new Map();
-  const oldMap = new Map(map);
+  const baseMap = isReact ? scaffoldMap() : new Map();
+  const oldMap = new Map(baseMap);
   emit?.({ type: "status", text: "Génération du code…" });
-  const { plan, usage: u } = await streamAndParse({
-    prompt, modelId,
-    systemPrompt: isReact ? REACT_SYSTEM_PROMPT : SYSTEM_PROMPT,
+  const { plan, map, touched, usage: u } = await generatePlan({
+    prompt, modelId, baseMap,
+    systemPrompt: isReact ? loadSkill("launch-create") : SYSTEM_PROMPT,
     onPath: (p) => emit?.({ type: "action", path: p })
   });
-  applyActionsToMap(map, plan.actions);
-  emitDiffs(plan, oldMap, emit);
+  emitTouchedDiffs(touched, oldMap, map, emit);
   const summary = String(plan.summary || "Projet généré");
   const { id, slug } = await insertProject(userId, { summary, prompt, mode, run: plan.run });
   injectLaunchSdk(map, id);
@@ -657,20 +645,49 @@ export async function createCodeSessionStream(userId, prompt, modelId, mode, emi
   return { id, slug, model: modelId, mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: u.tokensOut, usage: u };
 }
 
+// Étape 1 de l'édition : le modèle choisit le(s) fichier(s) à modifier (peu de tokens,
+// évite de noyer le contexte). Renvoie { files, usage }.
+async function pickFilesForEdit(request, fileList, modelId) {
+  const usage = { tokensIn: 0, tokensOut: 0, costUsd: 0 };
+  const sys = `Tu es un routeur de fichiers pour un éditeur de code. Pour la tâche donnée, renvoie UNIQUEMENT un JSON {"files":["chemin/exact",...]} : la liste MINIMALE des fichiers existants à modifier et/ou des nouveaux fichiers à créer (souvent un seul). Rien d'autre que le JSON.`;
+  const user = `Fichiers du projet :\n${fileList.join("\n")}\n\nTâche : ${request}`;
+  try {
+    const data = await requestRing(user, true, modelId, sys);
+    const u = data?.usage || {};
+    usage.tokensIn = Number(u.prompt_tokens) || 0;
+    usage.tokensOut = Number(u.completion_tokens) || 0;
+    usage.costUsd = Number(u.cost) || 0;
+    const parsed = parseJsonObject(data?.choices?.[0]?.message?.content || "{}");
+    const files = Array.isArray(parsed.files) ? parsed.files.map(String).filter(Boolean) : [];
+    return { files, usage };
+  } catch { return { files: [], usage }; }
+}
+
 export async function editCodeSessionStream(userId, sessionId, prompt, modelId, mode, emit) {
   const proj = await getProject(userId, sessionId);
   const isReact = mode === "react" || proj.mode === "react";
-  const map = await loadFilesMap(sessionId);
-  const oldMap = new Map(map);
-  const editPrompt = `Projet actuel:\n${projectContext(map)}\n\nModification demandée:\n${String(prompt || "").slice(0, 12000)}\n\nRéponds avec le même JSON d'actions. Modifie uniquement ce qui est nécessaire.`;
+  const baseMap = await loadFilesMap(sessionId);
+  const oldMap = new Map(baseMap);
+  const request = String(prompt || "").slice(0, 12000);
+  const fileList = [...baseMap.keys()];
+
+  // Étape 1 : sélection des fichiers concernés (focalise le contexte → fiable + économe)
+  emit?.({ type: "status", text: "Analyse du projet…" });
+  const { files: picked, usage: pickUsage } = await pickFilesForEdit(request, fileList, modelId);
+  const targets = picked.filter((p) => fileList.includes(p) || /^[\w.-]+(\/[\w.-]+)*$/.test(p));
+  const ctxPaths = (targets.length ? targets : fileList).filter((p, i, a) => a.indexOf(p) === i).slice(0, 12);
+  const focus = ctxPaths.map((p) => `--- ${p} ---\n${baseMap.get(p) ?? "(nouveau fichier à créer)"}`).join("\n\n");
+
+  // Étape 2 : édition focalisée sur ces seuls fichiers
+  const editPrompt = `Fichier(s) concerné(s) par la tâche :\n\n${focus}\n\n════════ TÂCHE À RÉALISER ════════\n${request}\n\nApplique UNIQUEMENT cette tâche : edit_file pour modifier un fichier existant, write_file pour un nouveau. Ne touche à rien d'autre.`;
   emit?.({ type: "status", text: "Application des modifications…" });
-  const { plan, usage: u } = await streamAndParse({
-    prompt: editPrompt, modelId,
-    systemPrompt: isReact ? REACT_SYSTEM_PROMPT : SYSTEM_PROMPT,
+  const { plan, map, touched, usage: u } = await generatePlan({
+    prompt: editPrompt, modelId, baseMap,
+    systemPrompt: isReact ? loadSkill("launch-edit") : SYSTEM_PROMPT,
     onPath: (p) => emit?.({ type: "action", path: p })
   });
-  applyActionsToMap(map, plan.actions);
-  emitDiffs(plan, oldMap, emit);
+  u.tokensIn += pickUsage.tokensIn; u.tokensOut += pickUsage.tokensOut; u.costUsd += pickUsage.costUsd;
+  emitTouchedDiffs(touched, oldMap, map, emit);
   const summary = String(plan.summary || "Projet modifié");
   await touchProject(userId, sessionId, { summary, run: plan.run });
   injectLaunchSdk(map, sessionId);
