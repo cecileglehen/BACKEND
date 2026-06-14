@@ -105,6 +105,7 @@ export const CATEGORIES = {
     cost: 4,
     levelRange: [7, 8],
     models: [
+      { id: "deepseek/deepseek-v4-pro", brand: "DeepSeek", display: "DeepSeek V4 Pro", price: { in: 0.40, out: 1.60 }, ctx: 163840, tagline: "Qualité premium, prix imbattable ⚡" },
       { id: "openai/gpt-5.4", brand: "OpenAI", display: "GPT-5.4", price: { in: 2.50, out: 15.00 }, ctx: 400000, vision: true },
       { id: "amazon/nova-premier-v1", brand: "Nova", display: "Nova Premier", price: { in: 2.50, out: 12.50 }, ctx: 1000000, vision: true },
       { id: "qwen/qwen3.6-max-preview", brand: "Qwen", display: "Qwen 3.6 Max", price: { in: 2.00, out: 6.00 }, ctx: 1000000 },
@@ -317,6 +318,10 @@ const FAMILY_RULES = {
   ],
   Moonshot: [
     { id: "kimi",       label: "Kimi",        test: (id) => /^moonshotai\/kimi/.test(id) }
+  ],
+  DeepSeek: [
+    { id: "pro",        label: "DeepSeek Pro",   test: (id) => /deepseek-v4-pro/.test(id) },
+    { id: "flash",      label: "DeepSeek Flash", test: (id) => /deepseek-v4-flash/.test(id) }
   ],
   Nova: [
     { id: "nova-micro", label: "Nova Micro",    test: (id) => /^amazon\/nova-micro/.test(id) },
