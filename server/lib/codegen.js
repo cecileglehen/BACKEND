@@ -11,6 +11,9 @@ const MAX_FILE_BYTES = 500_000;
 const MAX_TOTAL_BYTES = 2_000_000;
 const MAX_ACTIONS = 80;
 
+// URL publique du backend (pour les images Flux Schnell embeddables dans les apps).
+const PUBLIC_API = (process.env.PUBLIC_API_URL || "https://deltai-backend.onrender.com").replace(/\/$/, "");
+
 // ─── Scaffold Vite + React (mode "react") ────────────────────────────────────
 // Base runnable garantie : l'IA n'a qu'à remplir src/. Ces fichiers sont écrits
 // AVANT les actions du modèle, qui peuvent les écraser (ex: ajouter des deps).
@@ -89,6 +92,12 @@ Règles:
 - Si tu as besoin d'une dépendance npm, RÉÉCRIS package.json en l'ajoutant aux dependencies (version exacte connue et stable).
 - Pas de chemin absolu, jamais de .. dans les paths.
 - Garde l'app compacte mais réelle et belle.
+- Images IA (Flux Schnell) : pour toute image (héros, illustration, vignette, avatar, fond),
+  utilise DIRECTEMENT cette URL dans un tag <img> — pas de fetch, pas de clé requise :
+  <img src="${PUBLIC_API}/api/launch/img?prompt=PROMPT_ENCODE" alt="..." />
+  où PROMPT_ENCODE est encodeURIComponent(ta description en anglais). Exemple :
+  <img src="${PUBLIC_API}/api/launch/img?prompt=modern%20minimalist%20office%20hero%20banner" />
+  Rapide et économique. Utilise-le librement pour rendre les apps belles et illustrées.
 - Réponds uniquement JSON.`;
 
 const SYSTEM_PROMPT = `Tu es Kimi, un codeur IA. Tu dois répondre uniquement avec un objet JSON valide, sans markdown.
@@ -119,6 +128,9 @@ Règles:
 - Si tu crées plusieurs pages HTML comme pricing.html, relie-les depuis index.html avec des liens relatifs simples, par exemple href="pricing.html".
 - Pour HTML/CSS/JS, utilise des fichiers séparés quand c'est utile et des chemins relatifs qui fonctionnent en preview.
 - Garde le projet compact mais complet.
+- Images IA (Flux Schnell) : embarque-les directement, sans clé :
+  <img src="${PUBLIC_API}/api/launch/img?prompt=DESCRIPTION_ENCODE_EN_ANGLAIS" alt="..." />
+  Idéal pour illustrations, héros, vignettes. Rapide et économique.
 - Réponds uniquement JSON.`;
 
 function parseJsonObject(raw) {

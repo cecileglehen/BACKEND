@@ -1024,7 +1024,46 @@ app.post("/api/launch/deploy", requireAuth, async (req, res) => {
   }
 });
 
-// Sites déployés (statique). En prod, on pourra mapper deltai.fr/<slug> dessus.
+// Génération d'images Flux Schnell embeddable (sans token) pour les apps Launch.
+// <img src="…/api/launch/img?prompt=…"> → redirige vers l'image (CDN fal).
+// Cache par prompt (dédoublonne) + rate-limit par IP (anti-abus).
+const launchImgCache = new Map();   // promptKey → { url, ts }
+const launchImgRate = new Map();    // ip → [timestamps]
+const LAUNCH_IMG_TTL = 24 * 3600 * 1000;
+const LAUNCH_IMG_RATE = { max: 30, windowMs: 60 * 1000 };
+
+function launchImgAllowed(ip) {
+  const now = Date.now();
+  const arr = (launchImgRate.get(ip) || []).filter((t) => now - t < LAUNCH_IMG_RATE.windowMs);
+  if (arr.length >= LAUNCH_IMG_RATE.max) return false;
+  arr.push(now);
+  launchImgRate.set(ip, arr);
+  return true;
+}
+
+app.get("/api/launch/img", async (req, res) => {
+  try {
+    const prompt = String(req.query?.prompt || "").trim().slice(0, 500);
+    if (!prompt) return res.status(400).send("prompt requis");
+    const key = prompt.toLowerCase();
+
+    const cached = launchImgCache.get(key);
+    if (cached && Date.now() - cached.ts < LAUNCH_IMG_TTL) return res.redirect(302, cached.url);
+
+    const ip = (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.socket.remoteAddress || "?";
+    if (!launchImgAllowed(ip)) return res.status(429).send("Trop de requêtes, réessaie dans une minute.");
+
+    const { falGenerateImage } = await import("./lib/fal.js");
+    const result = await falGenerateImage("fal-ai/flux-1/schnell", prompt);
+    if (!result?.url) return res.status(502).send("Génération échouée");
+    launchImgCache.set(key, { url: result.url, ts: Date.now() });
+    res.redirect(302, result.url);
+  } catch (e) {
+    console.error("[launch/img]", e);
+    res.status(500).send("Erreur génération image");
+  }
+});
+
 // Sites déployés (servis depuis la DB). /sites/<slug>/<chemin>
 app.get(/^\/sites\/([a-z0-9-]+)(?:\/(.*))?$/, async (req, res) => {
   try {
