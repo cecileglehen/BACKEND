@@ -1,0 +1,117 @@
+// Paiements managés pour les apps Launch via Stripe Connect (modèle platform).
+// Le créateur connecte son compte Express ; les paiements vont sur SON compte
+// (destination charge) avec une commission plateforme (application_fee).
+import Stripe from "stripe";
+import { getDb } from "./db.js";
+
+const FEE_PCT = Number(process.env.LAUNCH_PLATFORM_FEE_PCT || 10);
+const UUID_RE = /^[0-9a-f-]{36}$/i;
+
+let _stripe = null;
+function stripe() {
+  if (!_stripe) {
+    const key = (process.env.STRIPE_SECRET_KEY || "").trim();
+    if (!key) throw new Error("STRIPE_SECRET_KEY manquante");
+    _stripe = new Stripe(key);
+  }
+  return _stripe;
+}
+
+async function getOwnedProject(userId, projectId) {
+  if (!UUID_RE.test(String(projectId))) throw new Error("Projet introuvable");
+  const { rows } = await getDb().query(
+    `SELECT id, user_id, stripe_account_id FROM launch_projects WHERE id=$1`, [projectId]
+  );
+  const p = rows[0];
+  if (!p) throw new Error("Projet introuvable");
+  if (String(p.user_id) !== String(userId)) throw new Error("Accès refusé");
+  return p;
+}
+
+// ─── Onboarding du créateur (Express) ─────────────────────────────────────────
+export async function createConnectLink(userId, projectId, { returnUrl, refreshUrl } = {}) {
+  const p = await getOwnedProject(userId, projectId);
+  const s = stripe();
+  let acct = p.stripe_account_id;
+  if (!acct) {
+    const account = await s.accounts.create({ type: "express", metadata: { projectId } });
+    acct = account.id;
+    await getDb().query(`UPDATE launch_projects SET stripe_account_id=$2 WHERE id=$1`, [projectId, acct]);
+  }
+  const link = await s.accountLinks.create({
+    account: acct,
+    refresh_url: refreshUrl || returnUrl || "https://deltai.fr",
+    return_url: returnUrl || "https://deltai.fr",
+    type: "account_onboarding"
+  });
+  return { url: link.url };
+}
+
+export async function getConnectStatus(userId, projectId) {
+  const p = await getOwnedProject(userId, projectId);
+  if (!p.stripe_account_id) return { connected: false, chargesEnabled: false, payoutsEnabled: false };
+  const acct = await stripe().accounts.retrieve(p.stripe_account_id);
+  return {
+    connected: true,
+    chargesEnabled: !!acct.charges_enabled,
+    payoutsEnabled: !!acct.payouts_enabled,
+    detailsSubmitted: !!acct.details_submitted
+  };
+}
+
+// ─── Paiement client (Checkout, destination charge + commission) ──────────────
+export async function createCheckout(projectId, { amount, label, currency, quantity, successUrl, cancelUrl }, appUserId) {
+  if (!UUID_RE.test(String(projectId))) throw new Error("Projet introuvable");
+  const { rows } = await getDb().query(`SELECT stripe_account_id FROM launch_projects WHERE id=$1`, [projectId]);
+  const p = rows[0];
+  if (!p) throw new Error("Projet introuvable");
+  if (!p.stripe_account_id) throw new Error("Paiements non configurés pour cette app.");
+
+  const cents = Math.round(Number(amount));
+  if (!Number.isFinite(cents) || cents < 50) throw new Error("Montant invalide (min 50).");
+  const cur = String(currency || "eur").toLowerCase();
+  const qty = Math.max(1, Math.min(100, Number(quantity) || 1));
+  const fee = Math.floor((cents * qty * FEE_PCT) / 100);
+
+  const s = stripe();
+  const acct = await s.accounts.retrieve(p.stripe_account_id);
+  if (!acct.charges_enabled) throw new Error("Le compte Stripe du créateur n'est pas encore actif.");
+
+  const session = await s.checkout.sessions.create({
+    mode: "payment",
+    line_items: [{
+      price_data: { currency: cur, unit_amount: cents, product_data: { name: String(label || "Paiement").slice(0, 120) } },
+      quantity: qty
+    }],
+    payment_intent_data: {
+      application_fee_amount: fee,
+      transfer_data: { destination: p.stripe_account_id }
+    },
+    success_url: successUrl || "https://deltai.fr",
+    cancel_url: cancelUrl || successUrl || "https://deltai.fr"
+  });
+
+  await getDb().query(
+    `INSERT INTO launch_payments (project_id, app_user_id, session_id, amount, currency, fee, label, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,'pending') ON CONFLICT (session_id) DO NOTHING`,
+    [projectId, appUserId || null, session.id, cents * qty, cur, fee, String(label || "").slice(0, 120)]
+  );
+  return { url: session.url, id: session.id };
+}
+
+// ─── Webhook (confirme les paiements) ─────────────────────────────────────────
+export async function handleWebhook(rawBody, sig) {
+  const whsec = (process.env.STRIPE_WEBHOOK_SECRET || "").trim();
+  const s = stripe();
+  let event;
+  if (whsec) {
+    event = s.webhooks.constructEvent(rawBody, sig, whsec);
+  } else {
+    event = typeof rawBody === "string" ? JSON.parse(rawBody) : JSON.parse(rawBody.toString("utf8"));
+  }
+  if (event.type === "checkout.session.completed") {
+    const sess = event.data.object;
+    await getDb().query(`UPDATE launch_payments SET status='paid' WHERE session_id=$1`, [sess.id]);
+  }
+  return { received: true };
+}
