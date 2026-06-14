@@ -49,6 +49,23 @@ app.set("trust proxy", 1);
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: "2mb", verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
+// Sites déployés par sous-domaine : <slug>.deltai.fr → sert le site du slug.
+const SITES_DOMAIN = (process.env.SITES_DOMAIN || "deltai.fr").toLowerCase();
+const RESERVED_SUBS = new Set(["www", "launch", "api", "sites", "app", "mail", "ftp", "cdn", "static", "admin"]);
+app.use(async (req, res, next) => {
+  const host = (req.headers.host || "").split(":")[0].toLowerCase();
+  if (!host.endsWith("." + SITES_DOMAIN)) return next();
+  const sub = host.slice(0, -(SITES_DOMAIN.length + 1));
+  if (!sub || sub.includes(".") || RESERVED_SUBS.has(sub)) return next();
+  try {
+    const file = await getDeployFile(sub, req.path && req.path !== "/" ? req.path : "index.html");
+    if (!file) return res.status(404).send("Site introuvable");
+    res.setHeader("Content-Type", file.contentType);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    return res.send(file.content);
+  } catch (e) { return res.status(404).send(e.message); }
+});
+
 function cookieValue(req, name) {
   const cookies = String(req.headers.cookie || "").split(";").map((part) => part.trim());
   const prefix = `${name}=`;
