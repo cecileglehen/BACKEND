@@ -50,7 +50,7 @@ export default function Navbar() {
   };
 
   return (
-    <header className="flex-shrink-0 border-b border-delt-border bg-white sticky top-0 z-30 safe-pt">
+    <header className="flex-shrink-0 glass-strong border-x-0 border-t-0 border-b border-delt-border/60 sticky top-0 z-30 safe-pt">
       <div className="min-h-14 px-2 sm:px-4 py-2 flex items-center justify-between gap-2 sm:gap-4 safe-px">
         <Logo />
 
@@ -62,14 +62,16 @@ export default function Navbar() {
               end={to === "/"}
               className={({ isActive }) => {
                 if (highlight === "blue") {
-                  return `px-2.5 sm:px-3.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold tracking-wider transition-colors whitespace-nowrap ${
+                  return `px-2.5 sm:px-3.5 py-1.5 rounded-full text-[10px] sm:text-xs font-bold tracking-wider transition-all whitespace-nowrap shadow-sm ${
                     isActive
-                      ? "bg-blue-600 text-white"
-                      : "bg-blue-500 text-white hover:bg-blue-600 shadow-sm"
+                      ? "bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-blue-500/30"
+                      : "bg-gradient-to-br from-blue-500 to-indigo-500 text-white hover:from-blue-600 hover:to-indigo-600 hover:shadow-md hover:shadow-blue-500/30"
                   }`;
                 }
-                return `px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
-                  isActive ? "bg-delt-panel text-delt-text" : "text-delt-muted hover:text-delt-text hover:bg-delt-surface/60"
+                return `px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
+                  isActive
+                    ? "bg-white/90 text-delt-text shadow-sm ring-1 ring-delt-border/80"
+                    : "text-delt-muted hover:text-delt-text hover:bg-white/50"
                 }`;
               }}
             >
@@ -95,7 +97,7 @@ export default function Navbar() {
               {initial}
             </button>
             {open && (
-              <div className="absolute right-0 mt-2 w-[calc(100vw-1rem)] max-w-64 rounded-xl border border-delt-border bg-white shadow-xl z-50 overflow-hidden animate-slideInDown origin-top-right">
+              <div className="absolute right-0 mt-2 w-[calc(100vw-1rem)] max-w-64 rounded-2xl glass-strong z-50 overflow-hidden animate-slideInDown origin-top-right">
                 <div className="px-4 py-3 border-b border-delt-border">
                   <div className="text-sm font-semibold text-delt-text truncate">{user.email}</div>
                   <div className="text-xs text-delt-muted mt-0.5 flex items-center gap-1.5">

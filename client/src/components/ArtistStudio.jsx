@@ -45,7 +45,7 @@ function TabButton({ active, onClick, icon, label, sub }) {
       className={`flex-1 px-3 py-3 rounded-2xl border-2 transition-all flex items-center gap-3 ${
         active
           ? "border-transparent text-white shadow-md"
-          : "border-delt-border bg-white text-delt-text hover:border-delt-text/30"
+          : "border-transparent glass-card text-delt-text"
       }`}
       style={active ? { background: "linear-gradient(135deg, #6366f1, #06b6d4)" } : {}}
     >
@@ -115,7 +115,7 @@ function ImageTab({ catalog, onCreditsUsed }) {
               className={`text-left rounded-xl p-3 border-2 transition-all ${
                 modelId === m.id
                   ? "border-delt-accent bg-indigo-50"
-                  : "border-delt-border bg-white hover:border-delt-text/30"
+                  : "border-transparent glass-card"
               }`}
             >
               <div className="flex items-center justify-between mb-1">
@@ -129,7 +129,7 @@ function ImageTab({ catalog, onCreditsUsed }) {
       </div>
 
       {/* Prompt */}
-      <div className="rounded-2xl bg-white border border-delt-border p-4 shadow-sm">
+      <div className="rounded-2xl glass-card p-4 focus-within:border-indigo-200">
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value.slice(0, 2000))}
@@ -155,7 +155,7 @@ function ImageTab({ catalog, onCreditsUsed }) {
               className={`text-xs px-3 py-1.5 rounded-full border font-medium transition-colors ${
                 style === s.label
                   ? "bg-delt-text text-white border-delt-text"
-                  : "bg-white text-delt-muted border-delt-border hover:text-delt-text hover:border-delt-text/30"
+                  : "glass-pill text-delt-muted border-transparent hover:text-delt-text"
               }`}
             >
               {s.label}
@@ -176,7 +176,7 @@ function ImageTab({ catalog, onCreditsUsed }) {
               className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-colors ${
                 aspect === r.value
                   ? "border-delt-accent bg-indigo-50 text-delt-text"
-                  : "border-delt-border bg-white text-delt-muted hover:border-delt-text/30 hover:text-delt-text"
+                  : "border-transparent glass-card text-delt-muted hover:text-delt-text"
               }`}
             >
               <div className="rounded-sm border-2 border-current"
@@ -290,7 +290,7 @@ function VideoTab({ catalog, onCreditsUsed }) {
         </div>
       </div>
 
-      <div className="rounded-2xl bg-white border border-delt-border p-4 shadow-sm">
+      <div className="rounded-2xl glass-card p-4 focus-within:border-indigo-200">
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value.slice(0, 2000))}
@@ -341,7 +341,7 @@ function VideoTab({ catalog, onCreditsUsed }) {
       )}
 
       {result?.url && (
-        <div className="rounded-2xl bg-white border border-delt-border p-4 shadow-sm">
+        <div className="rounded-2xl glass-card p-4 focus-within:border-indigo-200">
           <div className="flex items-center justify-between mb-3">
             <div className="text-xs font-semibold uppercase tracking-wider text-delt-muted">Résultat</div>
             <button
@@ -380,7 +380,7 @@ export default function ArtistStudio() {
 
       {/* Hero */}
       <div className="text-center space-y-3">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl shadow-md"
+        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl shadow-lg shadow-pink-500/30 animate-bounceIn"
           style={{ background: "linear-gradient(135deg, #ec4899, #f97316)" }}>
           <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10"/>
@@ -391,7 +391,7 @@ export default function ArtistStudio() {
             <line x1="12" y1="22" x2="12" y2="18"/>
           </svg>
         </div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-delt-text tracking-tight">{t("artist.title")}</h1>
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gradient">{t("artist.title")}</h1>
         <p className="text-sm text-delt-muted max-w-md mx-auto">
           {t("artist.subtitle")}
         </p>

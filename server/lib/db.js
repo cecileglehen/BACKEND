@@ -196,6 +196,8 @@ export async function initSchema() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS launch_stripe_account_id TEXT;
     -- (legacy, conservé) ancien compte par projet
     ALTER TABLE launch_projects ADD COLUMN IF NOT EXISTS stripe_account_id TEXT;
+    -- Cible Notion (page/DB) du créateur pour journaliser les commandes
+    ALTER TABLE launch_projects ADD COLUMN IF NOT EXISTS notion_target TEXT;
 
     CREATE TABLE IF NOT EXISTS launch_payments (
       id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),

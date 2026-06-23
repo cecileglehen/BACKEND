@@ -107,13 +107,13 @@ function AgentsManager({ user, t, toast, navigate, setSearchParams }) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto bg-gradient-to-b from-indigo-50/60 via-white to-white">
+    <div className="flex-1 overflow-y-auto">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
 
         {/* En-tête / présentation */}
         <div className="text-center mb-10 animate-fadeInUp">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white text-3xl shadow-lg animate-bounceIn">🤖</div>
-          <h1 className="mt-4 text-3xl sm:text-4xl font-extrabold text-delt-text tracking-tight">{t("agents.title")}</h1>
+          <h1 className="mt-4 text-3xl sm:text-4xl font-extrabold tracking-tight text-gradient">{t("agents.title")}</h1>
           <p className="mt-3 text-sm sm:text-base text-delt-muted max-w-xl mx-auto leading-relaxed">{t("agents.intro")}</p>
 
           {/* Capacités */}
@@ -124,7 +124,7 @@ function AgentsManager({ user, t, toast, navigate, setSearchParams }) {
               { icon: "🔌", key: "agents.cap_tools" },
               { icon: "📄", key: "agents.cap_files" }
             ].map((c) => (
-              <div key={c.key} className="rounded-xl border border-delt-border bg-white p-3 text-center hover-lift">
+              <div key={c.key} className="glass-card rounded-xl p-3 text-center hover-lift">
                 <div className="text-2xl">{c.icon}</div>
                 <div className="text-[11px] font-semibold text-delt-text mt-1 leading-tight">{t(c.key)}</div>
               </div>
@@ -165,7 +165,7 @@ function AgentsManager({ user, t, toast, navigate, setSearchParams }) {
                 <div className="mt-10 mb-3 text-xs font-bold uppercase tracking-widest text-delt-muted">{t("agents.templates")}</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 stagger-children">
                   {TEMPLATES.map((tpl) => (
-                    <button key={tpl.nameKey} onClick={() => startNew(tpl)} className="text-left rounded-2xl border border-delt-border bg-white p-4 hover-lift flex gap-3 items-start">
+                    <button key={tpl.nameKey} onClick={() => startNew(tpl)} className="text-left glass-card rounded-2xl p-4 hover-lift flex gap-3 items-start">
                       <span className="text-2xl flex-shrink-0">{tpl.icon}</span>
                       <div className="min-w-0">
                         <div className="font-bold text-delt-text text-sm">{t(tpl.nameKey)}</div>
@@ -192,7 +192,7 @@ function AgentsManager({ user, t, toast, navigate, setSearchParams }) {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 stagger-children">
               {agents.map((a) => (
-                <div key={a.id} className="rounded-2xl border border-delt-border bg-white p-4 hover-lift flex flex-col" style={{ borderColor: `${a.color}44` }}>
+                <div key={a.id} className="glass-card rounded-2xl p-4 hover-lift flex flex-col" style={{ borderColor: `${a.color}44` }}>
                   <div className="flex items-start gap-3">
                     <span className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl flex-shrink-0" style={{ background: `${a.color}1a` }}>{a.icon || "🤖"}</span>
                     <div className="min-w-0 flex-1">
@@ -302,8 +302,8 @@ function AgentEditor({ agent, catalog, integrations, onClose, onSaved }) {
   };
 
   return (
-    <div onClick={onClose} className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-backdropFade">
-      <div onClick={(e) => e.stopPropagation()} className="bg-white w-full sm:max-w-2xl sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh] animate-slideUp">
+    <div onClick={onClose} className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-backdropFade">
+      <div onClick={(e) => e.stopPropagation()} className="glass-strong w-full sm:max-w-2xl sm:rounded-3xl rounded-t-3xl overflow-hidden flex flex-col max-h-[94vh] animate-slideUp">
         {/* Header */}
         <div className="px-5 py-4 border-b border-delt-border flex items-center justify-between flex-shrink-0">
           <h2 className="text-lg font-extrabold text-delt-text">{isNew ? t("agents.editor_new") : t("agents.editor_edit")}</h2>

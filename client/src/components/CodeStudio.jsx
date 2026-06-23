@@ -4,10 +4,10 @@ import { api, getToken } from "../lib/api.js";
 
 const MODELS = [
   {
-    id: "inclusionai/ring-2.6-1t:free",
-    label: "Ring 2.6",
-    sub: "Gratuit",
-    brand: "InclusionAI",
+    id: "moonshotai/kimi-k2.7-code",
+    label: "Kimi K2.7 Code",
+    sub: "Agent code",
+    brand: "Moonshot",
     color: "#10b981"
   },
   {
@@ -250,14 +250,14 @@ export default function CodeStudio() {
       <div className="max-w-4xl mx-auto px-3 sm:px-6 py-6 sm:py-10 space-y-8">
         {/* Hero */}
         <div className="text-center space-y-3">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl shadow-md"
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl shadow-lg shadow-indigo-500/30 animate-bounceIn"
             style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
             <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="16 18 22 12 16 6"/>
               <polyline points="8 6 2 12 8 18"/>
             </svg>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-delt-text tracking-tight">{t("code.title")}</h1>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gradient">{t("code.title")}</h1>
           <p className="text-sm sm:text-base text-delt-muted max-w-lg mx-auto">
             {t("code.description")}
           </p>
@@ -265,7 +265,7 @@ export default function CodeStudio() {
 
         {/* Model selector */}
         <div className="flex justify-center">
-          <div className="inline-flex p-1 rounded-full bg-delt-surface border border-delt-border">
+          <div className="inline-flex p-1 rounded-full glass-pill">
             {MODELS.map((m) => (
               <button
                 key={m.id}
@@ -288,7 +288,7 @@ export default function CodeStudio() {
         </div>
 
         {/* Prompt */}
-        <div className="rounded-2xl bg-white border border-delt-border shadow-sm p-4">
+        <div className="rounded-2xl glass-card p-4 focus-within:border-indigo-200 focus-within:shadow-[0_8px_32px_-8px_rgba(99,102,241,0.25)]">
           <textarea
             ref={promptRef}
             value={prompt}
@@ -356,7 +356,7 @@ export default function CodeStudio() {
                 key={ex}
                 type="button"
                 onClick={() => { setPrompt(ex); promptRef.current?.focus(); }}
-                className="text-left rounded-xl bg-white border border-delt-border p-3 hover:border-delt-text/40 hover:shadow-sm transition-all"
+                className="text-left glass-card p-3 hover-lift"
               >
                 <div className="text-xs text-delt-text leading-relaxed line-clamp-3">{ex}</div>
               </button>
@@ -420,8 +420,8 @@ export default function CodeStudio() {
       <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)] gap-3">
 
         {/* File explorer */}
-        <div className="rounded-2xl bg-white border border-delt-border overflow-hidden flex flex-col min-h-0 lg:max-h-[calc(100vh-180px)]">
-          <div className="px-3 py-2.5 border-b border-delt-border flex items-center justify-between bg-delt-surface">
+        <div className="rounded-2xl glass-card overflow-hidden flex flex-col min-h-0 lg:max-h-[calc(100vh-180px)]">
+          <div className="px-3 py-2.5 border-b border-delt-border/70 flex items-center justify-between bg-white/40">
             <span className="text-[11px] font-bold uppercase tracking-widest text-delt-muted">
               {sortedFiles.length} fichier{sortedFiles.length > 1 ? "s" : ""}
             </span>
@@ -448,7 +448,7 @@ export default function CodeStudio() {
             })}
           </div>
           {session.run?.instructions && (
-            <div className="border-t border-delt-border px-3 py-2 text-[11px] text-delt-muted bg-delt-surface">
+            <div className="border-t border-delt-border/70 px-3 py-2 text-[11px] text-delt-muted bg-white/40">
               <div className="font-semibold mb-0.5 text-delt-text">▶ Lancement</div>
               <div className="leading-relaxed">{session.run.instructions}</div>
             </div>
@@ -456,15 +456,15 @@ export default function CodeStudio() {
         </div>
 
         {/* Viewer */}
-        <div className="rounded-2xl bg-white border border-delt-border overflow-hidden flex flex-col min-h-0 lg:max-h-[calc(100vh-180px)]">
+        <div className="rounded-2xl glass-card overflow-hidden flex flex-col min-h-0 lg:max-h-[calc(100vh-180px)]">
           {/* Tabs + file info */}
-          <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-delt-border bg-delt-surface">
+          <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-delt-border/70 bg-white/40">
             <div className="flex items-center gap-2 min-w-0">
               {selectedFile && <FileIcon path={selectedFile} size={14} />}
               <span className="font-mono text-xs text-delt-text truncate">{selectedFile || "—"}</span>
             </div>
             {selectedFile && isHtmlFile(selectedFile) && (
-              <div className="inline-flex p-0.5 rounded-full bg-white border border-delt-border">
+              <div className="inline-flex p-0.5 rounded-full glass-pill">
                 <button
                   type="button"
                   onClick={() => setViewMode("preview")}
@@ -535,7 +535,7 @@ export default function CodeStudio() {
       </div>
 
       {/* Bottom: edit input */}
-      <div className="rounded-2xl bg-white border border-delt-border p-3 flex items-end gap-2">
+      <div className="rounded-2xl glass-strong p-3 flex items-end gap-2 focus-within:border-indigo-200">
         <textarea
           value={editPrompt}
           onChange={(e) => setEditPrompt(e.target.value)}

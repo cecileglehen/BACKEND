@@ -23,6 +23,7 @@ export const BRAND_CONFIG = {
   Nova:        { icon: "/brands/nova-color.svg",       label: "Nova" },
   Qwen:        { icon: "/brands/qwen-color.svg",       label: "Qwen" },
   DeepSeek:    { icon: "/brands/deepseek-color.svg",   label: "DeepSeek" },
+  "Z.ai":      { icon: null,                           label: "GLM" },
   Suno:        { icon: null,                           label: "Suno" }
 };
 

@@ -26,7 +26,7 @@ export default function ConversationList({ conversations, activeId, onSelect, on
       <div className="p-3 flex-shrink-0">
         <button
           onClick={onNew}
-          className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-delt-border text-sm font-medium text-delt-text hover:bg-delt-surface transition-colors cursor-pointer"
+          className="w-full flex items-center justify-center gap-2 py-2 rounded-xl glass-pill text-sm font-medium text-delt-text hover:bg-white/80 transition-colors cursor-pointer"
         >
           <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
             <path d="M8 3v10M3 8h10" />
@@ -48,7 +48,7 @@ export default function ConversationList({ conversations, activeId, onSelect, on
               <div
                 key={conv.id}
                 className={`group relative flex items-start gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
-                  active ? "bg-delt-panel" : "hover:bg-delt-surface"
+                  active ? "bg-white/80 shadow-sm ring-1 ring-delt-border/60" : "hover:bg-white/50"
                 }`}
                 onMouseEnter={() => setHovered(conv.id)}
                 onMouseLeave={() => setHovered(null)}

@@ -48,6 +48,21 @@ export function listAvailableApps() {
   return APPS_AVAILABLE;
 }
 
+// Vrai statut de connexion côté Composio (≠ notre base optimiste).
+// Renvoie "ACTIVE" | "EXPIRED" | "INITIATED" | "FAILED" | null.
+export async function getLiveConnectionStatus(userId, app) {
+  try {
+    const co = client();
+    const list = await co.connectedAccounts.list({ userIds: [String(userId)] });
+    const items = list?.items || list || [];
+    const matches = items.filter((c) => String(c.toolkit?.slug || c.toolkit || c.appName || "").toLowerCase() === String(app).toLowerCase());
+    const active = matches.find((c) => c.status === "ACTIVE");
+    return (active || matches[0])?.status || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function listUserIntegrations(userId) {
   const db = getDb();
   const { rows } = await db.query(
@@ -98,6 +113,15 @@ export async function initiateConnection({ userId, app, redirectUrl }) {
   const co = client();
   const entityId = String(userId);
   const authConfigId = await ensureAuthConfig(co, app);
+  // Évite l'erreur "Multiple connected accounts" : on supprime les comptes
+  // existants de ce toolkit (expirés ou doublons) AVANT d'en créer un neuf.
+  try {
+    const existing = await co.connectedAccounts.list({ userIds: [entityId] });
+    for (const c of (existing?.items || [])) {
+      const slug = String(c.toolkit?.slug || c.toolkit || c.appName || "").toLowerCase();
+      if (slug === String(app).toLowerCase()) await co.connectedAccounts.delete(c.id).catch(() => {});
+    }
+  } catch { /* noop : on continue même si le nettoyage échoue */ }
   // Note : .initiate() est DEPRECATED pour les auth configs managées par
   // Composio (depuis fin 2025). On utilise .link() qui est la nouvelle API.
   const connection = await co.connectedAccounts.link(entityId, authConfigId, {
@@ -152,6 +176,22 @@ export async function revokeIntegration({ userId, app }) {
 // l'IA ne voit jamais Calendar). On fait donc UN APPEL PAR TOOLKIT avec
 // limit=25 → garanti que chaque app a sa juste représentation.
 //
+// Outils ESSENTIELS garantis par app : Composio ne renvoie que ~25 tools/app, et
+// certaines actions clés (modifier le schéma = AJOUTER UNE COLONNE) ne sont pas dans
+// le top 25. On les charge explicitement par slug pour qu'elles soient toujours dispo.
+const ESSENTIAL_TOOLS = {
+  notion: [
+    "NOTION_CREATE_DATABASE",
+    "NOTION_UPDATE_SCHEMA_DATABASE",   // ajouter/renommer/retyper une colonne
+    "NOTION_INSERT_ROW_DATABASE",
+    "NOTION_QUERY_DATABASE",
+    "NOTION_UPDATE_ROW_DATABASE",
+    "NOTION_CREATE_NOTION_PAGE",
+    "NOTION_FETCH_DATABASE",
+    "NOTION_SEARCH_NOTION_PAGE"
+  ]
+};
+
 // `appsOverride` = sous-liste d'apps activées dans le composer (sinon toutes
 // les apps connectées).
 export async function getToolsForUser(userId, appsOverride = null) {
@@ -167,8 +207,20 @@ export async function getToolsForUser(userId, appsOverride = null) {
   const out = [];
   const results = await Promise.all(connectedApps.map(async (app) => {
     try {
-      const tools = await co.tools.get(String(userId), { toolkits: [app], limit: TOOLS_PER_APP });
-      return Array.isArray(tools) ? tools : Object.values(tools || {});
+      const essentials = ESSENTIAL_TOOLS[app];
+      const reqs = [co.tools.get(String(userId), { toolkits: [app], limit: TOOLS_PER_APP })];
+      if (essentials) reqs.push(co.tools.get(String(userId), { tools: essentials }));
+      const got = await Promise.all(reqs);
+      const toArr = (t) => (Array.isArray(t) ? t : Object.values(t || {}));
+      const essArr = essentials ? toArr(got[1]) : [];
+      // Essentiels EN TÊTE pour survivre au cap, puis le reste du toolkit, dédupé.
+      const seen = new Set();
+      const merged = [];
+      for (const t of [...essArr, ...toArr(got[0])]) {
+        const n = (t.function || t)?.name;
+        if (n && !seen.has(n)) { seen.add(n); merged.push(t); }
+      }
+      return merged.slice(0, TOOLS_PER_APP);
     } catch (e) {
       console.warn(`[composio] getTools fail pour ${app}:`, e.message);
       return [];

@@ -9,7 +9,7 @@ import ModelPreferencesPage from "../components/ModelPreferencesPage.jsx";
  * Gère le flux pré-authentification + onboarding.
  * Si tout est OK, rend `children`.
  */
-export default function AuthGate({ children }) {
+export default function AuthGate({ children, launchMode = false }) {
   const { user, setUser, authReady } = useAuth();
   const [showAuth, setShowAuth] = useState(false);
 
@@ -26,12 +26,13 @@ export default function AuthGate({ children }) {
   }
 
   if (!user) {
-    if (!showAuth) return <LandingPage onStart={() => setShowAuth(true)} />;
-    return <AuthPage onAuth={(u) => setUser(u)} />;
+    // Sur Launch, la landing publique est déjà gérée en amont → on va direct à l'auth.
+    if (launchMode || showAuth) return <AuthPage onAuth={(u) => setUser(u)} />;
+    return <LandingPage onStart={() => setShowAuth(true)} />;
   }
 
-  // Onboarding : (1) mémoire perso, (2) modèles préférés
-  if (user.onboardedModels === false) {
+  // Onboarding (mémoire + modèles préférés) : uniquement pour le chat DELT, pas Launch.
+  if (!launchMode && user.onboardedModels === false) {
     if (!user.memorySkipped && !user.display_name && !(user.memory_profile && Object.keys(user.memory_profile || {}).length > 0)) {
       return <MemoryPage isOnboarding onSaved={() => setUser({ ...user, memorySkipped: true })} />;
     }

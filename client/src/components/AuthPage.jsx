@@ -61,7 +61,7 @@ export default function AuthPage({ onAuth }) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-white px-4">
+    <div className="min-h-screen flex flex-col items-center justify-center px-4">
       <div className="mb-8 text-center">
         <div className="flex justify-center mb-4"><Logo /></div>
         <h1 className="text-2xl font-bold text-delt-text">
@@ -72,7 +72,7 @@ export default function AuthPage({ onAuth }) {
         </p>
       </div>
 
-      <div className="card w-full max-w-sm p-6">
+      <div className="card w-full max-w-sm p-6 animate-fadeInUp">
         <div className="flex justify-center mb-4">
           <GoogleLogin
             onSuccess={handleGoogle}
@@ -98,7 +98,7 @@ export default function AuthPage({ onAuth }) {
               type="email" required value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder={t("auth.email_placeholder")}
-              className="w-full rounded-lg border border-delt-border px-3 py-2.5 text-sm outline-none focus:border-delt-accent focus:ring-1 focus:ring-delt-accent/20 transition-all"
+              className="w-full rounded-xl border border-delt-border bg-white/70 px-3 py-2.5 text-sm outline-none focus:border-delt-accent focus:ring-2 focus:ring-delt-accent/20 focus:bg-white transition-all"
             />
           </div>
 
@@ -108,7 +108,7 @@ export default function AuthPage({ onAuth }) {
               type="password" required minLength={8} value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder={t("auth.password_placeholder")}
-              className="w-full rounded-lg border border-delt-border px-3 py-2.5 text-sm outline-none focus:border-delt-accent focus:ring-1 focus:ring-delt-accent/20 transition-all"
+              className="w-full rounded-xl border border-delt-border bg-white/70 px-3 py-2.5 text-sm outline-none focus:border-delt-accent focus:ring-2 focus:ring-delt-accent/20 focus:bg-white transition-all"
             />
           </div>
 

@@ -132,7 +132,7 @@ export default function Composer({
   };
 
   return (
-    <div data-tour="composer" className="w-full rounded-2xl sm:rounded-3xl border border-delt-border bg-white shadow-sm px-3 sm:px-4 pt-3 pb-2 transition-shadow focus-within:shadow-md">
+    <div data-tour="composer" className="w-full rounded-2xl sm:rounded-3xl glass-strong px-3 sm:px-4 pt-3 pb-2 transition-all duration-200 focus-within:shadow-[0_8px_32px_-8px_rgba(99,102,241,0.25)] focus-within:border-indigo-200">
       {/* Pièces jointes */}
       {attachments.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-2 pb-2 border-b border-delt-border">
@@ -235,7 +235,7 @@ export default function Composer({
             </button>
 
             {attachOpen && (
-              <div className="absolute bottom-full left-0 mb-2 w-52 rounded-2xl border border-delt-border bg-white shadow-lg overflow-hidden z-40 animate-popIn origin-bottom-left">
+              <div className="absolute bottom-full left-0 mb-2 w-52 rounded-2xl glass-strong overflow-hidden z-40 animate-popIn origin-bottom-left">
                 <button
                   type="button"
                   onClick={openImagePicker}
@@ -428,7 +428,7 @@ export default function Composer({
           ) : canSend && (
             <button
               onClick={onSend}
-              className="w-9 h-9 rounded-full bg-delt-accent text-white flex items-center justify-center hover:opacity-90 transition-opacity"
+              className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/30 hover:shadow-lg hover:shadow-indigo-500/40 hover:scale-105 active:scale-95 transition-all animate-popIn"
               aria-label="Envoyer"
             >
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -484,7 +484,7 @@ function ToolsButton({ integrations, enabledIntegrations, onToggle }) {
       </button>
 
       {open && (
-        <div className="absolute bottom-full mb-2 right-0 z-50 w-72 bg-white rounded-xl border border-delt-border shadow-xl overflow-hidden animate-popIn origin-bottom-right">
+        <div className="absolute bottom-full mb-2 right-0 z-50 w-72 glass-strong rounded-2xl overflow-hidden animate-popIn origin-bottom-right">
           <div className="px-3 py-2.5 border-b border-delt-border bg-delt-surface/40">
             <div className="text-xs font-bold text-delt-text uppercase tracking-wider">{t("composer.tools_title")}</div>
             <div className="text-[11px] text-delt-muted mt-0.5">{t("composer.tools_desc")}</div>
