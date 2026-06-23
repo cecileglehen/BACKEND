@@ -19,6 +19,8 @@ export async function falGenerateImage(modelId, prompt, options = {}) {
     },
     body: JSON.stringify({
       prompt,
+      // Image-à-image (modèles "edit" type Seedream) : images de référence en entrée.
+      ...(Array.isArray(options.imageUrls) && options.imageUrls.length && { image_urls: options.imageUrls }),
       ...(options.imageSize && { image_size: options.imageSize }),
       ...(options.numImages && { num_images: options.numImages })
     })

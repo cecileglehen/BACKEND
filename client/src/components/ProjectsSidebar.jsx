@@ -28,7 +28,7 @@ export default function ProjectsSidebar({
   };
 
   return (
-    <div className="h-full flex flex-col bg-white">
+    <div className="h-full flex flex-col">
       {/* Header */}
       <div className="px-4 pt-4 pb-2 flex items-center justify-between flex-shrink-0">
         <span className="text-xs font-semibold uppercase tracking-widest text-delt-muted">{t("sidebar.projects")}</span>

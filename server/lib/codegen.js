@@ -199,13 +199,20 @@ function lineDiffStats(oldStr, newStr) {
 
 // Appel OpenRouter en streaming. Émet onPath(path) dès qu'un nouveau "path" JSON
 // apparaît dans le flux, et renvoie le contenu complet + usage à la fin.
-async function streamModel({ prompt, modelId, systemPrompt, onPath }) {
+async function streamModel({ prompt, modelId, systemPrompt, onPath, onThinking }) {
   const key = (process.env.OPENROUTER_API_KEY || "").trim();
   if (!key) throw new Error("OPENROUTER_API_KEY manquante");
   const model = (typeof modelId === "string" && modelId.includes("/")) ? modelId : KIMI_MODEL;
 
+  // Garde-fou anti-blocage : si le flux n'envoie plus rien pendant 60 s, on abandonne
+  // (sinon une réflexion qui boucle laisserait l'UI figée indéfiniment).
+  const ctrl = new AbortController();
+  let idleTimer = null;
+  const resetIdle = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => ctrl.abort(), 60000); };
+
   const res = await fetch(OR_URL, {
     method: "POST",
+    signal: ctrl.signal,
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${key}`,
@@ -217,6 +224,10 @@ async function streamModel({ prompt, modelId, systemPrompt, onPath }) {
       temperature: 0.2,
       stream: true,
       usage: { include: true },
+      // Reasoning borné : un peu de « thinking » SANS laisser le modèle partir dans
+      // une réflexion infinie qui l'empêche de produire le JSON (effort minimal).
+      include_reasoning: true,
+      reasoning: { effort: "low" },
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },
@@ -245,24 +256,35 @@ async function streamModel({ prompt, modelId, systemPrompt, onPath }) {
     }
   };
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    const lines = buf.split("\n");
-    buf = lines.pop() ?? "";
-    for (const line of lines) {
-      const t = line.trim();
-      if (!t.startsWith("data:")) continue;
-      const payload = t.slice(5).trim();
-      if (payload === "[DONE]") continue;
-      try {
-        const obj = JSON.parse(payload);
-        if (obj.usage) usage = obj.usage;
-        const delta = obj.choices?.[0]?.delta?.content;
-        if (delta) { content += delta; scanPaths(); }
-      } catch { /* chunk partiel, ignoré */ }
+  resetIdle();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      resetIdle();
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() ?? "";
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t.startsWith("data:")) continue;
+        const payload = t.slice(5).trim();
+        if (payload === "[DONE]") continue;
+        try {
+          const obj = JSON.parse(payload);
+          if (obj.usage) usage = obj.usage;
+          const d = obj.choices?.[0]?.delta || {};
+          const reasoning = d.reasoning ?? d.reasoning_content ?? "";
+          if (reasoning) onThinking?.(reasoning);
+          if (d.content) { content += d.content; scanPaths(); }
+        } catch { /* chunk partiel, ignoré */ }
+      }
     }
+  } catch (e) {
+    if (ctrl.signal.aborted) throw new Error("Le modèle a mis trop de temps à répondre (inactivité). Réessaie.");
+    throw e;
+  } finally {
+    clearTimeout(idleTimer);
   }
   return { content, usage };
 }
@@ -271,7 +293,7 @@ async function streamModel({ prompt, modelId, systemPrompt, onPath }) {
 // Si le JSON est invalide OU si un edit_file ne matche pas, on renvoie l'erreur au
 // modèle pour qu'il se corrige. L'usage est cumulé ; en échec final l'erreur le porte
 // (pour facturer les tokens consommés). Application transactionnelle (copie → commit).
-async function generatePlan({ prompt, modelId, systemPrompt, baseMap, onPath }) {
+async function generatePlan({ prompt, modelId, systemPrompt, baseMap, onPath, onThinking, allowEmptyActions }) {
   const total = { tokensIn: 0, tokensOut: 0, costUsd: 0 };
   const add = (u) => {
     if (!u) return;
@@ -283,12 +305,17 @@ async function generatePlan({ prompt, modelId, systemPrompt, baseMap, onPath }) 
   for (let attempt = 0; attempt < 2; attempt++) {
     const p = attempt === 0 ? prompt
       : `${prompt}\n\n⚠️ Erreur sur ta réponse précédente: ${lastErr}\nRenvoie UNIQUEMENT le JSON valide demandé. Pour edit_file, "search" doit être un extrait EXACT (copié caractère pour caractère) du fichier actuel.`;
-    const { content, usage } = await streamModel({ prompt: p, modelId, systemPrompt, onPath });
+    const { content, usage } = await streamModel({ prompt: p, modelId, systemPrompt, onPath, onThinking });
     add(usage);
     try {
       const plan = parseJsonObject(content);
       const map = new Map(baseMap);               // copie : on ne commit qu'en cas de succès
-      const touched = applyActionsToMap(map, plan.actions);
+      const actions = Array.isArray(plan.actions) ? plan.actions : [];
+      // Question/discussion : le modèle peut répondre sans code (actions vides).
+      if (actions.length === 0 && allowEmptyActions) {
+        return { plan, map, touched: [], usage: total };
+      }
+      const touched = applyActionsToMap(map, actions);
       return { plan, map, touched, usage: total };
     } catch (e) { lastErr = e.message; }
   }
@@ -389,6 +416,28 @@ export const LaunchPay = {
     return d;
   }
 };
+
+// Intégrations du créateur (Notion…). Best-effort : enveloppe tes appels en try/catch.
+const _notionRun = async (action, args) => {
+  try { return await req("/integrations/notion", { method: "POST", body: JSON.stringify({ action, args: args || {} }) }); }
+  catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+};
+export const LaunchIntegrations = {
+  notion: {
+    // Crée une page (titre + corps markdown) dans le Notion du créateur.
+    log: (title, content) => _notionRun("createPage", { title, markdown: content }),
+    // Crée une base. columns = [{ name, type }] (types: title, rich_text, number, select, date, email, checkbox…). 1 colonne 'title' obligatoire.
+    createDatabase: (parentPageId, title, columns) => _notionRun("createDatabase", { parent_id: parentPageId, title, properties: columns }),
+    // Ajoute une colonne à une base existante (type: rich_text, number, select, date, email, checkbox…).
+    addColumn: (databaseId, name, type) => _notionRun("updateSchema", { database_id: databaseId, properties: [{ name, new_type: type || "rich_text" }] }),
+    // Ajoute une ligne. properties = [{ name, type, value }] — noms/types EXACTS du schéma (sensible casse).
+    insertRow: (databaseId, properties) => _notionRun("insertRow", { database_id: databaseId, properties }),
+    // Liste les lignes d'une base. opts = { page_size, sorts } (optionnel).
+    listRows: (databaseId, opts) => _notionRun("query", Object.assign({ database_id: databaseId }, opts || {})),
+    // Met à jour une ligne. properties = [{ name, type, value }].
+    updateRow: (rowId, properties) => _notionRun("updateRow", { row_id: rowId, properties })
+  }
+};
 `;
 }
 
@@ -396,29 +445,66 @@ function injectLaunchSdk(map, projectId) {
   map.set("src/launch.js", launchSdkSource(projectId));
 }
 
-// Matérialise les images IA : remplace les URLs /api/launch/img?prompt=... par de
-// vrais fichiers (public/ai-N.jpg) générés via Flux et stockés en binaire.
-async function materializeAiImages(projectId, map) {
-  const re = /(?:https?:\/\/[^\s"'`)]+)?\/api\/launch\/img\?prompt=([^\s"'`)]+)/g;
-  const urls = new Map(); // fullUrl -> encodedPrompt
+// Charge les pièces jointes @référencées (public/nom.ext) en data URIs, pour les
+// passer comme images d'entrée à Seedream (édition image-à-image).
+async function loadAttachmentDataUris(projectId, names) {
+  const uris = [];
+  for (const name of names) {
+    const { rows } = await getDb().query(
+      `SELECT content, content_type FROM launch_files
+        WHERE project_id=$1 AND path LIKE $2 AND encoding='base64' LIMIT 1`,
+      [projectId, `public/${name}.%`]
+    );
+    if (rows[0]) uris.push(`data:${rows[0].content_type || "image/png"};base64,${rows[0].content}`);
+  }
+  return uris;
+}
+
+// Matérialise les images IA : remplace les URLs /api/launch/img?... par de vrais
+// fichiers (public/ai-N.ext). Sans &edit → text-to-image ; avec &edit=noms → Seedream.
+async function materializeAiImages(projectId, map, imageModelId) {
+  const re = /(?:https?:\/\/[^\s"'`)]+)?\/api\/launch\/img\?([^\s"'`)]+)/g;
+  const urls = new Map(); // fullUrl -> queryString
   for (const content of map.values()) {
     let m;
     while ((m = re.exec(content))) urls.set(m[0], m[1]);
   }
   if (!urls.size) return;
 
-  const { falGenerateImage } = await import("./fal.js");
+  const { generateImage, resolveLaunchImageModel, SEEDREAM_EDIT_ID } = await import("./imagegen.js");
+  const imgModel = resolveLaunchImageModel(imageModelId);
+  const MAX_AI_IMAGE_BYTES = 8_000_000; // images IA = plus lourdes que du code (Nano Banana ~1-3 Mo)
   const entries = [...urls.entries()].slice(0, 8); // cap anti-coût/latence
-  const results = await Promise.all(entries.map(async ([fullUrl, enc], idx) => {
+  const results = await Promise.all(entries.map(async ([fullUrl, qs], idx) => {
     try {
-      const prompt = decodeURIComponent(enc.replace(/\+/g, " "));
-      const { url } = await falGenerateImage("fal-ai/flux-1/schnell", prompt);
+      const params = new URLSearchParams(qs);
+      const prompt = (params.get("prompt") || "").trim();
+      if (!prompt) return null;
+      // &edit=nom1,nom2 → édition image-à-image (Seedream) à partir des pièces jointes
+      const editNames = (params.get("edit") || "").split(",").map((s) => s.trim()).filter(Boolean);
+      let url;
+      if (editNames.length) {
+        const imageUrls = await loadAttachmentDataUris(projectId, editNames);
+        if (!imageUrls.length) return null;
+        ({ url } = await generateImage(SEEDREAM_EDIT_ID, prompt, { imageUrls }));
+      } else {
+        ({ url } = await generateImage(imgModel, prompt));
+      }
       if (!url) return null;
-      const resp = await fetch(url);
-      if (!resp.ok) return null;
-      const buf = Buffer.from(await resp.arrayBuffer());
-      if (buf.length > MAX_FILE_BYTES) return null;
-      const ext = (url.match(/\.(jpe?g|png|webp|gif)/i)?.[1] || "jpg").toLowerCase();
+      // Nano Banana/Gemini renvoient une data URL base64 ; Flux une URL http.
+      let buf, ext;
+      if (url.startsWith("data:")) {
+        const m = url.match(/^data:image\/([a-z0-9]+);base64,(.+)$/is);
+        if (!m) return null;
+        ext = m[1].toLowerCase() === "jpeg" ? "jpg" : m[1].toLowerCase();
+        buf = Buffer.from(m[2], "base64");
+      } else {
+        const resp = await fetch(url);
+        if (!resp.ok) return null;
+        buf = Buffer.from(await resp.arrayBuffer());
+        ext = (url.match(/\.(jpe?g|png|webp|gif)/i)?.[1] || "jpg").toLowerCase();
+      }
+      if (!buf.length || buf.length > MAX_AI_IMAGE_BYTES) return null;
       const fname = `ai-${idx + 1}.${ext}`;
       await getDb().query(
         `INSERT INTO launch_files (project_id, path, content, bytes, encoding, content_type)
@@ -764,7 +850,7 @@ export async function createCodeSession(userId, prompt, modelId = KIMI_MODEL, mo
   await materializeAiImages(id, map).catch(() => {});
   injectLaunchSdk(map, id);
   await saveFilesMap(id, map);
-  return { id, slug, model: modelId, mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: usage.tokensOut, usage };
+  return { id, slug, model: modelId, mode, summary, questions: plan.questions ?? null, run: plan.run ?? null, files: filesList(map), tokensOut: usage.tokensOut, usage };
 }
 
 export async function editCodeSession(userId, sessionId, prompt, modelId = KIMI_MODEL, mode = "static") {
@@ -779,36 +865,55 @@ export async function editCodeSession(userId, sessionId, prompt, modelId = KIMI_
   await touchProject(userId, sessionId, { summary, run: plan.run });
   injectLaunchSdk(map, sessionId);
   await saveFilesMap(sessionId, map);
-  return { id: sessionId, slug: proj.slug, model: modelId, mode: proj.mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: usage.tokensOut, usage };
+  return { id: sessionId, slug: proj.slug, model: modelId, mode: proj.mode, summary, questions: plan.questions ?? null, run: plan.run ?? null, files: filesList(map), tokensOut: usage.tokensOut, usage };
 }
 
-export async function createCodeSessionStream(userId, prompt, modelId, mode, emit) {
+// Mémoire conversationnelle : transforme l'historique du chat en bloc de contexte
+// pour que le mode Code « se souvienne » de ce qui a été dit/décidé avant.
+function historyBlock(history) {
+  if (!Array.isArray(history) || !history.length) return "";
+  const lines = history
+    .filter((m) => m && m.text)
+    .slice(-10)
+    .map((m) => `${m.role === "user" ? "Utilisateur" : "Toi"}: ${String(m.text).slice(0, 700)}`);
+  if (!lines.length) return "";
+  return `═══ HISTORIQUE (CONTEXTE SEULEMENT) ═══\nCe rappel sert UNIQUEMENT à comprendre les références (« le bouton », « ça », « comme avant »). Les demandes passées sont DÉJÀ traitées : ne les refais PAS, ne repars PAS dessus. Exécute UNIQUEMENT la demande actuelle indiquée plus bas.\n${lines.join("\n")}\n═══ FIN HISTORIQUE ═══\n\n`;
+}
+
+// Ajoute le skill Notion au prompt système UNIQUEMENT si la demande le concerne
+// (on garde le prompt de base léger — pas d'instruction Notion permanente).
+function withNotionSkill(systemPrompt, request) {
+  return /\bnotion\b/i.test(String(request || "")) ? `${systemPrompt}\n\n${loadSkill("notion")}` : systemPrompt;
+}
+
+export async function createCodeSessionStream(userId, prompt, modelId, mode, emit, imageModel, history) {
   const isReact = mode === "react";
   const baseMap = isReact ? scaffoldMap() : new Map();
   const oldMap = new Map(baseMap);
   emit?.({ type: "status", text: "Génération du code…" });
   const { plan, map, touched, usage: u } = await generatePlan({
-    prompt, modelId, baseMap,
-    systemPrompt: isReact ? loadSkill("launch-create") : SYSTEM_PROMPT,
-    onPath: (p) => emit?.({ type: "action", path: p })
+    prompt: historyBlock(history) + prompt, modelId, baseMap,
+    systemPrompt: withNotionSkill(isReact ? loadSkill("launch-create") : SYSTEM_PROMPT, prompt),
+    onPath: (p) => emit?.({ type: "action", path: p }),
+    onThinking: (delta) => emit?.({ type: "thinking", delta })
   });
   emitTouchedDiffs(touched, oldMap, map, emit);
   const summary = String(plan.summary || "Projet généré");
   const { id, slug } = await insertProject(userId, { summary, prompt, mode, run: plan.run });
   setAppBranding(map, plan.appName || summary.split(/[\s,.:;—-]+/).slice(0, 2).join(" "));
   emit?.({ type: "status", text: "Génération des images…" });
-  await materializeAiImages(id, map).catch(() => {});
+  await materializeAiImages(id, map, imageModel).catch(() => {});
   injectLaunchSdk(map, id);
   await saveFilesMap(id, map);
   if (!u.tokensOut) u.tokensOut = Math.ceil(JSON.stringify(plan).length / 4);
-  return { id, slug, model: modelId, mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: u.tokensOut, usage: u };
+  return { id, slug, model: modelId, mode, summary, questions: plan.questions ?? null, run: plan.run ?? null, files: filesList(map), tokensOut: u.tokensOut, usage: u };
 }
 
 // Étape 1 de l'édition : le modèle choisit le(s) fichier(s) à modifier (peu de tokens,
 // évite de noyer le contexte). Renvoie { files, usage }.
 async function pickFilesForEdit(request, fileList, modelId) {
   const usage = { tokensIn: 0, tokensOut: 0, costUsd: 0 };
-  const sys = `Tu es un routeur de fichiers pour un éditeur de code. Pour la tâche donnée, renvoie UNIQUEMENT un JSON {"files":["chemin/exact",...]} : la liste MINIMALE des fichiers existants à modifier et/ou des nouveaux fichiers à créer (souvent un seul). Rien d'autre que le JSON.`;
+  const sys = `Tu es un routeur de fichiers pour un éditeur de code. Pour la tâche donnée, renvoie UNIQUEMENT un JSON {"files":["chemin/exact",...]} : la liste MINIMALE des fichiers existants à modifier et/ou des nouveaux fichiers à créer (souvent un seul). Base-toi UNIQUEMENT sur la tâche ci-dessous, PAS sur d'éventuelles demandes passées. Rien d'autre que le JSON.`;
   const user = `Fichiers du projet :\n${fileList.join("\n")}\n\nTâche : ${request}`;
   try {
     const data = await requestRing(user, true, modelId, sys);
@@ -822,7 +927,7 @@ async function pickFilesForEdit(request, fileList, modelId) {
   } catch { return { files: [], usage }; }
 }
 
-export async function editCodeSessionStream(userId, sessionId, prompt, modelId, mode, emit) {
+export async function editCodeSessionStream(userId, sessionId, prompt, modelId, mode, emit, imageModel, history) {
   const proj = await getProject(userId, sessionId);
   const isReact = mode === "react" || proj.mode === "react";
   const baseMap = await loadFilesMap(sessionId);
@@ -844,50 +949,86 @@ export async function editCodeSessionStream(userId, sessionId, prompt, modelId, 
     : "";
 
   // Étape 2 : édition focalisée sur ces seuls fichiers
-  const editPrompt = `Fichier(s) concerné(s) par la tâche :\n\n${focus}${imagesNote}\n\n════════ TÂCHE À RÉALISER ════════\n${request}\n\nApplique UNIQUEMENT cette tâche : edit_file pour modifier un fichier existant, write_file pour un nouveau. Ne touche à rien d'autre.`;
+  const editPrompt = `${historyBlock(history)}Fichier(s) du projet (pour contexte) :\n\n${focus}${imagesNote}\n\n════════ MESSAGE ACTUEL DE L'UTILISATEUR ════════\n${request}\n\nRéponds à CE message (ignore les demandes passées de l'historique, déjà traitées).\n• Si c'est une vraie demande de MODIFICATION/ajout → applique-la (edit_file pour un fichier existant, write_file pour un nouveau), ne touche à rien d'autre.\n• Si c'est une salutation, une question, un merci, une discussion → réponds NATURELLEMENT et utilement dans "summary", avec "actions": []. (Ex : « salut » → « Salut ! Tu veux qu'on bosse sur quoi ? »). Ne dis pas « tu ne m'as pas demandé de modification ».`;
   emit?.({ type: "status", text: "Application des modifications…" });
   const { plan, map, touched, usage: u } = await generatePlan({
     prompt: editPrompt, modelId, baseMap,
-    systemPrompt: isReact ? loadSkill("launch-edit") : SYSTEM_PROMPT,
-    onPath: (p) => emit?.({ type: "action", path: p })
+    systemPrompt: withNotionSkill(isReact ? loadSkill("launch-edit") : SYSTEM_PROMPT, request),
+    onPath: (p) => emit?.({ type: "action", path: p }),
+    onThinking: (delta) => emit?.({ type: "thinking", delta }),
+    allowEmptyActions: true   // une QUESTION peut être répondue sans code
   });
   u.tokensIn += pickUsage.tokensIn; u.tokensOut += pickUsage.tokensOut; u.costUsd += pickUsage.costUsd;
   emitTouchedDiffs(touched, oldMap, map, emit);
   const summary = String(plan.summary || "Projet modifié");
   await touchProject(userId, sessionId, { summary, run: plan.run });
-  await materializeAiImages(sessionId, map).catch(() => {});
+  await materializeAiImages(sessionId, map, imageModel).catch(() => {});
   injectLaunchSdk(map, sessionId);
   await saveFilesMap(sessionId, map);
   if (!u.tokensOut) u.tokensOut = Math.ceil(JSON.stringify(plan).length / 4);
-  return { id: sessionId, slug: proj.slug, model: modelId, mode: proj.mode, summary, run: plan.run ?? null, files: filesList(map), tokensOut: u.tokensOut, usage: u };
+  return { id: sessionId, slug: proj.slug, model: modelId, mode: proj.mode, summary, questions: plan.questions ?? null, run: plan.run ?? null, files: filesList(map), tokensOut: u.tokensOut, usage: u };
 }
 
 // Mode Plan : l'IA brainstorme et pose des questions, sans écrire de code.
 // Renvoie { message, questions: [{question, options}], usage }.
+// Agent du chat Launch : il PARLE et EXÉCUTE les outils Composio du créateur
+// (Notion, etc.) quand l'utilisateur le demande. Boucle tool_calls (max 6 tours).
 export async function planChat(userId, projectId, messages, modelId) {
   let context = "";
   if (projectId && UUID_RE.test(String(projectId))) {
     try {
       const map = await loadFilesMap(projectId);
-      if (map.size) context = `Projet existant (fichiers) :\n${[...map.keys()].join("\n")}\n\n`;
+      if (map.size) context = `\n\nProjet en cours (fichiers) : ${[...map.keys()].join(", ")}`;
     } catch { /* pas de projet */ }
   }
-  const convo = (messages || []).slice(-12)
-    .map((m) => `${m.role === "user" ? "Utilisateur" : "Assistant"}: ${String(m.text || "").slice(0, 2000)}`)
-    .join("\n");
-  const prompt = `${context}Conversation :\n${convo}\n\nRéponds avec le JSON { message, questions }.`;
-  const { plan, raw } = await callRing(prompt, modelId, loadSkill("launch-plan"));
-  const usage = extractUsage(raw, plan);
-  return {
-    message: String(plan.message || ""),
-    questions: Array.isArray(plan.questions)
-      ? plan.questions.filter((q) => q && q.question).map((q) => ({
-          question: String(q.question),
-          options: Array.isArray(q.options) ? q.options.map(String).slice(0, 4) : []
-        })).slice(0, 3)
-      : [],
-    usage
-  };
+
+  const chatMsgs = [{ role: "system", content: loadSkill("launch-plan") + context }];
+  for (const m of (messages || []).slice(-12)) {
+    chatMsgs.push({ role: m.role === "user" ? "user" : "assistant", content: String(m.text || "").slice(0, 4000) });
+  }
+
+  // Outils Composio du créateur (Notion…) — l'agent peut les appeler.
+  let tools = [];
+  try {
+    const { getToolsForUser } = await import("./composio.js");
+    tools = await getToolsForUser(userId);
+  } catch { /* pas d'intégrations connectées */ }
+  if (/^delt\/|gemma-/i.test(String(modelId || ""))) tools = []; // modèles sans function-calling
+
+  const { chatWithTools } = await import("./openrouter.js");
+  const { executeToolCall } = await import("./composio.js");
+  const usage = { tokensIn: 0, tokensOut: 0, costUsd: 0 };
+  const addU = (u) => { if (!u) return; usage.tokensIn += u.prompt_tokens || 0; usage.tokensOut += u.completion_tokens || 0; usage.costUsd += u.cost || 0; };
+  const toolEvents = [];
+  let message = "";
+
+  const MAX = tools.length ? 6 : 1;
+  for (let round = 0; round < MAX; round++) {
+    const useTools = tools.length > 0 && round < MAX - 1; // dernier tour : force une réponse texte
+    let resp;
+    try {
+      resp = await chatWithTools({ modelId, messages: chatMsgs, tools: useTools ? tools : [] });
+    } catch (e) { message = message || `Erreur : ${e.message}`; break; }
+    addU(resp.usage);
+    const msg = resp.message || {};
+    const toolCalls = useTools ? msg.tool_calls : null;
+    if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
+      message = String(msg.content || "").trim();
+      break;
+    }
+    chatMsgs.push({ role: "assistant", content: msg.content || "", tool_calls: toolCalls });
+    const results = await Promise.all(toolCalls.map(async (tc) => {
+      const name = tc.function?.name || tc.name;
+      let args = {};
+      try { args = JSON.parse(tc.function?.arguments || tc.arguments || "{}"); } catch { /* */ }
+      const result = await executeToolCall({ userId, toolName: name, args });
+      toolEvents.push({ name, ok: !result?.error, error: result?.error || null });
+      return { tool_call_id: tc.id, role: "tool", name, content: JSON.stringify(result).slice(0, 8000) };
+    }));
+    chatMsgs.push(...results);
+  }
+
+  return { message, questions: [], toolEvents, usage };
 }
 
 export async function getCodeZip(userId, sessionId) {

@@ -67,10 +67,10 @@ export default function LandingPage({ onStart }) {
   const FEATURES = buildFeatures(t);
   const PLANS = buildPlans(t);
   return (
-    <div className="min-h-screen bg-white flex flex-col overflow-x-hidden">
+    <div className="min-h-screen flex flex-col overflow-x-hidden">
 
       {/* ── NAVBAR ── */}
-      <header className="sticky top-0 z-30 bg-white/80 backdrop-blur border-b border-slate-100">
+      <header className="sticky top-0 z-30 glass-strong border-x-0 border-t-0 border-b border-slate-200/60">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <img src="/logo-delt.png" alt="DELT AI" style={{ height: 56, width: "auto" }} />
           <div className="flex items-center gap-3">
@@ -146,14 +146,14 @@ export default function LandingPage({ onStart }) {
           <div className="flex items-center gap-6 flex-wrap justify-center">
             {MODELS.map((m) => (
               <div key={m.name} className="flex flex-col items-center gap-1.5 opacity-70 hover:opacity-100 transition-opacity">
-                <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center p-2">
+                <div className="w-10 h-10 rounded-xl glass-pill flex items-center justify-center p-2">
                   <img src={m.logo} alt={m.brand} className="w-full h-full object-contain" />
                 </div>
                 <span className="text-[11px] font-medium text-slate-500">{m.name}</span>
               </div>
             ))}
             <div className="flex flex-col items-center gap-1.5 opacity-50">
-              <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl glass-pill flex items-center justify-center">
                 <span className="text-slate-400 text-base font-bold">+</span>
               </div>
               <span className="text-[11px] font-medium text-slate-400">{t("land.and_more")}</span>
@@ -163,12 +163,12 @@ export default function LandingPage({ onStart }) {
       </section>
 
       {/* ── FEATURES ── */}
-      <section className="bg-slate-50 py-20 px-6">
+      <section className="bg-white/40 backdrop-blur-sm py-20 px-6 border-y border-slate-200/50">
         <div className="max-w-5xl mx-auto">
           <h2 className="text-2xl font-bold text-slate-900 text-center mb-12">{t("land.features_title")}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 stagger-children">
             {FEATURES.map((f) => (
-              <div key={f.title} className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm hover-lift">
+              <div key={f.title} className="glass-card rounded-2xl p-6 hover-lift">
                 <div
                   className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
                   style={{ background: "linear-gradient(135deg, rgba(37,99,235,0.12), rgba(6,182,212,0.12))", color: "#2563eb" }}
@@ -192,10 +192,10 @@ export default function LandingPage({ onStart }) {
             {PLANS.map((p) => (
               <div
                 key={p.name}
-                className={`rounded-2xl border p-6 flex flex-col gap-4 hover-lift ${
+                className={`rounded-2xl glass-card p-6 flex flex-col gap-4 hover-lift ${
                   p.highlight
-                    ? "border-blue-400 shadow-lg shadow-blue-100 scale-[1.03]"
-                    : "border-slate-100 shadow-sm"
+                    ? "ring-2 ring-blue-400/60 shadow-[0_20px_50px_-20px_rgba(37,99,235,0.4)] scale-[1.03]"
+                    : ""
                 }`}
               >
                 {p.highlight && (

@@ -312,10 +312,98 @@ export const api = {
   music: (params) =>
     fetch(u("/api/music"), { method: "POST", headers: authHeaders(), body: JSON.stringify(params) }).then(json),
 
-  codeSession: (prompt, modelId) =>
-    fetch(u("/api/code/session"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ prompt, modelId }) }).then(json),
-  codeEditSession: (id, prompt, modelId) =>
-    fetch(u(`/api/code/session/${id}/edit`), { method: "POST", headers: authHeaders(), body: JSON.stringify({ prompt, modelId }) }).then(json),
+  codeSession: (prompt, modelId, mode) =>
+    fetch(u("/api/code/session"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ prompt, modelId, mode }) }).then(json),
+  codeEditSession: (id, prompt, modelId, mode) =>
+    fetch(u(`/api/code/session/${id}/edit`), { method: "POST", headers: authHeaders(), body: JSON.stringify({ prompt, modelId, mode }) }).then(json),
+  codeSessionFiles: (id) =>
+    fetch(u(`/api/code/session/${id}/files?t=${Date.now()}`), { headers: authHeaders(), cache: "no-store" }).then(json),
+  codeSessions: () =>
+    fetch(u("/api/code/sessions"), { headers: authHeaders() }).then(json),
+  launchProjectBySlug: (slug) =>
+    fetch(u(`/api/launch/by-slug/${encodeURIComponent(slug)}`), { headers: authHeaders() }).then(json),
+  launchPlan: ({ messages, projectId, modelId }) =>
+    fetch(u("/api/launch/plan"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ messages, projectId, modelId }) }).then(json),
+  launchUpload: (projectId, path, base64, contentType) =>
+    fetch(u(`/api/launch/${projectId}/upload`), { method: "POST", headers: authHeaders(), body: JSON.stringify({ path, base64, contentType }) }).then(json),
+  launchDeleteFile: (projectId, path) =>
+    fetch(u(`/api/launch/${projectId}/file?path=${encodeURIComponent(path)}`), { method: "DELETE", headers: authHeaders() }).then(json),
+  launchSetFavicon: (projectId, path) =>
+    fetch(u(`/api/launch/${projectId}/favicon`), { method: "POST", headers: authHeaders(), body: JSON.stringify({ path }) }).then(json),
+  launchVisualText: (projectId, oldText, newText) =>
+    fetch(u(`/api/launch/${projectId}/visual-text`), { method: "POST", headers: authHeaders(), body: JSON.stringify({ oldText, newText }) }).then(json),
+  launchGetChat: (projectId) =>
+    fetch(u(`/api/launch/${projectId}/chat`), { headers: authHeaders() }).then(json),
+  launchSaveChat: (projectId, chat) =>
+    fetch(u(`/api/launch/${projectId}/chat`), { method: "PUT", headers: authHeaders(), body: JSON.stringify({ chat }) }).then(json),
+  codeDeleteSession: (id) =>
+    fetch(u(`/api/code/session/${id}`), { method: "DELETE", headers: authHeaders() }).then(json),
+  codeRenameSession: (id, name) =>
+    fetch(u(`/api/code/session/${id}`), { method: "PATCH", headers: authHeaders(), body: JSON.stringify({ name }) }).then(json),
+  // Streaming SSE : génération / édition avec progression + diffs par fichier
+  codeStream: ({ id, prompt, modelId, mode = "react", imageModel, history, onStatus, onAction, onFile, onThinking, onDone, onError }) => {
+    const path = id ? `/api/code/session/${id}/edit/stream` : "/api/code/session/stream";
+    const ctrl = new AbortController();
+    fetch(u(path), { method: "POST", headers: authHeaders(), body: JSON.stringify({ prompt, modelId, mode, imageModel, history }), signal: ctrl.signal })
+      .then(async (res) => {
+        if (!res.ok) { const d = await res.json().catch(() => ({})); onError?.(new Error(d.error || res.statusText)); return; }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const msg = JSON.parse(line.slice(6));
+              if (msg.type === "status") onStatus?.(msg.text);
+              else if (msg.type === "thinking") onThinking?.(msg.delta);
+              else if (msg.type === "action") onAction?.(msg.path);
+              else if (msg.type === "file") onFile?.(msg);
+              else if (msg.type === "done") onDone?.(msg.session);
+              else if (msg.type === "error") onError?.(new Error(msg.error), msg);
+            } catch { /* ignore */ }
+          }
+        }
+      })
+      .catch((e) => { if (e.name !== "AbortError") onError?.(e); });
+    return () => ctrl.abort();
+  },
+  // URL d'un site déployé. Si VITE_SITES_DOMAIN est défini → sous-domaine
+  // <slug>.<domaine> (ex: todo.deltai.fr). Sinon → backend /sites/<slug> (dev/proxy).
+  siteUrl: (path) => {
+    const domain = import.meta.env.VITE_SITES_DOMAIN;
+    const m = String(path).match(/^\/sites\/([a-z0-9-]+)\/?$/i);
+    if (domain && m) {
+      const port = window.location.port && window.location.port !== "443" ? `:${window.location.port}` : "";
+      return `https://${m[1]}.${domain}${port}/`;
+    }
+    return (API_BASE || window.location.origin.replace("://launch.", "://")) + path;
+  },
+  launchDeploy: (projectId, slug, files) =>
+    fetch(u("/api/launch/deploy"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ projectId, slug, files }) }).then(json),
+  launchUndeploy: (projectId) =>
+    fetch(u(`/api/launch/${projectId}/deploy`), { method: "DELETE", headers: authHeaders() }).then(json),
+  launchDeployStatus: (projectId) =>
+    fetch(u(`/api/launch/${projectId}/deploy`), { headers: authHeaders() }).then(json),
+  launchPayConnect: (returnUrl) =>
+    fetch(u("/api/launch/pay/connect"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ returnUrl }) }).then(json),
+  launchPayStatus: () =>
+    fetch(u("/api/launch/pay/status"), { headers: authHeaders() }).then(json),
+  launchNotionStatus: (projectId) =>
+    fetch(u(`/api/launch/${projectId}/notion`), { headers: authHeaders() }).then(json),
+  launchNotionSave: (projectId, target) =>
+    fetch(u(`/api/launch/${projectId}/notion`), { method: "POST", headers: authHeaders(), body: JSON.stringify({ target }) }).then(json),
+  launchNotionSchema: (projectId, target) =>
+    fetch(u(`/api/launch/${projectId}/notion/schema?target=${encodeURIComponent(target)}`), { headers: authHeaders() }).then(json),
+  launchNotionCreateDb: (projectId, parentId) =>
+    fetch(u(`/api/launch/${projectId}/notion/create-db`), { method: "POST", headers: authHeaders(), body: JSON.stringify({ parentId }) }).then(json),
+  launchNotionPages: (projectId) =>
+    fetch(u(`/api/launch/${projectId}/notion/pages`), { headers: authHeaders() }).then(json),
   codeZip: (id) =>
     fetch(u(`/api/code/session/${id}.zip`), { headers: authHeaders() }).then(blob),
   codePreviewUrl: (id, filePath = "index.html") => {

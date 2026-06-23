@@ -73,8 +73,8 @@ export default function ProjectSettingsModal({ project, onClose, onUpdated, onDe
   }
 
   return (
-    <div onClick={onClose} className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-backdropFade">
-      <div onClick={(e) => e.stopPropagation()} className="bg-white w-full sm:max-w-2xl sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-slideUp">
+    <div onClick={onClose} className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-backdropFade">
+      <div onClick={(e) => e.stopPropagation()} className="glass-strong w-full sm:max-w-2xl sm:rounded-3xl rounded-t-3xl overflow-hidden flex flex-col max-h-[92vh] animate-slideUp">
 
         {/* Header */}
         <div className="px-5 py-4 border-b border-delt-border flex items-center justify-between flex-shrink-0">

@@ -7,7 +7,7 @@ export default function ExpertModal({ open, level, onChoice, onClose }) {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white shadow-pop w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl p-6 animate-slideUp"
+        className="glass-strong w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl p-6 animate-slideUp"
       >
         <div className="mb-1">
           <span className="text-xs font-semibold uppercase tracking-wider text-delt-gold">

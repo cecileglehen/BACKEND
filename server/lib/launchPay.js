@@ -4,7 +4,7 @@
 import Stripe from "stripe";
 import { getDb } from "./db.js";
 
-const FEE_PCT = Number(process.env.LAUNCH_PLATFORM_FEE_PCT || 10);
+const FEE_PCT = Number(process.env.LAUNCH_PLATFORM_FEE_PCT || 7);
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
 let _stripe = null;
@@ -111,6 +111,11 @@ export async function handleWebhook(rawBody, sig) {
   if (event.type === "checkout.session.completed") {
     const sess = event.data.object;
     await getDb().query(`UPDATE launch_payments SET status='paid' WHERE session_id=$1`, [sess.id]);
+    // Intégrations créateur (Notion…) : best-effort, ne bloque jamais le webhook.
+    try {
+      const { onLaunchPaymentPaid } = await import("./launchIntegrations.js");
+      await onLaunchPaymentPaid(sess.id);
+    } catch (e) { console.warn("[launchPay] integrations:", e.message); }
   }
   return { received: true };
 }

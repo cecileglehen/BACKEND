@@ -15,7 +15,18 @@ import ThanksRoute from "./pages/ThanksRoute.jsx";
 import GoodbyeRoute from "./pages/GoodbyeRoute.jsx";
 import IntroRoute from "./pages/IntroRoute.jsx";
 import AgentsPage from "./components/AgentsPage.jsx";
+import LaunchIDE from "./pages/LaunchIDE.jsx";
+import LaunchLanding from "./pages/LaunchLanding.jsx";
+import CookieConsent from "./components/CookieConsent.jsx";
+import { useAuth } from "./contexts/AuthContext.jsx";
+import { useState } from "react";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
+
+// Launch est un produit à part : accessible uniquement sur le sous-domaine
+// launch.deltai.fr (launch.lvh.me en dev — TLD public requis par Google OAuth),
+// jamais dans la nav principale.
+const IS_LAUNCH_HOST =
+  typeof window !== "undefined" && /^launch\./i.test(window.location.hostname);
 
 export default function App() {
   return (
@@ -23,15 +34,22 @@ export default function App() {
       <I18nProvider>
         <ToastProvider>
           <AuthProvider>
-            <Routes>
-          {/* Pages publiques (indexables Google sans auth) */}
-          <Route path="/terms"        element={<LegalPage type="terms" />} />
-          <Route path="/privacy"      element={<LegalPage type="privacy" />} />
-          <Route path="/notre-modele" element={<OurModelRoute />} />
+            <CookieConsent />
+            {IS_LAUNCH_HOST ? (
+              <LaunchHost />
+            ) : (
+              <Routes>
+                {/* Pages publiques (indexables Google sans auth) */}
+                <Route path="/terms"            element={<LegalPage type="terms" />} />
+                <Route path="/privacy"          element={<LegalPage type="privacy" />} />
+                <Route path="/mentions-legales" element={<LegalPage type="legal" />} />
+                <Route path="/cookies"          element={<LegalPage type="cookies" />} />
+                <Route path="/notre-modele" element={<OurModelRoute />} />
 
-          {/* Tout le reste passe par AuthGate + Navbar */}
-          <Route path="*" element={<AppShell />} />
-            </Routes>
+                {/* Tout le reste passe par AuthGate + Navbar */}
+                <Route path="*" element={<AppShell />} />
+              </Routes>
+            )}
           </AuthProvider>
         </ToastProvider>
       </I18nProvider>
@@ -39,10 +57,25 @@ export default function App() {
   );
 }
 
+// Coquille du sous-domaine Launch : landing publique (visiteurs non connectés) →
+// CTA → auth → IDE plein écran. Les users déjà connectés vont direct à l'IDE.
+function LaunchHost() {
+  const { user } = useAuth();
+  const [started, setStarted] = useState(false);
+  if (!user && !started) return <LaunchLanding onStart={() => setStarted(true)} />;
+  return (
+    <AuthGate launchMode>
+      <div className="h-[100dvh] flex flex-col overflow-hidden">
+        <LaunchIDE />
+      </div>
+    </AuthGate>
+  );
+}
+
 function AppShell() {
   return (
     <AuthGate>
-      <div className="h-[100dvh] flex flex-col bg-white overflow-hidden">
+      <div className="h-[100dvh] flex flex-col overflow-hidden">
         <Navbar />
         <Routes>
           <Route path="/"        element={<ChatPage />} />

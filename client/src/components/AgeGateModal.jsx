@@ -22,7 +22,7 @@ export default function AgeGateModal({ open, onConfirm, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="bg-white sm:rounded-2xl rounded-t-2xl shadow-pop w-full sm:max-w-sm sm:mx-4 p-6 animate-slideUp">
+      <div className="glass-strong sm:rounded-2xl rounded-t-2xl w-full sm:max-w-sm sm:mx-4 p-6 animate-slideUp">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center flex-shrink-0">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#d97706" strokeWidth="2">

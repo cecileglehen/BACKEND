@@ -139,7 +139,7 @@ function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVide
             </div>
 
             {openBrand === popKey && isChat && hasFamilies && (
-              <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50 w-72 bg-white rounded-xl border border-delt-border shadow-lg overflow-hidden animate-popIn">
+              <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50 w-72 glass-strong rounded-2xl overflow-hidden animate-popIn">
                 <div className="px-3 py-2 border-b border-delt-border flex items-center gap-2">
                   <BrandIcon brand={brand} size={18} />
                   <span className="text-sm font-semibold text-delt-text">{label}</span>
@@ -204,7 +204,7 @@ function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVide
             )}
 
             {openBrand === popKey && !isChat && (
-              <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50 w-64 bg-white rounded-xl border border-delt-border shadow-lg overflow-hidden animate-popIn">
+              <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50 w-64 glass-strong rounded-2xl overflow-hidden animate-popIn">
                 <div className="px-3 py-2 border-b border-delt-border flex items-center gap-2">
                   <BrandIcon brand={brand} size={18} />
                   {isImage && <ImageBadge size={14} />}

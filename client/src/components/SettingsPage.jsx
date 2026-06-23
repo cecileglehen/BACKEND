@@ -26,18 +26,18 @@ export default function SettingsPage({ user, initialSection = "account", onDelet
   return (
     <div className="max-w-6xl mx-auto px-3 sm:px-6 py-5 sm:py-8">
       <div className="mb-6">
-        <h1 className="text-xl sm:text-2xl font-bold text-delt-text">{t("settings.title")}</h1>
+        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-gradient">{t("settings.title")}</h1>
         <p className="text-sm text-delt-muted mt-1">{t("settings.subtitle")}</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)] gap-4 sm:gap-6">
-        <aside className="md:sticky md:top-20 h-fit border border-delt-border rounded-lg bg-white overflow-x-auto md:overflow-hidden flex md:block">
+        <aside className="md:sticky md:top-20 h-fit glass-card rounded-xl overflow-x-auto md:overflow-hidden flex md:block">
           {SECTION_KEYS.map((item) => (
             <button
               key={item.id}
               onClick={() => setSection(item.id)}
               className={`w-auto md:w-full flex-shrink-0 text-left px-4 py-3 text-sm font-medium border-r md:border-r-0 md:border-b border-delt-border last:border-r-0 md:last:border-b-0 transition-colors ${
-                section === item.id ? "bg-delt-panel text-delt-text" : "text-delt-muted hover:bg-delt-surface hover:text-delt-text"
+                section === item.id ? "bg-white/80 text-delt-text font-semibold shadow-sm" : "text-delt-muted hover:bg-white/50 hover:text-delt-text"
               }`}
             >
               {t(item.key)}
@@ -94,7 +94,7 @@ function AccountPanel({ user }) {
               className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
                 locale === l.code
                   ? "bg-delt-text text-white border-delt-text"
-                  : "bg-white text-delt-text border-delt-border hover:bg-delt-surface"
+                  : "glass-pill text-delt-text border-transparent hover:bg-white/80"
               }`}
             >
               <span>{l.flag}</span>
@@ -117,7 +117,7 @@ function AccountPanel({ user }) {
 
 function Info({ label, value }) {
   return (
-    <div className="rounded-lg border border-delt-border bg-delt-surface px-3 py-2">
+    <div className="rounded-xl border border-delt-border/70 bg-white/50 px-3 py-2">
       <div className="text-[10px] uppercase tracking-wider font-semibold text-delt-muted">{label}</div>
       <div className="text-sm font-medium text-delt-text mt-1 break-all">{value}</div>
     </div>

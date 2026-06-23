@@ -710,6 +710,7 @@ export const TRANSLATIONS = {
 
   // ─── Auth page (login / signup) ───────────────────────────────────────────
   "auth.welcome":            { fr: "Bienvenue sur DELT AI",              en: "Welcome to DELT AI" },
+  "welcome.title":           { fr: "Comment puis-je t'aider ?",         en: "How can I help you?" },
   "auth.tab_login":          { fr: "Se connecter",                       en: "Sign in" },
   "auth.tab_signup":         { fr: "Créer un compte",                    en: "Create account" },
   "auth.email":              { fr: "Email",                              en: "Email" },

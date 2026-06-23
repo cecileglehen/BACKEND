@@ -576,7 +576,7 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
         <button
           onClick={exitAgent}
           className={`h-9 px-3 rounded-full flex items-center gap-1.5 text-delt-text text-sm font-semibold flex-shrink-0 transition-colors ${
-            inline ? "border border-delt-border hover:bg-delt-surface" : "bg-white/95 border border-delt-border hover:bg-delt-surface"
+            inline ? "border border-delt-border hover:bg-delt-surface" : "glass-pill rounded-full hover:bg-white/80"
           }`}
           aria-label={t("agents.exit_chat")}
         >
@@ -587,7 +587,7 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
       <button
         onClick={() => setProjectsOpen(true)}
         className={`h-9 px-3 rounded-full flex items-center gap-1.5 text-delt-muted text-sm font-semibold flex-shrink-0 transition-colors ${
-          inline ? "border border-delt-border hover:bg-delt-surface" : "bg-white/95 border border-delt-border hover:bg-delt-surface"
+          inline ? "border border-delt-border hover:bg-delt-surface" : "glass-pill rounded-full hover:bg-white/80"
         }`}
       >
         <span className="text-base">{activeProject?.icon || "📁"}</span>
@@ -609,7 +609,7 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
         <button
           onClick={() => setHistoryOpen(true)}
           className={`w-9 h-9 rounded-full flex items-center justify-center text-delt-muted flex-shrink-0 transition-colors ${
-            inline ? "hover:bg-delt-surface" : "bg-white/95 border border-delt-border hover:bg-delt-surface"
+            inline ? "hover:bg-delt-surface" : "glass-pill rounded-full hover:bg-white/80"
           }`}
           aria-label={t("sidebar.history")}
         >
@@ -639,7 +639,7 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
             onClick={() => setHistoryOpen(false)}
             className={`absolute inset-0 bg-black/10 z-20 ${sidebarAnim.closing ? "animate-backdropFadeOut" : "animate-backdropFade"}`}
           />
-          <div className={`absolute left-0 top-0 bottom-0 w-[min(18rem,86vw)] bg-white border-r border-delt-border z-30 flex flex-col shadow-lg ${sidebarAnim.closing ? "animate-slideOutLeft" : "animate-slideInLeft"}`}>
+          <div className={`absolute left-0 top-0 bottom-0 w-[min(18rem,86vw)] glass-strong border-y-0 border-l-0 border-r border-delt-border/60 z-30 flex flex-col ${sidebarAnim.closing ? "animate-slideOutLeft" : "animate-slideInLeft"}`}>
             <div className="px-4 pt-4 pb-2 flex items-center justify-between">
               <span className="text-xs font-semibold uppercase tracking-widest text-delt-muted">{t("sidebar.history")}</span>
               <button onClick={() => setHistoryOpen(false)} className="text-delt-muted hover:text-delt-text text-lg leading-none">✕</button>
@@ -664,7 +664,7 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
             onClick={() => setProjectsOpen(false)}
             className={`absolute inset-0 bg-black/10 z-20 ${projectsAnim.closing ? "animate-backdropFadeOut" : "animate-backdropFade"}`}
           />
-          <div className={`absolute left-0 top-0 bottom-0 w-[min(20rem,88vw)] bg-white border-r border-delt-border z-30 flex flex-col shadow-lg ${projectsAnim.closing ? "animate-slideOutLeft" : "animate-slideInLeft"}`}>
+          <div className={`absolute left-0 top-0 bottom-0 w-[min(20rem,88vw)] glass-strong border-y-0 border-l-0 border-r border-delt-border/60 z-30 flex flex-col ${projectsAnim.closing ? "animate-slideOutLeft" : "animate-slideInLeft"}`}>
             <ProjectsSidebar
               projects={projects}
               activeProjectId={activeProjectId}
@@ -688,7 +688,7 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
             {activeProject && (
               <div className="absolute top-12 left-2 right-2 sm:top-14 sm:left-3 sm:right-3 z-10 pointer-events-none">
                 <div
-                  className="max-w-3xl mx-auto rounded-2xl border bg-white/95 px-3 py-2 shadow-sm flex items-center justify-between gap-3 pointer-events-auto"
+                  className="max-w-3xl mx-auto rounded-2xl glass-strong px-3 py-2 flex items-center justify-between gap-3 pointer-events-auto"
                   style={{ borderColor: `${activeProject.color}55` }}
                 >
                   <div className="min-w-0">
@@ -714,7 +714,7 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
                 <WelcomeScreen />
               )}
             </div>
-            <div className="flex-shrink-0 px-2 sm:px-4 pt-2 bg-white safe-pb">
+            <div className="flex-shrink-0 px-2 sm:px-4 pt-2 safe-pb">
               <div className="max-w-3xl mx-auto">
                 <ErrorBanner error={chat.error} onClose={() => chat.setError(null)} />
                 <Composer
@@ -793,7 +793,7 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
                 )}
               </div>
             </div>
-            <div className="px-2 sm:px-4 pt-2 bg-white safe-pb">
+            <div className="px-2 sm:px-4 pt-2 safe-pb">
               <div className="max-w-3xl mx-auto">
                 <ErrorBanner error={chat.error} onClose={() => chat.setError(null)} />
                 <Composer
@@ -878,11 +878,11 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
       {modelsOpen && (
         <div
           onClick={() => setModelsOpen(false)}
-          className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-backdropFade"
+          className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-backdropFade"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white w-full sm:max-w-xl sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-slideUp"
+            className="glass-strong w-full sm:max-w-xl sm:rounded-3xl rounded-t-3xl overflow-hidden flex flex-col max-h-[90vh] animate-slideUp"
           >
             <div className="px-5 py-4 border-b border-delt-border flex items-center justify-between flex-shrink-0">
               <div>
@@ -997,7 +997,7 @@ function AgentWelcome({ agent, onPick, onExit }) {
             <button
               key={i}
               onClick={() => onPick(s)}
-              className="text-left text-sm px-4 py-3 rounded-xl border border-delt-border bg-white hover-lift text-delt-text"
+              className="text-left text-sm px-4 py-3 glass-card hover-lift text-delt-text"
             >
               {s}
             </button>

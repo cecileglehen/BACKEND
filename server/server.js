@@ -14,7 +14,7 @@ import { register, login, signToken, requireAuth, refreshUser, verifyToken } fro
 import { routeMessage } from "./lib/router.js";
 import { chatWithFallback, chatWithTools, streamChat } from "./lib/openrouter.js";
 import { getBaseSkillPrompt, parseSkillBlocks } from "./lib/skills.js";
-import { listAvailableApps, listUserIntegrations, initiateConnection, confirmConnection, revokeIntegration, getToolsForUser, executeToolCall } from "./lib/composio.js";
+import { listAvailableApps, listUserIntegrations, initiateConnection, confirmConnection, revokeIntegration, getToolsForUser, executeToolCall, getLiveConnectionStatus } from "./lib/composio.js";
 import { recordUsage, logUsage, quotaSnapshot, resolveTier } from "./lib/windows.js";
 import { getCredits, deductCredits, hasEnoughCredits, grantPlanCredits, resetMonthlyCredits, getApiCredits, transferCredits, getFreeNanoTokens, deductFreeNanoTokens, getFreeModelTokens, deductFreeModelTokens, FREE_NANO_MODEL_ID } from "./lib/credits.js";
 import { computeCreditCost, computeCreditFromCost, FREE_TIER_ONLY_PLANS } from "./config/plans.js";
@@ -26,6 +26,7 @@ import { deploySite, undeploySite, getProjectDeploy, getDeployFile } from "./lib
 import { signupAppUser, loginAppUser, getAppUserFromToken, googleAuthUrl, handleGoogleCallback, verifyAppToken } from "./lib/launchAuth.js";
 import { listDocs, createDoc, getDoc, updateDoc, deleteDoc } from "./lib/launchData.js";
 import { createConnectLink, getConnectStatus, createCheckout, handleWebhook as handleLaunchPayWebhook } from "./lib/launchPay.js";
+import { getProjectNotion, setProjectNotion, notionLog, fetchNotionSchema, createOrdersDatabase, runNotionAction, searchNotionPages } from "./lib/launchIntegrations.js";
 import { TIER_MODELS, estimateCostEur } from "./config/plans.js";
 import { brandFromAlias, CREATIVE, findModelForBrand, findModelForFamily, findModelInCatalog, familyFromAlias, isBrandAlias, isFamilyAlias, normalizeTier, publicCatalog, supportsVision, pickVisionModelForTier } from "./config/models.js";
 import { createSubscriptionLink, activateSubscription, handleWebhook, PAYPAL_PLAN_IDS, createCreditOrder, captureCreditOrder } from "./lib/paypal.js";
@@ -1009,8 +1010,10 @@ app.post("/api/code/session/stream", requireAuth, async (req, res) => {
     if (!prompt) { send({ type: "error", error: "prompt requis" }); return res.end(); }
     modelId = String(req.body?.modelId || "").trim() || undefined;
     const mode = req.body?.mode === "react" ? "react" : "static";
+    const imageModel = String(req.body?.imageModel || "").trim() || undefined;
+    const history = Array.isArray(req.body?.history) ? req.body.history : [];
     if (!(await hasEnoughCredits(req.user.id, 0.1))) { send({ type: "error", error: "Crédits insuffisants." }); return res.end(); }
-    const session = await createCodeSessionStream(req.user.id, prompt, modelId, mode, send);
+    const session = await createCodeSessionStream(req.user.id, prompt, modelId, mode, send, imageModel, history);
     const billed = await billCodeSession(req.user.id, session, "launch");
     send({ type: "done", session: { ...session, ...billed } });
     res.end();
@@ -1030,8 +1033,10 @@ app.post("/api/code/session/:id/edit/stream", requireAuth, async (req, res) => {
     if (!prompt) { send({ type: "error", error: "prompt requis" }); return res.end(); }
     modelId = String(req.body?.modelId || "").trim() || undefined;
     const mode = req.body?.mode === "react" ? "react" : "static";
+    const imageModel = String(req.body?.imageModel || "").trim() || undefined;
+    const history = Array.isArray(req.body?.history) ? req.body.history : [];
     if (!(await hasEnoughCredits(req.user.id, 0.1))) { send({ type: "error", error: "Crédits insuffisants." }); return res.end(); }
-    const session = await editCodeSessionStream(req.user.id, req.params.id, prompt, modelId, mode, send);
+    const session = await editCodeSessionStream(req.user.id, req.params.id, prompt, modelId, mode, send, imageModel, history);
     const billed = await billCodeSession(req.user.id, session, "launch");
     send({ type: "done", session: { ...session, ...billed } });
     res.end();
@@ -1227,7 +1232,9 @@ app.get("/api/launch/img", async (req, res) => {
   try {
     const prompt = String(req.query?.prompt || "").trim().slice(0, 500);
     if (!prompt) return res.status(400).send("prompt requis");
-    const key = prompt.toLowerCase();
+    const { resolveLaunchImageModel, generateImage } = await import("./lib/imagegen.js");
+    const imgModel = resolveLaunchImageModel(String(req.query?.model || ""));
+    const key = `${imgModel.id}::${prompt.toLowerCase()}`;
 
     const cached = launchImgCache.get(key);
     if (cached && Date.now() - cached.ts < LAUNCH_IMG_TTL) return res.redirect(302, cached.url);
@@ -1235,9 +1242,16 @@ app.get("/api/launch/img", async (req, res) => {
     const ip = (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.socket.remoteAddress || "?";
     if (!launchImgAllowed(ip)) return res.status(429).send("Trop de requêtes, réessaie dans une minute.");
 
-    const { falGenerateImage } = await import("./lib/fal.js");
-    const result = await falGenerateImage("fal-ai/flux-1/schnell", prompt);
+    const result = await generateImage(imgModel, prompt);
     if (!result?.url) return res.status(502).send("Génération échouée");
+    // Nano Banana/Gemini renvoient une data URL base64 → on sert les octets directement
+    // (un redirect 302 vers data: est bloqué par les navigateurs).
+    const dm = result.url.match(/^data:(image\/[a-z0-9]+);base64,(.+)$/is);
+    if (dm) {
+      res.set("Content-Type", dm[1]);
+      res.set("Cache-Control", "public, max-age=86400");
+      return res.send(Buffer.from(dm[2], "base64"));
+    }
     launchImgCache.set(key, { url: result.url, ts: Date.now() });
     res.redirect(302, result.url);
   } catch (e) {
@@ -1268,7 +1282,7 @@ app.post("/api/launch/plan", requireAuth, async (req, res) => {
     if (!(await hasEnoughCredits(req.user.id, 0.1))) return res.status(402).json({ error: "Crédits insuffisants." });
     const r = await planChat(req.user.id, projectId, messages, modelId);
     const billed = await billCodeSession(req.user.id, { usage: r.usage, model: modelId }, "launch-plan");
-    res.json({ message: r.message, questions: r.questions, ...billed });
+    res.json({ message: r.message, questions: r.questions, toolEvents: r.toolEvents || [], ...billed });
   } catch (e) {
     console.error("[launch/plan]", e);
     res.status(500).json({ error: e.message });
@@ -1301,6 +1315,75 @@ app.post("/api/launch/:projectId/favicon", requireAuth, async (req, res) => {
 app.post("/api/launch/:projectId/visual-text", requireAuth, async (req, res) => {
   try {
     res.json(await visualTextEdit(req.user.id, req.params.projectId, req.body?.oldText, req.body?.newText));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ─── Intégration Notion (créateur) ──────────────────────────────────────────
+// État : Notion connecté (compte créateur) + cible configurée pour ce projet.
+app.get("/api/launch/:projectId/notion", requireAuth, async (req, res) => {
+  try {
+    const status = await getLiveConnectionStatus(req.user.id, "notion"); // vrai statut Composio
+    const proj = await getProjectNotion(req.params.projectId);
+    res.json({ connected: status === "ACTIVE", status, target: proj?.notion_target || "" });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Enregistre la page/DB Notion cible où journaliser les commandes du projet.
+app.post("/api/launch/:projectId/notion", requireAuth, async (req, res) => {
+  try {
+    res.json(await setProjectNotion(req.user.id, req.params.projectId, req.body?.target));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Détecte le schéma de la base Notion ciblée (colonnes + types) — pour montrer
+// au créateur que l'IA lit bien son tableau et saura mapper les commandes.
+app.get("/api/launch/:projectId/notion/schema", requireAuth, async (req, res) => {
+  try {
+    const target = String(req.query?.target || "").trim();
+    if (!target) return res.json({ columns: null });
+    res.json({ columns: await fetchNotionSchema(req.user.id, target) }); // null = page, pas une base
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Liste les pages Notion du créateur (pour choisir le parent de la base).
+app.get("/api/launch/:projectId/notion/pages", requireAuth, async (req, res) => {
+  try {
+    res.json({ pages: await searchNotionPages(req.user.id) });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Crée automatiquement la base « Commandes » sous une page Notion, puis la définit
+// comme cible du projet (schéma parfait → mapping garanti).
+app.post("/api/launch/:projectId/notion/create-db", requireAuth, async (req, res) => {
+  try {
+    const parentId = String(req.body?.parentId || "").trim();
+    if (!parentId) return res.status(400).json({ error: "ID de la page parente requis" });
+    const proj = await getProjectNotion(req.params.projectId);
+    const out = await createOrdersDatabase(req.user.id, parentId, proj?.app_name || "App");
+    if (!out.ok) return res.status(400).json(out);
+    await setProjectNotion(req.user.id, req.params.projectId, out.databaseId);
+    res.json({ ok: true, target: out.databaseId });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Appelé par l'app déployée (SDK LaunchIntegrations.notion.*) — pas d'auth user,
+// on agit sur le Notion du CRÉATEUR du projet. Actions whitelistées côté lib.
+app.post("/api/launch/:projectId/integrations/notion", async (req, res) => {
+  try {
+    const proj = await getProjectNotion(req.params.projectId);
+    if (!proj?.user_id) return res.status(404).json({ error: "Projet introuvable" });
+    // Compat legacy : { title, content } sans action → createPage
+    const action = req.body?.action || "createPage";
+    const args = req.body?.args || (req.body?.title != null
+      ? { title: req.body.title, markdown: req.body.content ?? req.body.markdown }
+      : {});
+    const out = await runNotionAction({
+      creatorUserId: proj.user_id,
+      action,
+      args,
+      defaultTarget: proj.notion_target
+    });
+    res.json(out);
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 

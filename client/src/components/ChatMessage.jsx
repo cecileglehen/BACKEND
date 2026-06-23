@@ -645,7 +645,7 @@ export default function ChatMessage({ msg, models = [], onRemake, onChooseVarian
         {(isUser || msg.content || msg.imageUrl || msg.videoUrl || msg.musicTracks?.length > 0 || msg.error) && (
           <div className={`w-full ${
             isUser
-              ? "px-3 sm:px-4 py-2.5 sm:py-3 rounded-2xl rounded-tr-sm bg-delt-text text-white text-sm leading-relaxed"
+              ? "px-3 sm:px-4 py-2.5 sm:py-3 rounded-2xl rounded-tr-sm bg-gradient-to-br from-slate-800 to-slate-950 text-white text-sm leading-relaxed shadow-md shadow-slate-900/15"
               : msg.error
               ? "px-3 sm:px-4 py-2.5 sm:py-3 rounded-2xl rounded-tl-sm bg-red-50 border border-red-200 text-red-700"
               : (msg.imageUrl || msg.videoUrl || msg.musicTracks?.length > 0)

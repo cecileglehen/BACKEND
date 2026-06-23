@@ -65,7 +65,7 @@ const CATEGORY_TABLE = [
   { cat: "NANO",       models: "Mistral Small 4 · GPT-4o Mini · GPT-5.4 Nano · Gemini 2.5 Flash",                              badge: "badge-eco" },
   { cat: "MINI",       models: "Mistral Large 3 · Mixtral 8x22B · GPT-5.4 Mini · Llama 4 Maverick · Gemini 3.1 Flash Lite · Claude Haiku 4.5 · Grok 4.20 · Grok 4.3", badge: "badge-mini" },
   { cat: "NORMAL",     models: "GPT-5.4 · Claude Sonnet 4.5 · Mistral Large · Sonar Web Search",                                            badge: "badge-normal" },
-  { cat: "EXPERT",     models: "GPT-5.5 · Claude Opus 4.8 · Grok 4.20 Multi-Agent · Sonar Deep Research",                      badge: "badge-expert" },
+  { cat: "EXPERT",     models: "GPT-5.5 · Claude Fable 5 (très cher) · Claude Opus 4.8 · Grok 4.20 Multi-Agent · Sonar Deep Research", badge: "badge-expert" },
   { cat: "PRO",        models: "GPT-5.4 Pro · GPT-5.5 Pro",                                                                    badge: "badge-pro" },
 ];
 
@@ -135,7 +135,7 @@ function PricingContent({ user, config, onSubscribed }) {
 
       {/* Header */}
       <div className="text-center">
-        <h1 className="text-4xl font-extrabold text-delt-text mb-3 tracking-tight">{t("pricing.heading")}</h1>
+        <h1 className="text-4xl font-extrabold mb-3 tracking-tight text-gradient">{t("pricing.heading")}</h1>
         <p className="text-lg text-delt-muted mb-8">{t("pricing.tagline")}</p>
 
         {config.mode === "sandbox" && (
@@ -158,11 +158,11 @@ function PricingContent({ user, config, onSubscribed }) {
           return (
             <div
               key={plan.key}
-              className={`relative rounded-3xl p-7 flex flex-col gap-5 ${
+              className={`relative rounded-3xl p-7 flex flex-col gap-5 transition-shadow ${
                 plan.dark
-                  ? "text-white"
-                  : "bg-white border border-slate-200 shadow-sm"
-              } ${isLower ? "opacity-50" : ""}`}
+                  ? "text-white shadow-xl shadow-blue-900/20"
+                  : "glass-card"
+              } ${plan.popular ? "ring-2 ring-indigo-400/50 shadow-[0_20px_50px_-20px_rgba(99,102,241,0.45)]" : ""} ${isLower ? "opacity-50" : ""}`}
               style={plan.dark ? { background: "linear-gradient(160deg, #0f172a 0%, #1e3a8a 100%)" } : {}}
             >
               {plan.popular && (
@@ -301,9 +301,9 @@ function PricingContent({ user, config, onSubscribed }) {
           <span dangerouslySetInnerHTML={{ __html: t("pricing.included_sub").replace("<strong>", "<strong class=\"text-delt-text\">") }} />
           Le routeur auto choisit le meilleur selon ta question.
         </p>
-        <div className="rounded-2xl border border-delt-border overflow-x-auto shadow-sm">
+        <div className="rounded-2xl glass-card overflow-x-auto">
           <table className="min-w-[500px] w-full text-sm">
-            <thead className="bg-delt-surface border-b border-delt-border">
+            <thead className="bg-white/40 border-b border-delt-border/70">
               <tr>
                 <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">{t("pricing.col_category")}</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">{t("pricing.col_models")}</th>
@@ -311,7 +311,7 @@ function PricingContent({ user, config, onSubscribed }) {
             </thead>
             <tbody className="divide-y divide-delt-border">
               {CATEGORY_TABLE.map((row) => (
-                <tr key={row.cat} className="hover:bg-delt-surface transition-colors">
+                <tr key={row.cat} className="hover:bg-white/60 transition-colors">
                   <td className="px-5 py-3.5">
                     <span className={`text-xs px-2 py-0.5 rounded font-medium ${row.badge}`}>{row.cat}</span>
                   </td>
@@ -327,9 +327,9 @@ function PricingContent({ user, config, onSubscribed }) {
       <div>
         <h2 className="text-2xl font-bold text-delt-text mb-2">{t("pricing.image_title")}</h2>
         <p className="text-sm text-delt-muted mb-5">{t("pricing.image_sub")}</p>
-        <div className="rounded-2xl border border-delt-border overflow-x-auto shadow-sm">
+        <div className="rounded-2xl glass-card overflow-x-auto">
           <table className="min-w-[500px] w-full text-sm">
-            <thead className="bg-delt-surface border-b border-delt-border">
+            <thead className="bg-white/40 border-b border-delt-border/70">
               <tr>
                 <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">{t("pricing.col_model")}</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">{t("pricing.col_provider")}</th>
@@ -338,7 +338,7 @@ function PricingContent({ user, config, onSubscribed }) {
             </thead>
             <tbody className="divide-y divide-delt-border">
               {IMAGE_TABLE.map((row) => (
-                <tr key={row.name} className="hover:bg-delt-surface transition-colors">
+                <tr key={row.name} className="hover:bg-white/60 transition-colors">
                   <td className="px-5 py-3.5 font-medium text-delt-text">{row.name}</td>
                   <td className="px-5 py-3.5 text-delt-muted">{row.brand}</td>
                   <td className="px-5 py-3.5 text-delt-muted text-xs">{row.tag}</td>
@@ -353,9 +353,9 @@ function PricingContent({ user, config, onSubscribed }) {
       <div>
         <h2 className="text-2xl font-bold text-delt-text mb-2">{t("pricing.video_title")}</h2>
         <p className="text-sm text-delt-muted mb-5">{t("pricing.video_sub")}</p>
-        <div className="rounded-2xl border border-delt-border overflow-x-auto shadow-sm">
+        <div className="rounded-2xl glass-card overflow-x-auto">
           <table className="min-w-[500px] w-full text-sm">
-            <thead className="bg-delt-surface border-b border-delt-border">
+            <thead className="bg-white/40 border-b border-delt-border/70">
               <tr>
                 <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">{t("pricing.col_model")}</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-delt-muted">{t("pricing.col_provider")}</th>
@@ -364,7 +364,7 @@ function PricingContent({ user, config, onSubscribed }) {
             </thead>
             <tbody className="divide-y divide-delt-border">
               {VIDEO_TABLE.map((row) => (
-                <tr key={row.name} className="hover:bg-delt-surface transition-colors">
+                <tr key={row.name} className="hover:bg-white/60 transition-colors">
                   <td className="px-5 py-3.5 font-medium text-delt-text">{row.name}</td>
                   <td className="px-5 py-3.5 text-delt-muted">{row.brand}</td>
                   <td className="px-5 py-3.5 text-delt-muted text-xs">720p</td>
@@ -431,7 +431,7 @@ function TopUpSection({ user }) {
 
   if (!user || user.plan === "FREE") {
     return (
-      <div className="rounded-3xl border border-delt-border bg-delt-surface/40 p-8 text-center">
+      <div className="rounded-3xl glass-card p-8 text-center">
         <h2 className="text-2xl font-extrabold text-delt-text mb-2">{t("topup.title")}</h2>
         <p className="text-sm text-delt-muted">{t("topup.need_plan")}</p>
       </div>
@@ -439,7 +439,7 @@ function TopUpSection({ user }) {
   }
 
   return (
-    <div className="rounded-3xl border border-delt-border bg-white p-6 sm:p-8 shadow-sm">
+    <div className="rounded-3xl glass-card p-6 sm:p-8">
       <div className="text-center mb-6">
         <h2 className="text-2xl sm:text-3xl font-extrabold text-delt-text">{t("topup.title")}</h2>
         <p className="text-sm text-delt-muted mt-2 max-w-xl mx-auto">{t("topup.subtitle")}</p>
@@ -453,7 +453,7 @@ function TopUpSection({ user }) {
             key={p.id}
             onClick={() => buy(p.id)}
             disabled={!!busy}
-            className="rounded-2xl border border-delt-border bg-white p-4 text-center hover-lift tap-shrink disabled:opacity-50 transition-all relative"
+            className="rounded-2xl glass-card p-4 text-center hover-lift tap-shrink disabled:opacity-50 relative"
           >
             {p.bonus > 0 && (
               <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[10px] font-bold px-2 py-0.5 rounded-full text-white whitespace-nowrap" style={{ background: "linear-gradient(135deg,#6366f1,#06b6d4)" }}>
