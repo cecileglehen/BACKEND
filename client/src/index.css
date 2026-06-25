@@ -1,24 +1,36 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700;800&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
   color-scheme: light;
+  --delt-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 }
+
+/* Typo raffinée appliquée partout → rendu « moins IA », plus premium */
+html {
+  font-family: var(--delt-font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'cv11', 'ss01', 'cv02';
+  letter-spacing: -0.011em;
+}
+h1, h2, h3, h4, .tracking-tight-2 { letter-spacing: -0.022em; }
 
 html, body, #root {
   height: 100%;
 }
 
 body {
-  /* Fond ambiant : mesh gradient très léger qui transparaît derrière les surfaces glass */
-  background-color: #f6f8fc;
+  /* Fond ambiant très calme : off-white tiède + halos quasi imperceptibles (épuré, premium) */
+  background-color: #fafaf9;
   background-image:
-    radial-gradient(ellipse 80% 60% at 8% -10%, rgba(99, 102, 241, 0.10), transparent 55%),
-    radial-gradient(ellipse 70% 55% at 95% 0%, rgba(6, 182, 212, 0.09), transparent 55%),
-    radial-gradient(ellipse 90% 70% at 50% 115%, rgba(168, 85, 247, 0.06), transparent 60%);
+    radial-gradient(ellipse 80% 60% at 8% -10%, rgba(99, 102, 241, 0.045), transparent 55%),
+    radial-gradient(ellipse 70% 55% at 95% 0%, rgba(6, 182, 212, 0.035), transparent 55%);
   background-attachment: fixed;
-  color: #0f172a;
+  color: #1c1c1e;
   /* iOS : empêche le bounce / la sélection lors d'un long-press accidentel sur les fonds */
   -webkit-tap-highlight-color: transparent;
   -webkit-overflow-scrolling: touch;

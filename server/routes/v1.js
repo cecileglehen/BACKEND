@@ -5,7 +5,7 @@ import express from "express";
 import { requireApiKey } from "../lib/auth.js";
 import { chatWithFallback, streamChat } from "../lib/openrouter.js";
 import { getApiCredits, deductApiCredits } from "../lib/credits.js";
-import { computeCreditCost, computeCreditFromCost, FREE_TIER_ONLY_PLANS } from "../config/plans.js";
+import { computeCreditCost, computeApiCreditFromCost, FREE_TIER_ONLY_PLANS } from "../config/plans.js";
 import { CATEGORIES, findModelInCatalog, normalizeTier } from "../config/models.js";
 import { recordUsage, logUsage } from "../lib/windows.js";
 
@@ -32,7 +32,7 @@ router.get("/models", requireApiKey, (_req, res) => {
 // ─── POST /v1/chat/completions — compatible OpenAI ───────────────────────────
 router.post("/chat/completions", requireApiKey, async (req, res) => {
   try {
-    const { model: modelId, messages, stream = false, temperature, max_tokens } = req.body ?? {};
+    const { model: modelId, messages, stream = false, temperature, max_tokens, tools, tool_choice, response_format } = req.body ?? {};
 
     if (!modelId) {
       return res.status(400).json({ error: { message: "Missing required parameter: 'model'.", type: "invalid_request_error" } });
@@ -102,7 +102,10 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
           stream_options: { include_usage: true, ...(req.body?.stream_options || {}) },
           usage: { include: true },
           ...(temperature !== undefined && { temperature }),
-          ...(max_tokens !== undefined && { max_tokens })
+          ...(max_tokens !== undefined && { max_tokens }),
+          // Function/tool calling (agents type OpenCode/DeltCLI) + JSON mode
+          ...(Array.isArray(tools) && tools.length && { tools, tool_choice: tool_choice || "auto" }),
+          ...(response_format && { response_format })
         })
       });
 
@@ -116,6 +119,7 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
       const decoder = new TextDecoder();
       let fullContent = "";
       let usage = null;
+      let finishReason = "stop";
       let buf = "";
 
       while (true) {
@@ -131,12 +135,20 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
           if (data === "[DONE]") continue;
           try {
             const json = JSON.parse(data);
-            const delta = json.choices?.[0]?.delta?.content ?? "";
-            if (delta) {
-              fullContent += delta;
+            const choice = json.choices?.[0];
+            const delta = choice?.delta?.content ?? "";
+            const toolDeltas = choice?.delta?.tool_calls;
+            if (choice?.finish_reason) finishReason = choice.finish_reason;
+            // Forward des deltas de contenu ET de tool_calls (format OpenAI inchangé)
+            if (delta || toolDeltas) {
+              if (delta) fullContent += delta;
               res.write(`data: ${JSON.stringify({
                 id: completionId, object: "chat.completion.chunk", created, model: modelId,
-                choices: [{ index: 0, delta: { content: delta }, finish_reason: null }]
+                choices: [{
+                  index: 0,
+                  delta: { ...(delta && { content: delta }), ...(toolDeltas && { tool_calls: toolDeltas }) },
+                  finish_reason: null
+                }]
               })}\n\n`);
             }
             if (json.usage) usage = json.usage;
@@ -144,10 +156,10 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
         }
       }
 
-      // Dernier chunk : finish_reason
+      // Dernier chunk : finish_reason (stop | tool_calls | length…)
       res.write(`data: ${JSON.stringify({
         id: completionId, object: "chat.completion.chunk", created, model: modelId,
-        choices: [{ index: 0, delta: {}, finish_reason: "stop" }]
+        choices: [{ index: 0, delta: {}, finish_reason: finishReason }]
       })}\n\n`);
 
       // Forward du chunk usage final (standard OpenAI avec stream_options.include_usage)
@@ -168,7 +180,7 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
       const tokensOut = (usage?.completion_tokens ?? Math.ceil(fullContent.length / 4)) + thinkingTokens;
       const costUsd   = Number(usage?.cost) || 0;
 
-      const creditCost = computeCreditFromCost({ costUsd, modelId, tokensIn, tokensOut });
+      const creditCost = computeApiCreditFromCost({ costUsd, modelId, tokensIn, tokensOut });
       await deductApiCredits(req.user.id, creditCost);
       await recordUsage(req.user.id, tier, tokensIn, tokensOut);
       logUsage({ userId: req.user.id, modelId, tier, tokensIn, tokensOut, costCr: creditCost, source: "api" });
@@ -177,7 +189,7 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
     }
 
     // ─── Non-streaming ─────────────────────────────────────────────────────
-    const result = await chatWithFallback({ modelId, messages, manual: true });
+    const result = await chatWithFallback({ modelId, messages, manual: true, tools, tool_choice, response_format });
 
     const usage = result.raw?.usage ?? {};
     const thinkingTokens = usage.completion_tokens_details?.reasoning_tokens ?? 0;
@@ -185,7 +197,7 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
     const tokensOut      = (usage.completion_tokens ?? Math.ceil(result.content.length / 4)) + thinkingTokens;
     const costUsd        = Number(usage.cost) || 0;
 
-    const creditCost = computeCreditFromCost({
+    const creditCost = computeApiCreditFromCost({
       costUsd,
       modelId: result.modelUsed || modelId,
       tokensIn, tokensOut
@@ -201,8 +213,12 @@ router.post("/chat/completions", requireApiKey, async (req, res) => {
       model: result.modelUsed,
       choices: [{
         index: 0,
-        message: { role: "assistant", content: result.content },
-        finish_reason: "stop"
+        message: {
+          role: "assistant",
+          content: result.content,
+          ...(result.toolCalls ? { tool_calls: result.toolCalls } : {})
+        },
+        finish_reason: result.finishReason || "stop"
       }],
       usage: {
         prompt_tokens: tokensIn,

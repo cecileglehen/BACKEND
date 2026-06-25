@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import Logo from "./Logo.jsx";
 import { useAuth } from "../contexts/AuthContext.jsx";
+import CreditMeter from "./CreditMeter.jsx";
 import { useT } from "../lib/i18n.jsx";
 
 function buildTabs(t) {
@@ -24,7 +25,7 @@ const PLAN_COLORS = {
 };
 
 export default function Navbar() {
-  const { user, logout } = useAuth();
+  const { user, logout, quotaWindow, credits } = useAuth();
   const t = useT();
   const TABS = buildTabs(t);
   const navigate = useNavigate();
@@ -81,6 +82,10 @@ export default function Navbar() {
         </nav>
 
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+          {/* Quota GLOBAL du compte (commun à tous les chats) */}
+          <div className="hidden md:flex">
+            <CreditMeter window={quotaWindow} credits={credits} />
+          </div>
           <span
             className="hidden xs:inline-flex text-xs font-bold px-2 py-0.5 rounded-full text-white"
             style={{ background: planColor }}

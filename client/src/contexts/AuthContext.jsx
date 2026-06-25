@@ -15,6 +15,8 @@ export function AuthProvider({ children }) {
   const [user, setUserState] = useState(initialUser);
   const [authReady, setAuthReady] = useState(Boolean(initialUser));
   const [credits, setCredits] = useState(null);
+  const [quotaWindow, setQuotaWindow] = useState(null);
+  const [windowQuotas, setWindowQuotas] = useState(null);
 
   const setUser = useCallback((u) => {
     setUserState(u);
@@ -27,6 +29,8 @@ export function AuthProvider({ children }) {
     try {
       const q = await api.quota();
       setCredits(q.credits ?? 0);
+      if (q.window) setQuotaWindow(q.window);
+      if (q.windowQuotas) setWindowQuotas(q.windowQuotas);
     } catch { /* silencieux */ }
   }, [user]);
 
@@ -81,6 +85,7 @@ export function AuthProvider({ children }) {
   const value = {
     user, setUser, authReady,
     credits, setCredits, refreshQuota,
+    quotaWindow, setQuotaWindow, windowQuotas,
     refreshUser, logout
   };
 

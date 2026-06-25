@@ -17,6 +17,9 @@ import WelcomeScreen from "../components/WelcomeScreen.jsx";
 import ParallelPicker from "../components/ParallelPicker.jsx";
 import DebateSetup from "../components/DebateSetup.jsx";
 import BrandPills from "../components/BrandPills.jsx";
+import ModelDropdown from "../components/ModelDropdown.jsx";
+import TopModelPicker from "../components/TopModelPicker.jsx";
+import { pickerForBrand, brandFromModelId } from "../lib/modelPicker.jsx";
 import ProjectsSidebar from "../components/ProjectsSidebar.jsx";
 import ProjectSettingsModal from "../components/ProjectSettingsModal.jsx";
 import ManualModelSelector from "../components/ManualModelSelector.jsx";
@@ -56,8 +59,7 @@ const DEEP_STEPS = [
   "Filtrage des doublons",
   "Tri par pertinence",
   "Extraction des faits",
-  "Recherche approfondie",
-  "Vérification des sources",
+  // Étapes agentiques dynamiques (Réflexion N / Recherche ciblée N) insérées ici en live
   "Évaluation de fiabilité",
   "Synthèse finale"
 ];
@@ -71,7 +73,8 @@ function isBrandFamily(model) {
 }
 
 export default function ChatPage({ agentIdOverride = null, onExitAgent = null }) {
-  const { user, refreshQuota, setCredits } = useAuth();
+  const { user, credits, quotaWindow, setQuotaWindow, refreshQuota, setCredits } = useAuth();
+  const availableBudget = (quotaWindow?.remaining ?? 0) + (credits ?? 0);
   const toast = useToast();
   const t = useT();
   const isFree = user?.plan === "FREE";
@@ -133,6 +136,8 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
   const [debateSetupOpen, setDebateSetupOpen] = useState(false);
   const [openArtifact, setOpenArtifact] = useState(null);
   const [deepMode, setDeepMode] = useState(false);
+  const [searchMode, setSearchMode] = useState(false);
+  const [remakeMeta, setRemakeMeta] = useState(null); // { fromTitle, hiddenPrefix } pour "Refaire avec"
   const [pillsCollapsed, setPillsCollapsed] = useState(() => localStorage.getItem("delt-pills-collapsed") === "1");
   const [tourOpen, setTourOpen] = useState(() => localStorage.getItem("delt-onboard-tour-seen") !== "1");
   const closeTour = () => {
@@ -160,6 +165,7 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
     agentId: activeAgentId,
     enabledTools: enabledIntegrations,
     onCreditsUsed,
+    onQuota: setQuotaWindow,
     onAgeGate: (resume) => {
       setPendingVeniceSend(() => resume);
       setAgeGateOpen(true);
@@ -169,6 +175,17 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
   useEffect(() => {
     localStorage.setItem("delt-pills-collapsed", pillsCollapsed ? "1" : "0");
   }, [pillsCollapsed]);
+
+  // Verrou marque IMMÉDIAT : dès la 1ʳᵉ réponse IA d'un chat en Auto, on verrouille
+  // sur la marque utilisée (plus besoin de rafraîchir pour que le sélecteur s'y limite).
+  useEffect(() => {
+    if (selectedManualModel?.brand) return;
+    const lastM = [...chat.messages].reverse().find((m) => m.role === "assistant" && m.model?.id && !m.streaming);
+    const brand = brandFromModelId(lastM?.model?.id);
+    if (brand && pickerForBrand(brand)) {
+      setSelectedManualModel({ id: lastM.model.id, brand, display: lastM.model.display || brand, tier: lastM.model.tier || "NORMAL" });
+    }
+  }, [chat.messages, selectedManualModel]);
 
   useEffect(() => {
     localStorage.setItem("delt-enabled-integrations", JSON.stringify([...enabledIntegrations]));
@@ -251,11 +268,22 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
     const conv = conversations.find((c) => c.id === id);
     if (conv?.projectId !== undefined) setActiveProjectId(conv.projectId || null);
     setActiveId(id);
+    setRemakeMeta(null);
     const { initial, fresh } = getMessages(id);
     chat.setMessages(initial);
     chat.setError(null);
     setInput("");
     chat.setRouterInfo(null);
+
+    // Reverrouille la marque du chat depuis le dernier message IA (sinon au refresh
+    // le sélecteur réoublie qu'on est sur une marque et propose tout).
+    const lastM = [...initial].reverse().find((m) => m.role === "assistant" && m.model?.id);
+    const brand = brandFromModelId(lastM?.model?.id);
+    if (brand && pickerForBrand(brand)) {
+      setSelectedManualModel({ id: lastM.model.id, brand, display: lastM.model.display || brand, tier: lastM.model.tier || "NORMAL" });
+    } else {
+      setSelectedManualModel(null);
+    }
 
     // Hot-swap quand la version serveur arrive (cross-browser sync).
     // Si 404/403 (conv pas à nous), on redirige + toast.
@@ -288,7 +316,34 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
     newConversation();
     chat.reset();
     setInput("");
+    setRemakeMeta(null);
   };
+
+  // « Refaire avec » : ouvre un NOUVEAU chat avec le contexte chargé en mémoire
+  // (non affiché), une bannière « Refait via … », et relance le prompt sur le modèle choisi.
+  const handleRemakeWith = (index, model) => {
+    const fromTitle = conversations.find((c) => c.id === activeId)?.title || "cette discussion";
+    const hiddenPrefix = chat.stripForLLM(chat.messages.slice(0, index));
+    const prompt = chat.messages[index];
+    if (!prompt) return;
+    newConversation();
+    chat.reset();
+    setInput("");
+    setRemakeMeta({ fromTitle, hiddenPrefix });
+    setSelectedManualModel(model);
+    const userMessage = { role: "user", content: prompt.content };
+    if (prompt.attachments?.length) userMessage.attachments = prompt.attachments;
+    chat.setMessages([userMessage]);
+    const history = [...hiddenPrefix, { role: "user", content: prompt.content }];
+    chat.sendWithTier(model.tier ?? "NANO", history, model);
+  };
+
+  // Modes mutuellement exclusifs (1 max) — Auto = aucun mode forcé (le système tranche).
+  const clearModes = () => { setSearchMode(false); setDeepMode(false); setParallelModels([]); setDebateAgents(null); };
+  const modeSearch = () => { const v = !searchMode; clearModes(); setSearchMode(v); };
+  const modeDeep = () => { const v = !deepMode; clearModes(); setDeepMode(v); };
+  const modeDebate = () => { clearModes(); toggleDebate(); };
+  const modeParallel = () => { clearModes(); setParallelPickerOpen(true); };
 
   const handleDelete = (id) => {
     deleteConversation(id);
@@ -296,6 +351,12 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
   };
 
   const handleSelectBrand = (model) => {
+    // 🔒 Verrou marque : une fois le chat commencé, on reste dans la MÊME marque
+    // (changer de marque en cours de conversation provoque des incohérences).
+    if (chat.messages.length > 0 && selectedManualModel?.brand && model?.brand && model.brand !== selectedManualModel.brand) {
+      toast.error(`Reste sur ${selectedManualModel.brand} pour cette conversation — ouvre un nouveau chat pour changer de marque.`);
+      return;
+    }
     setSelectedManualModel(model);
     setAutoMode(isBrandFamily(model));
   };
@@ -442,9 +503,20 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
           }));
         },
         onStep: ({ label, status, ...extra }) => {
-          updateDeep((cur) => ({
-            steps: (cur.steps || []).map((s) => s.label === label ? { ...s, status, ...extra } : s)
-          }));
+          updateDeep((cur) => {
+            const steps = cur.steps || [];
+            // Étape connue → on met juste à jour son statut.
+            if (steps.some((s) => s.label === label)) {
+              return { steps: steps.map((s) => s.label === label ? { ...s, status, ...extra } : s) };
+            }
+            // Étape DYNAMIQUE (boucle agentique : "Réflexion N" / "Recherche ciblée N")
+            // → on l'insère juste avant les étapes finales (fiabilité / synthèse).
+            const tailIdx = steps.findIndex((s) => /fiabilit|synth/i.test(s.label));
+            const at = tailIdx === -1 ? steps.length : tailIdx;
+            const next = [...steps];
+            next.splice(at, 0, { label, status, ...extra });
+            return { steps: next };
+          });
         },
         onSources: ({ sources }) => {
           updateDeep(() => ({ sources: sources || [] }));
@@ -503,7 +575,14 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
     const nextMessages = [...chat.messages, userMessage];
     chat.setMessages(nextMessages);
     saveMessages(convId, nextMessages, activeProjectId ?? undefined);
-    const history = chat.stripForLLM(nextMessages);
+    // Préfixe caché (contexte d'un « Refaire avec ») prepended à l'historique LLM, non affiché.
+    const history = [...(remakeMeta?.hiddenPrefix || []), ...chat.stripForLLM(nextMessages)];
+
+    // Mode « Recherche web » : on force l'usage du tool web_search (directive non affichée).
+    if (searchMode && history.length) {
+      const last = history[history.length - 1];
+      last.content = `${last.content}\n\n[Utilise impérativement l'outil web_search pour répondre avec des informations à jour et sourcées.]`;
+    }
 
     if (deepMode) {
       await runDeepSearch(text);
@@ -633,28 +712,24 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
   return (
     <div className="flex-1 min-h-0 flex relative">
       {/* Sidebar historique */}
+      {/* Sidebar historique : panneau latéral qui POUSSE le chat (pas de backdrop/flou),
+          reste ouvert pendant que tu chattes. Sur mobile il se superpose (sans flou). */}
       {sidebarAnim.mounted && (
-        <>
-          <div
-            onClick={() => setHistoryOpen(false)}
-            className={`absolute inset-0 bg-black/10 z-20 ${sidebarAnim.closing ? "animate-backdropFadeOut" : "animate-backdropFade"}`}
-          />
-          <div className={`absolute left-0 top-0 bottom-0 w-[min(18rem,86vw)] glass-strong border-y-0 border-l-0 border-r border-delt-border/60 z-30 flex flex-col ${sidebarAnim.closing ? "animate-slideOutLeft" : "animate-slideInLeft"}`}>
-            <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-widest text-delt-muted">{t("sidebar.history")}</span>
-              <button onClick={() => setHistoryOpen(false)} className="text-delt-muted hover:text-delt-text text-lg leading-none">✕</button>
-            </div>
-            <div className="flex-1 min-h-0">
-              <ConversationList
-                conversations={visibleConversations}
-                activeId={activeId}
-                onSelect={(id) => { handleSelectConv(id); setHistoryOpen(false); }}
-                onNew={() => { handleNew(); setHistoryOpen(false); }}
-                onDelete={handleDelete}
-              />
-            </div>
+        <div className={`absolute md:relative left-0 top-0 bottom-0 md:top-auto md:bottom-auto w-[min(18rem,86vw)] md:w-72 md:flex-shrink-0 glass-strong border-y-0 border-l-0 border-r border-delt-border/60 z-30 flex flex-col ${sidebarAnim.closing ? "animate-slideOutLeft" : "animate-slideInLeft"}`}>
+          <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-widest text-delt-muted">{t("sidebar.history")}</span>
+            <button onClick={() => setHistoryOpen(false)} className="text-delt-muted hover:text-delt-text text-lg leading-none">✕</button>
           </div>
-        </>
+          <div className="flex-1 min-h-0">
+            <ConversationList
+              conversations={visibleConversations}
+              activeId={activeId}
+              onSelect={handleSelectConv}
+              onNew={handleNew}
+              onDelete={handleDelete}
+            />
+          </div>
+        </div>
       )}
 
       {/* Sidebar projets */}
@@ -729,19 +804,22 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
                   integrations={integrations}
                   enabledIntegrations={enabledIntegrations}
                   onToggleIntegration={toggleIntegration}
-                  showAuto={true}
+                  showAuto={false}
                   onOpenModels={() => setModelsOpen(true)}
                   attachments={attachments}
                   onAttachmentsChange={setAttachments}
                   parallelModels={parallelModels}
-                  onOpenParallel={() => setParallelPickerOpen(true)}
+                  onOpenParallel={modeParallel}
                   debateActive={Boolean(debateAgents)}
-                  onOpenDebate={toggleDebate}
+                  onOpenDebate={modeDebate}
                   deepActive={deepMode}
-                  onToggleDeep={() => setDeepMode((v) => !v)}
+                  onToggleDeep={modeDeep}
+                  searchActive={searchMode}
+                  onToggleSearch={modeSearch}
+                  onModesAuto={clearModes}
                 />
                 <div className="mt-2 hidden sm:block">
-                  <div className="flex justify-end max-w-3xl mx-auto -mb-1">
+                  <div className="flex items-center justify-end max-w-3xl mx-auto -mb-1">
                     <button
                       data-tour="pills"
                       type="button"
@@ -753,13 +831,38 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
                     </button>
                   </div>
                   {!pillsCollapsed && (
-                    <BrandPills
-                      catalog={catalog}
-                      selectedId={selectedManualModel?.id}
-                      onSelect={handleSelectBrand}
-                      plan={user.plan}
-                      showCreative={false}
-                    />
+                    <>
+                      <BrandPills
+                        catalog={catalog}
+                        selectedId={selectedManualModel?.id}
+                        onSelect={handleSelectBrand}
+                        plan={user.plan}
+                        showCreative={false}
+                        hideDots
+                      />
+                      {/* 🕰️ Time Machine — les premiers modèles, plus bas */}
+                      {catalog?.categories?.LEGACY?.models?.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-delt-border/50 max-w-3xl mx-auto">
+                          <div className="flex items-center justify-center gap-1.5 mb-2 text-[10px] font-bold uppercase tracking-widest text-delt-muted">
+                            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+                            Time Machine
+                          </div>
+                          <div className="flex flex-wrap items-center justify-center gap-2">
+                            {catalog.categories.LEGACY.models.map((m) => {
+                              const sel = selectedManualModel?.id === m.id;
+                              return (
+                                <button key={m.id} type="button" title={m.tagline || ""}
+                                  onClick={() => handleSelectBrand({ id: m.id, brand: m.brand, display: m.display, tier: "LEGACY" })}
+                                  className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-all tap-shrink ${sel ? "bg-delt-text text-white border-delt-text" : "bg-white text-delt-muted border-delt-border hover:text-delt-text hover:bg-delt-surface"}`}>
+                                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+                                  <span className="font-medium">{m.display}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -768,6 +871,28 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
         ) : (
           <>
             <HeaderTools inline />
+            {/* Bannière « Refait via … » — contexte chargé en mémoire mais non affiché */}
+            {remakeMeta && (
+              <div className="flex-shrink-0 px-2 sm:px-4 pt-2">
+                <div className="max-w-3xl mx-auto flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-200 text-[11px] text-indigo-700 w-fit">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 4v6h6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10"/></svg>
+                  Refait via <b className="font-semibold">{remakeMeta.fromTitle}</b> — contexte chargé en mémoire
+                </div>
+              </div>
+            )}
+            {/* Sélecteur de modèle (toujours visible, même en Auto). Quota = global dans la Navbar. */}
+            <div className="flex-shrink-0 px-2 sm:px-4 pt-2 pb-1">
+              <div className="max-w-3xl mx-auto flex items-center gap-3">
+                <TopModelPicker
+                  selected={selectedManualModel}
+                  onSelect={handleSelectBrand}
+                  onAuto={() => { setSelectedManualModel(null); setAutoMode(true); }}
+                  credits={availableBudget}
+                  catalog={catalog}
+                  lockBrand={chat.messages.length > 0 && selectedManualModel?.brand && pickerForBrand(selectedManualModel.brand) ? selectedManualModel.brand : null}
+                />
+              </div>
+            </div>
             <div ref={scrollRef} className="flex-1 overflow-y-auto">
               <div className="max-w-3xl mx-auto px-2 sm:px-4 py-3 sm:py-4 space-y-4 sm:space-y-5">
                 {chat.messages.map((m, i) => (
@@ -776,6 +901,7 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
                     msg={m}
                     models={allChatModels}
                     onRemake={m.role === "assistant" ? (model) => chat.remake(i, model) : undefined}
+                    onRemakeWith={m.role === "user" ? (model) => handleRemakeWith(i, model) : undefined}
                     onChooseVariant={(variantIndex) => chat.chooseVariant(i, variantIndex)}
                     onMerge={m.role === "assistant" && m.variants ? () => chat.mergeVariants(i) : undefined}
                     onOpenArtifact={setOpenArtifact}
@@ -808,39 +934,21 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
                   integrations={integrations}
                   enabledIntegrations={enabledIntegrations}
                   onToggleIntegration={toggleIntegration}
-                  showAuto={true}
+                  showAuto={false}
                   onOpenModels={() => setModelsOpen(true)}
                   attachments={attachments}
                   onAttachmentsChange={setAttachments}
                   parallelModels={parallelModels}
-                  onOpenParallel={() => setParallelPickerOpen(true)}
+                  onOpenParallel={modeParallel}
                   debateActive={Boolean(debateAgents)}
-                  onOpenDebate={toggleDebate}
+                  onOpenDebate={modeDebate}
                   deepActive={deepMode}
-                  onToggleDeep={() => setDeepMode((v) => !v)}
+                  onToggleDeep={modeDeep}
+                  searchActive={searchMode}
+                  onToggleSearch={modeSearch}
+                  onModesAuto={clearModes}
                 />
-                <div className="mt-2 hidden sm:block">
-                  <div className="flex justify-end max-w-3xl mx-auto -mb-1">
-                    <button
-                      data-tour="pills"
-                      type="button"
-                      onClick={() => setPillsCollapsed((v) => !v)}
-                      className="text-[10px] uppercase tracking-wider text-delt-muted hover:text-delt-text px-2 py-1 rounded-md hover:bg-delt-surface transition-colors flex items-center gap-1"
-                      title={pillsCollapsed ? "Afficher les modèles" : "Masquer les modèles"}
-                    >
-                      {pillsCollapsed ? t("pills.expand") : t("pills.collapse")}
-                    </button>
-                  </div>
-                  {!pillsCollapsed && (
-                    <BrandPills
-                      catalog={catalog}
-                      selectedId={selectedManualModel?.id}
-                      onSelect={handleSelectBrand}
-                      plan={user.plan}
-                      showCreative={false}
-                    />
-                  )}
-                </div>
+                {/* Pills du bas retirées une fois le chat commencé — le dropdown du haut (verrouillé marque) prend le relais */}
               </div>
             </div>
           </>

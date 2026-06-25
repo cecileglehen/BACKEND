@@ -22,10 +22,10 @@ const SECTIONS = {
     {
       id: "deepsearch",
       icon: "🧠",
-      title: "Deep Search v6 — pipeline complet",
-      intro: "Recherche approfondie de niveau Perplexity Pro. 11 étapes en temps réel avec embeddings, clustering, re-ranking LLM, multi-hop, scoring quantitatif et synthèse pondérée.",
+      title: "Deep Search v7 — agentique",
+      intro: "Recherche approfondie qui raisonne pas à pas : elle cherche, réfléchit, identifie ce qui manque, puis décide elle-même les recherches suivantes — jusqu'à se juger satisfaite. Embeddings, clustering, re-ranking LLM, scoring quantitatif et synthèse pondérée.",
       items: [
-        { label: "Pipeline détaillé", body: "1) Décomposition de la question → 2) Recherche web parallèle (10 requêtes) → 3) Scraping de 12 pages avec fallback Jina → 4) Embeddings de tous les chunks (text-embedding-3-small) → 5) Sélection top-50 globale → 6) Clustering anti-doublons → 7) Re-ranking LLM → 8) Extraction des faits → 9) Multi-hop si gaps → 10) Vérification croisée → 11) Synthèse pondérée." },
+        { label: "Boucle agentique", body: "1) Décomposition → 2) Recherche web parallèle → 3) Scraping (fallback Jina) → 4) Embeddings de tous les chunks → 5) Top-50 global → 6) Clustering anti-doublons → 7) Re-ranking LLM → 8) Extraction des faits → 9) BOUCLE 💭 Réflexion → 🔎 Recherche ciblée (l'IA crée son propre plan, jusqu'à 4 itérations, s'arrête quand elle a assez) → 10) Scoring → 11) Synthèse pondérée." },
         { label: "Cache pgvector", body: "Embeddings stockés en DB Supabase (pgvector) → 2e recherche sur même sujet = quasi-gratuit. Pages scrapées en cache LRU 1h." },
         { label: "Reasoning graph visible", body: "Section repliable \"🧠 Comment ça pense\" sous le rapport : chaque claim avec ses sources de support, désaccords entre sources, niveau de confiance (Confirmée/Probable/Incertaine)." },
         { label: "Scoring quantitatif", body: "Chaque source notée 0-100 sur 4 dimensions : autorité (TLD, host), fraîcheur (année détectée), cohérence (% claims confirmés), citations. + multiplicateur de type (benchmark ×1.3, paper ×1.2, reddit ×0.5, social ×0.3)." },

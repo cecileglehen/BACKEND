@@ -36,6 +36,7 @@ function resolveModel(profileId) {
 
 // Modèles d'image proposés dans Launch — plafonné à « Nano Banana 2 » (pas Pro/GPT Image/GPT Image 2).
 const LAUNCH_IMAGE_IDS = [
+  "fal-ai/fast-sdxl",
   "fal-ai/flux-1/schnell",
   "google/gemini-2.5-flash-image",
   "openai/gpt-5-image-mini",

@@ -57,13 +57,20 @@ export function optimizeQuery(userMessage) {
 export async function performWebSearch(userMessage) {
   const query = optimizeQuery(userMessage);
   if (!query) return null;
+  return searchWithQuery(query, 8);
+}
+
+/**
+ * Recherche avec une requête EXPLICITE (écrite par l'IA via le tool web_search).
+ * Aucun parsing : on prend la requête telle quelle. num adaptatif (3 à 10).
+ */
+export async function searchWithQuery(query, num = 6) {
+  const q = String(query || "").trim().slice(0, 300);
+  if (!q) return null;
+  const n = Math.max(3, Math.min(10, Number(num) || 6));
   try {
-    const data = await serperSearch(query, { num: 8 });
-    return {
-      query,
-      results: data.results,
-      contextText: formatSearchContext(data)
-    };
+    const data = await serperSearch(q, { num: n });
+    return { query: q, results: data.results, contextText: formatSearchContext(data) };
   } catch (e) {
     console.warn("[websearch] échec :", e.message);
     return null;

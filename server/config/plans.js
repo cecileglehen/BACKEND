@@ -114,6 +114,27 @@ export function computeCreditFromCost({ costUsd, modelId, tokensIn = 0, tokensOu
   return computeCreditCost(modelId, tokensIn, tokensOut);
 }
 
+// ─── Tarif API publique /v1 : PAYG quasi au coût (marge fine) ───────────────
+// L'API n'est PAS facturée comme le chat. Modèle : 1€ = 100 Cr ; $1 de coût réel
+// ≈ EUR_PER_USD € → ×100 Cr ; on ajoute API_MARGIN_PCT % de marge. Les deux sont
+// configurables en env car une marge de 3% ne tolère pas une dérive du change
+// EUR/USD : mieux vaut un EUR_PER_USD légèrement conservateur (buffer FX).
+const EUR_PER_USD    = Number(process.env.EUR_PER_USD || 0.95);   // 1 USD ≈ 0.95€ (prudent)
+const API_MARGIN_PCT = Number(process.env.API_MARGIN_PCT || 3);   // marge cible sur l'API
+const API_CR_PER_USD = EUR_PER_USD * 100 * (1 + API_MARGIN_PCT / 100);
+
+/**
+ * Coût en crédits API (pool api_credits) — marge fine ~3% au lieu de ~117% du chat.
+ */
+export function computeApiCreditFromCost({ costUsd, modelId, tokensIn = 0, tokensOut = 0 }) {
+  if (Number.isFinite(costUsd) && costUsd > 0) {
+    const cr = costUsd * API_CR_PER_USD;
+    return Math.max(MIN_CREDIT_COST, Math.ceil(cr * 100) / 100);
+  }
+  // Fallback : grille tier (rare — uniquement si le fournisseur ne renvoie pas de coût)
+  return computeCreditCost(modelId, tokensIn, tokensOut);
+}
+
 // Modèles principaux par tier (importé depuis models.js)
 export { TIER_PRIMARY_MODELS as TIER_MODELS } from "./models.js";
 

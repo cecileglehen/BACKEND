@@ -4,8 +4,10 @@ import { fallbackChain } from "../config/models.js";
 const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 // ─── DELT 33M (modèle propriétaire interne) ─────────────────────────────────
-const DELT_INFERENCE_URL = (process.env.DELT_INFERENCE_URL || "https://bathroom-ultram-usd-offering.trycloudflare.com").trim();
-const DELT_INFERENCE_KEY = (process.env.DELT_INFERENCE_KEY || "myDMpvoCuw1ePElUrbqapiB7sXPfShWGfrSh5WdaSpM").trim();
+// ⚠️ Jamais de secret en dur ici (repo public) : tout vient de l'env.
+// Si non configuré, le modèle DELT 33M est simplement indisponible (le code le gère).
+const DELT_INFERENCE_URL = (process.env.DELT_INFERENCE_URL || "").trim();
+const DELT_INFERENCE_KEY = (process.env.DELT_INFERENCE_KEY || "").trim();
 const isDeltModel = (id) => typeof id === "string" && id.startsWith("delt/");
 
 const RETRYABLE = new Set([408, 425, 429, 500, 502, 503, 504]);
@@ -95,15 +97,22 @@ export async function chatWithTools({ modelId, messages, tools, signal }) {
   };
 }
 
-export async function chatWithFallback({ modelId, messages, signal, manual = false }) {
+export async function chatWithFallback({ modelId, messages, signal, manual = false, tools, tool_choice, response_format }) {
   const chain = manual ? [modelId] : fallbackChain(modelId);
+  // Passthrough function/tool calling (agents type OpenCode/DeltCLI) + JSON mode.
+  const extra = {};
+  if (Array.isArray(tools) && tools.length) { extra.tools = tools; extra.tool_choice = tool_choice || "auto"; }
+  if (response_format) extra.response_format = response_format;
   const errors = [];
   for (const id of chain) {
     try {
-      const data = await callModel(id, messages, signal);
+      const data = await callModel(id, messages, signal, extra);
+      const choice = data?.choices?.[0];
       return {
         modelUsed: id,
-        content: data?.choices?.[0]?.message?.content ?? "",
+        content: choice?.message?.content ?? "",
+        toolCalls: choice?.message?.tool_calls ?? null,
+        finishReason: choice?.finish_reason ?? "stop",
         raw: data,
         attempts: errors.length + 1,
         fallbackTrace: errors

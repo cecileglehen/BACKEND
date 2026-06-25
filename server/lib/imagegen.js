@@ -5,6 +5,7 @@ import { CREATIVE } from "../config/models.js";
 // Modèles d'image autorisés dans Launch — plafonné à « Nano Banana 2 »
 // (on exclut Nano Banana Pro, GPT Image et GPT Image 2, trop chers pour un app-builder).
 export const LAUNCH_IMAGE_MODEL_IDS = [
+  "fal-ai/fast-sdxl",
   "fal-ai/flux-1/schnell",
   "google/gemini-2.5-flash-image",
   "openai/gpt-5-image-mini",

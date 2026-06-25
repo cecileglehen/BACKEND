@@ -27,7 +27,10 @@ export default function Composer({
   debateActive = false,
   onOpenDebate,
   deepActive = false,
-  onToggleDeep
+  onToggleDeep,
+  searchActive = false,
+  onToggleSearch,
+  onModesAuto
 }) {
   const t = useT();
   const ref = useRef(null);
@@ -42,6 +45,8 @@ export default function Composer({
   const [recError, setRecError] = useState(null);
   const [uploadError, setUploadError] = useState(null);
   const [attachOpen, setAttachOpen] = useState(false);
+  const [modesOpen, setModesOpen] = useState(false);
+  const modesRef = useRef(null);
 
   useEffect(() => {
     if (!attachOpen) return;
@@ -53,10 +58,17 @@ export default function Composer({
   }, [attachOpen]);
 
   useEffect(() => {
+    if (!modesOpen) return;
+    const onClick = (e) => { if (!modesRef.current?.contains(e.target)) setModesOpen(false); };
+    document.addEventListener("pointerdown", onClick);
+    return () => document.removeEventListener("pointerdown", onClick);
+  }, [modesOpen]);
+
+  useEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = Math.min(200, el.scrollHeight) + "px";
+    el.style.height = Math.max(64, Math.min(260, el.scrollHeight)) + "px";
   }, [value]);
 
   const canSend = !disabled && (value.trim().length > 0 || attachments.length > 0);
@@ -132,7 +144,7 @@ export default function Composer({
   };
 
   return (
-    <div data-tour="composer" className="w-full rounded-2xl sm:rounded-3xl glass-strong px-3 sm:px-4 pt-3 pb-2 transition-all duration-200 focus-within:shadow-[0_8px_32px_-8px_rgba(99,102,241,0.25)] focus-within:border-indigo-200">
+    <div data-tour="composer" className="w-full rounded-2xl sm:rounded-3xl glass-strong border border-slate-900/85 px-3 sm:px-4 pt-3 pb-2 transition-all duration-200 focus-within:shadow-[0_8px_32px_-8px_rgba(15,23,42,0.25)] focus-within:border-slate-900">
       {/* Pièces jointes */}
       {attachments.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-2 pb-2 border-b border-delt-border">
@@ -204,7 +216,7 @@ export default function Composer({
         }}
         placeholder={t("composer.placeholder")}
         rows={1}
-        className="w-full outline-none resize-none text-[15px] text-delt-text placeholder:text-delt-muted leading-relaxed bg-transparent"
+        className="w-full outline-none resize-none text-[16px] text-delt-text placeholder:text-delt-muted leading-relaxed bg-transparent min-h-[64px]"
       />
 
       <div className="flex items-center justify-between gap-2 mt-1">
@@ -319,74 +331,46 @@ export default function Composer({
             />
           )}
 
-          {onToggleDeep && (
-            <button
-              data-tour="deep"
-              type="button"
-              onClick={onToggleDeep}
-              className={`flex items-center gap-1.5 h-9 px-2.5 sm:px-3 rounded-full border transition-colors text-xs sm:text-sm min-w-0 ${
-                deepActive
-                  ? "border-transparent text-white shadow-sm"
-                  : "border-delt-border text-delt-muted hover:text-delt-text hover:bg-delt-surface"
-              }`}
-              style={deepActive ? { background: "linear-gradient(135deg, #0f766e, #2563eb)" } : {}}
-              title={t("composer.deep_title")}
-            >
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="7" />
-                <line x1="16.5" y1="16.5" x2="21" y2="21" />
-                <path d="M8.5 11h5M11 8.5v5" />
-              </svg>
-              <span className="font-medium">{t("composer.deep_search")}</span>
-            </button>
-          )}
-
-          {/* Mode Débat */}
-          {onOpenDebate && (
-            <button
-              data-tour="debate"
-              type="button"
-              onClick={onOpenDebate}
-              className={`flex items-center gap-1.5 h-9 px-2.5 sm:px-3 rounded-full border transition-colors text-xs sm:text-sm min-w-0 ${
-                debateActive
-                  ? "border-transparent text-white shadow-sm"
-                  : "border-delt-border text-delt-muted hover:text-delt-text hover:bg-delt-surface"
-              }`}
-              style={debateActive ? { background: "linear-gradient(135deg, #a855f7, #ec4899)" } : {}}
-              title={debateActive ? t("composer.debate_disable") : t("composer.debate_off")}
-            >
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
-              </svg>
-              <span className="font-medium hidden sm:inline">{debateActive ? t("composer.debate_active") : t("composer.debate")}</span>
-            </button>
-          )}
-
-          {/* Multi-modèle parallèle */}
-          {onOpenParallel && (
-            <button
-              data-tour="parallel"
-              type="button"
-              onClick={onOpenParallel}
-              className={`flex items-center gap-1.5 h-9 px-2.5 sm:px-3 rounded-full border transition-colors text-xs sm:text-sm min-w-0 ${
-                parallelModels.length > 0
-                  ? "border-transparent text-white shadow-sm"
-                  : "border-delt-border text-delt-muted hover:text-delt-text hover:bg-delt-surface"
-              }`}
-              style={parallelModels.length > 0 ? { background: "linear-gradient(135deg, #6366f1, #06b6d4)" } : {}}
-              title={t("composer.parallel_title")}
-            >
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="7" height="7" rx="1"/>
-                <rect x="14" y="3" width="7" height="7" rx="1"/>
-                <rect x="3" y="14" width="7" height="7" rx="1"/>
-                <rect x="14" y="14" width="7" height="7" rx="1"/>
-              </svg>
-              <span className="font-medium">
-                {parallelModels.length > 0 ? `×${parallelModels.length}` : t("composer.parallel")}
-              </span>
-            </button>
-          )}
+          {/* Dropdown MODES : Recherche · Deep Search · Débat · Comparaison */}
+          {(onToggleDeep || onOpenDebate || onOpenParallel || onToggleSearch) && (() => {
+            const activeCount = (searchActive ? 1 : 0) + (deepActive ? 1 : 0) + (debateActive ? 1 : 0) + (parallelModels.length > 0 ? 1 : 0);
+            const activeLabel = searchActive ? "Recherche web" : deepActive ? "Deep Search" : debateActive ? "Débat" : parallelModels.length > 0 ? "Comparaison" : "Auto";
+            const Item = ({ icon, label, active, onClick, accent }) => (
+              <button type="button" onClick={() => { onClick?.(); setModesOpen(false); }}
+                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left text-sm transition-colors ${active ? "text-white" : "text-delt-text hover:bg-delt-surface"}`}
+                style={active ? { background: accent } : {}}>
+                <span className="w-5 h-5 flex items-center justify-center flex-shrink-0">{icon}</span>
+                <span className="font-medium flex-1">{label}</span>
+                {active && <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
+              </button>
+            );
+            return (
+              <div className="relative" ref={modesRef}>
+                <button type="button" onClick={() => setModesOpen((o) => !o)}
+                  className={`flex items-center gap-1.5 h-9 px-2.5 sm:px-3 rounded-full border transition-colors text-xs sm:text-sm ${activeCount > 0 ? "border-transparent text-white shadow-sm" : "border-delt-border text-delt-muted hover:text-delt-text hover:bg-delt-surface"}`}
+                  style={activeCount > 0 ? { background: "linear-gradient(135deg, #6366f1, #06b6d4)" } : {}}
+                  title="Modes">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="12" r="2" fill="currentColor"/><circle cx="9" cy="18" r="2" fill="currentColor"/></svg>
+                  <span className="font-medium">{activeLabel}</span>
+                </button>
+                {modesOpen && (
+                  <div className="absolute bottom-full mb-2 left-0 z-50 w-56 rounded-2xl glass-strong shadow-xl border border-delt-border/60 p-1.5 animate-popIn">
+                    {onModesAuto && <Item label="Auto — choisit le mode" active={activeCount === 0} onClick={onModesAuto} accent="linear-gradient(135deg,#6366f1,#a855f7)"
+                      icon={<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3 1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4L12 3z"/></svg>} />}
+                    {onModesAuto && <div className="my-1 border-t border-delt-border/40" />}
+                    {onToggleSearch && <Item label="Recherche web" active={searchActive} onClick={onToggleSearch} accent="linear-gradient(135deg,#0ea5e9,#2563eb)"
+                      icon={<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>} />}
+                    {onToggleDeep && <Item label="Deep Search" active={deepActive} onClick={onToggleDeep} accent="linear-gradient(135deg,#0f766e,#2563eb)"
+                      icon={<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/><path d="M8.5 11h5M11 8.5v5"/></svg>} />}
+                    {onOpenDebate && <Item label={debateActive ? "Débat (actif)" : "Débat"} active={debateActive} onClick={onOpenDebate} accent="linear-gradient(135deg,#a855f7,#ec4899)"
+                      icon={<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>} />}
+                    {onOpenParallel && <Item label={parallelModels.length > 0 ? `Comparaison (×${parallelModels.length})` : "Comparaison"} active={parallelModels.length > 0} onClick={onOpenParallel} accent="linear-gradient(135deg,#6366f1,#06b6d4)"
+                      icon={<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>} />}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         <div className="flex items-center gap-1">
