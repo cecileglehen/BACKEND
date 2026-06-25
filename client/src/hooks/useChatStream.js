@@ -11,7 +11,7 @@ const stripForLLM = (list) => list.map(({ role, content, attachments: a }) => {
  * Centralise toute la logique de streaming chat / image / video / merge / remake / parallel.
  * Retourne l'API consommée par ChatPage.
  */
-export function useChatStream({ projectId, agentId, enabledTools, onCreditsUsed, onAgeGate }) {
+export function useChatStream({ projectId, agentId, enabledTools, onCreditsUsed, onQuota, onAgeGate }) {
   const [messages, setMessages] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -73,7 +73,7 @@ export function useChatStream({ projectId, agentId, enabledTools, onCreditsUsed,
       projectId: projectId ?? undefined,
       agentId: agentId ?? undefined,
       enabledTools: enabledTools ? [...enabledTools] : undefined,
-      onMeta: (meta) => applyUpdate((m) => ({ ...m, tier: meta.tier, model: meta.model })),
+      onMeta: (meta) => { if (meta.quota) onQuota?.(meta.quota); applyUpdate((m) => ({ ...m, tier: meta.tier, model: meta.model, modelSwap: meta.modelSwap || m.modelSwap })); },
       onThinking: (delta) => applyUpdate((m) => ({ ...m, reasoning: (m.reasoning || "") + delta, thinking: true })),
       onWebsearch: (info) => applyUpdate((m) => ({
         ...m,
@@ -102,7 +102,8 @@ export function useChatStream({ projectId, agentId, enabledTools, onCreditsUsed,
       }),
       onImage: (info) => applyUpdate((m) => {
         if (info.type === "image") {
-          return { ...m, generatedImages: [...(m.generatedImages || []), { url: info.url, prompt: info.prompt, model: info.model }] };
+          // image reçue → on retire le spinner "Génération image…"
+          return { ...m, imagePending: null, generatedImages: [...(m.generatedImages || []), { url: info.url, prompt: info.prompt, model: info.model }] };
         }
         if (info.type === "image_pending") {
           return { ...m, imagePending: info.prompt };
@@ -112,8 +113,8 @@ export function useChatStream({ projectId, agentId, enabledTools, onCreditsUsed,
         }
         return m;
       }),
-      onDone: ({ tokensOut, creditCost }) => {
-        applyUpdate((m) => ({ ...m, streaming: false, tokensOut }));
+      onDone: ({ tokensOut, creditCost, costUsd }) => {
+        applyUpdate((m) => ({ ...m, streaming: false, tokensOut, costUsd, creditCost }));
         onCreditsUsed?.(creditCost);
         setBusy(false);
         setRouterInfo(null);
@@ -136,20 +137,20 @@ export function useChatStream({ projectId, agentId, enabledTools, onCreditsUsed,
     setBusy(true);
     const placeholderId = Date.now();
     setMessages((prev) => [...prev, {
-      role: "assistant", content: "", _streamId: placeholderId, streaming: true, model
+      role: "assistant", content: "", _streamId: placeholderId, streaming: true, model, imagePending: prompt
     }]);
     try {
       const result = await api.image(prompt, model?.id);
       setMessages((prev) => prev.map((m) =>
         m._streamId === placeholderId
-          ? { ...m, content: prompt, imageUrl: result.url, model: result.model || model, streaming: false }
+          ? { ...m, content: prompt, imageUrl: result.url, model: result.model || model, streaming: false, imagePending: null }
           : m
       ));
       onCreditsUsed?.();
     } catch (e) {
       setError(e.message);
       setMessages((prev) => prev.map((m) =>
-        m._streamId === placeholderId ? { ...m, content: "⚠ " + e.message, error: true, streaming: false } : m
+        m._streamId === placeholderId ? { ...m, content: "⚠ " + e.message, error: true, streaming: false, imagePending: null } : m
       ));
     } finally { setBusy(false); }
   }, [onCreditsUsed]);
@@ -172,7 +173,7 @@ export function useChatStream({ projectId, agentId, enabledTools, onCreditsUsed,
     } catch (e) {
       setError(e.message);
       setMessages((prev) => prev.map((m) =>
-        m._streamId === placeholderId ? { ...m, content: "⚠ " + e.message, error: true, streaming: false } : m
+        m._streamId === placeholderId ? { ...m, content: "⚠ " + e.message, error: true, streaming: false, imagePending: null } : m
       ));
     } finally { setBusy(false); }
   }, [onCreditsUsed]);

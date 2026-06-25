@@ -1,9 +1,20 @@
 import { getDb } from "./db.js";
 import { decryptForUser, encryptForUser, getUserDataKey, isEncrypted } from "./cryptoBox.js";
 
-// Désactivé par défaut pour la performance (Supabase chiffre déjà au repos).
-// Mettre ENCRYPT_CONVERSATIONS=true pour activer le chiffrement zero-knowledge.
-const ENCRYPT = String(process.env.ENCRYPT_CONVERSATIONS || "").toLowerCase() === "true";
+// Chiffrement zero-knowledge AU REPOS activé par défaut : le contenu, les titres
+// et le meta (URLs images/fichiers) sont chiffrés en AES-256-GCM avec la DEK du
+// user (envelope encryption). Le clair n'existe qu'en RAM le temps de la requête.
+// Mettre ENCRYPT_CONVERSATIONS=false pour désactiver (déconseillé). Le coût est
+// négligeable grâce au cache DEK (cf. cryptoBox.js) — AES-NI ~1–3 Go/s.
+const ENCRYPT = String(process.env.ENCRYPT_CONVERSATIONS ?? "true").toLowerCase() !== "false";
+
+// Champs riches à persister (images, fichiers générés, vidéo, musique, recherche…)
+const META_FIELDS = ["imageUrl", "imageUrls", "generatedImages", "artifacts", "videoUrl", "musicTracks", "webResults", "deepSearch", "modelSwap", "toolCalls"];
+function pickMeta(message) {
+  const meta = {};
+  for (const k of META_FIELDS) if (message[k] != null) meta[k] = message[k];
+  return Object.keys(meta).length ? meta : null;
+}
 
 function cleanMessage(message) {
   return {
@@ -13,7 +24,8 @@ function cleanMessage(message) {
     modelId: message.model?.id ?? message.modelId ?? message.model_id ?? null,
     tokensOut: Number.isFinite(Number(message.tokensOut ?? message.tokens_out))
       ? Number(message.tokensOut ?? message.tokens_out)
-      : null
+      : null,
+    meta: pickMeta(message)
   };
 }
 
@@ -34,11 +46,30 @@ async function maybeEncrypt(value, userKey) {
   return encryptForUser(value, userKey);
 }
 
+// Le meta (URLs d'images, fichiers générés, vidéo, recherche…) est lui aussi
+// sensible. On chiffre le JSON entier dans une enveloppe { _enc: "enc:u1:…" }
+// pour que la colonne jsonb ne révèle rien au repos.
+function encryptMeta(meta, userKey) {
+  if (!meta) return null;
+  if (!ENCRYPT) return JSON.stringify(meta);
+  return JSON.stringify({ _enc: encryptForUser(JSON.stringify(meta), userKey) });
+}
+function metaIsEncrypted(meta) {
+  return meta && typeof meta === "object" && typeof meta._enc === "string" && isEncrypted(meta._enc);
+}
+function decryptMeta(meta, userKey) {
+  if (!meta || typeof meta !== "object") return {};
+  if (!metaIsEncrypted(meta)) return meta; // legacy clair
+  try { return JSON.parse(decryptForUser(meta._enc, userKey)); }
+  catch { return {}; }
+}
+
 export async function listConversations(userId) {
   const db = getDb();
   const userKey = ENCRYPT ? await getUserDataKey(userId) : null;
   const { rows } = await db.query(
-    `SELECT c.id, c.title, c.created_at, c.updated_at, c.project_id, COUNT(m.id)::int AS message_count
+    `SELECT c.id, c.title, c.created_at, c.updated_at, c.project_id, COUNT(m.id)::int AS message_count,
+            (SELECT model_id FROM messages WHERE conv_id = c.id AND model_id IS NOT NULL ORDER BY created_at ASC LIMIT 1) AS last_model_id
      FROM conversations c
      LEFT JOIN messages m ON m.conv_id = c.id
      WHERE c.user_id = $1
@@ -57,6 +88,7 @@ export async function listConversations(userId) {
     updatedAt: new Date(row.updated_at).getTime(),
     projectId: row.project_id || null,
     messageCount: row.message_count,
+    lastModelId: row.last_model_id || null,
     messages: []
   }));
 }
@@ -73,7 +105,7 @@ export async function getConversation(userId, conversationId) {
   if (!conv) return null;
 
   const { rows } = await db.query(
-    `SELECT role, content, tier_used, model_id, tokens_out, created_at
+    `SELECT role, content, tier_used, model_id, tokens_out, meta, created_at
      FROM messages
      WHERE conv_id = $1 AND user_id = $2
      ORDER BY created_at ASC, id ASC`,
@@ -83,7 +115,7 @@ export async function getConversation(userId, conversationId) {
   // Récupère la clé user uniquement si une des valeurs est chiffrée (legacy)
   const needsKey =
     isEncrypted(conv.title) ||
-    rows.some((r) => isEncrypted(r.content));
+    rows.some((r) => isEncrypted(r.content) || metaIsEncrypted(r.meta));
   const key = needsKey ? await getUserDataKey(userId) : null;
 
   const messages = rows.map((row) => ({
@@ -92,7 +124,8 @@ export async function getConversation(userId, conversationId) {
     tier: row.tier_used ?? undefined,
     model: row.model_id ? { id: row.model_id } : undefined,
     tokensOut: row.tokens_out ?? undefined,
-    createdAt: new Date(row.created_at).getTime()
+    createdAt: new Date(row.created_at).getTime(),
+    ...decryptMeta(row.meta, key)
   }));
 
   return {
@@ -109,7 +142,8 @@ export async function saveConversation(userId, conversationId, rawMessages) {
   if (!conversationId) throw new Error("conversationId requis");
   if (!Array.isArray(rawMessages)) throw new Error("messages requis");
 
-  const messages = rawMessages.map(cleanMessage).filter((m) => m.content.trim());
+  // Garde aussi les messages SANS texte mais avec média (image/fichier/vidéo/musique).
+  const messages = rawMessages.map(cleanMessage).filter((m) => m.content.trim() || m.meta);
   const title = titleFromMessages(messages);
   const db = getDb();
   const client = await db.connect();
@@ -143,13 +177,14 @@ export async function saveConversation(userId, conversationId, rawMessages) {
       const tiers    = messages.map((m) => m.tier);
       const models   = messages.map((m) => m.modelId);
       const tokensO  = messages.map((m) => m.tokensOut);
+      const metas    = messages.map((m) => encryptMeta(m.meta, userKey));
 
       await client.query(
-        `INSERT INTO messages (user_id, conv_id, role, content, tier_used, model_id, tokens_out)
+        `INSERT INTO messages (user_id, conv_id, role, content, tier_used, model_id, tokens_out, meta)
          SELECT * FROM UNNEST (
-           $1::uuid[], $2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::int[]
+           $1::uuid[], $2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::int[], $8::jsonb[]
          )`,
-        [userIds, convIds, roles, contents, tiers, models, tokensO]
+        [userIds, convIds, roles, contents, tiers, models, tokensO, metas]
       );
     }
 

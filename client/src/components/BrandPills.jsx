@@ -75,7 +75,7 @@ function familyModel(brand, models, isFree = false) {
   };
 }
 
-function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVideo = false, isMusic = false, openBrand, setOpenBrand, families }) {
+function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVideo = false, isMusic = false, openBrand, setOpenBrand, families, hideDots = false }) {
   const t = useT();
   const { locale } = useLocale();
   const isChat = !isImage && !isVideo && !isMusic;
@@ -92,7 +92,7 @@ function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVide
         const popKey = `${isMusic ? "mus" : isVideo ? "vid" : isImage ? "img" : "chat"}-${brand}`;
         const brandFamilies = isChat ? (families?.[brand] || []) : [];
         const hasFamilies = brandFamilies.length > 0;
-        const showDots = !isLocked && ((isImage || isVideo || isMusic) ? models.length > 1 : hasFamilies);
+        const showDots = !hideDots && !isLocked && ((isImage || isVideo || isMusic) ? models.length > 1 : hasFamilies);
 
         return (
           <div key={popKey} className="relative">
@@ -252,7 +252,7 @@ function PillRow({ brands, selectedId, onSelect, isFree, isImage = false, isVide
   );
 }
 
-export default function BrandPills({ catalog, selectedId, onSelect, plan, showCreative = true }) {
+export default function BrandPills({ catalog, selectedId, onSelect, plan, showCreative = true, hideDots = false }) {
   const [openBrand, setOpenBrand] = useState(null);
   const popRef = useRef(null);
 
@@ -270,6 +270,7 @@ export default function BrandPills({ catalog, selectedId, onSelect, plan, showCr
   // Chat: regroupe par marque (préserve l'ordre d'apparition)
   const chatBrandsMap = new Map();
   for (const [tier, cat] of Object.entries(catalog.categories)) {
+    if (tier === "LEGACY" || cat.legacy) continue; // « Légendes » : opt-in, hors pills normales
     for (const m of cat.models) {
       if (!chatBrandsMap.has(m.brand)) chatBrandsMap.set(m.brand, []);
       chatBrandsMap.get(m.brand).push({ ...m, tier });
@@ -309,6 +310,7 @@ export default function BrandPills({ catalog, selectedId, onSelect, plan, showCr
         onSelect={onSelect}
         isFree={isFree}
         isImage={false}
+        hideDots={hideDots}
         openBrand={openBrand}
         setOpenBrand={setOpenBrand}
         families={catalog.families}

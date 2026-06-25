@@ -59,11 +59,39 @@ function decryptDek(encryptedDek) {
   return Buffer.from(decryptText(encryptedDek), "base64");
 }
 
+// ─── Cache DEK en mémoire ─────────────────────────────────────────────────
+// La DEK d'un user est CONSTANTE. Inutile de refaire un SELECT + déchiffrement
+// AES à chaque message/requête : on la garde en RAM (TTL court). C'est ce qui
+// rend le chiffrement « invisible » côté latence — la dérivation de clé arrive
+// ~0 fois par message au lieu de N fois. Le clair de la DEK ne quitte jamais
+// le process serveur.
+const DEK_CACHE = new Map(); // userId -> { key: Buffer, exp: number }
+const DEK_TTL_MS = 5 * 60 * 1000;
+
+function cacheGet(userId) {
+  const hit = DEK_CACHE.get(userId);
+  if (hit && hit.exp > Date.now()) return hit.key;
+  if (hit) DEK_CACHE.delete(userId);
+  return null;
+}
+function cacheSet(userId, key) {
+  DEK_CACHE.set(userId, { key, exp: Date.now() + DEK_TTL_MS });
+  // Garde-fou mémoire : borne le cache (LRU grossier).
+  if (DEK_CACHE.size > 5000) DEK_CACHE.delete(DEK_CACHE.keys().next().value);
+}
+
 export async function getUserDataKey(userId, client = null) {
+  const cached = cacheGet(userId);
+  if (cached) return cached;
+
   const db = client ?? getDb();
   const { rows } = await db.query(`SELECT secret_key FROM users WHERE id=$1`, [userId]);
   const existing = rows[0]?.secret_key;
-  if (existing) return decryptDek(existing);
+  if (existing) {
+    const key = decryptDek(existing);
+    cacheSet(userId, key);
+    return key;
+  }
 
   const dek = crypto.randomBytes(32);
   const encryptedDek = encryptDek(dek);
@@ -71,7 +99,9 @@ export async function getUserDataKey(userId, client = null) {
     `UPDATE users SET secret_key=$2 WHERE id=$1 AND secret_key IS NULL RETURNING secret_key`,
     [userId, encryptedDek]
   );
-  return update.rows[0]?.secret_key ? decryptDek(update.rows[0].secret_key) : dek;
+  const key = update.rows[0]?.secret_key ? decryptDek(update.rows[0].secret_key) : dek;
+  cacheSet(userId, key);
+  return key;
 }
 
 export function encryptForUser(value, userKey) {

@@ -65,7 +65,7 @@ export const CATEGORIES = {
     levelRange: [1, 3],
     models: [
       { id: "mistralai/mistral-small-2603", brand: "Mistral", display: "Mistral Small 4", price: { in: 0.15, out: 0.60 }, ctx: 262144, vision: true, featuredLabel: { fr: "🇫🇷 Le sommet français · 50K tokens offerts", en: "🇫🇷 The pinnacle of French AI · 50K free tokens" }, freeMonthlyTokens: 50000 },
-      { id: "openai/gpt-5.4-nano", brand: "OpenAI", display: "Prototype", price: { in: 0.20, out: 1.25 }, ctx: 400000, vision: true },
+      { id: "openai/gpt-5.4-nano", brand: "OpenAI", display: "GPT-5.4 Nano", price: { in: 0.20, out: 1.25 }, ctx: 400000, vision: true },
       { id: "openai/gpt-4.1-nano", brand: "OpenAI", display: "GPT-4.1 Nano", price: { in: 0.10, out: 0.40 }, ctx: 1047576, vision: true },
       { id: "openai/gpt-4o-mini", brand: "OpenAI", display: "GPT-4o Mini", price: { in: 0.15, out: 0.60 }, ctx: 128000, vision: true },
       { id: "google/gemini-2.5-flash", brand: "Google", display: "Gemini 2.5 Flash", price: { in: 0.30, out: 2.50 }, ctx: 1048576, vision: true }
@@ -76,7 +76,7 @@ export const CATEGORIES = {
     cost: 0.4,
     levelRange: [4, 6],
     models: [
-      { id: "openai/gpt-5.4-mini", brand: "OpenAI", display: "Design mini", price: { in: 0.75, out: 4.50 }, ctx: 400000, vision: true },
+      { id: "openai/gpt-5.4-mini", brand: "OpenAI", display: "GPT-5.4 Mini", price: { in: 0.75, out: 4.50 }, ctx: 400000, vision: true },
       { id: "amazon/nova-pro-v1", brand: "Nova", display: "Nova Pro", price: { in: 0.80, out: 3.20 }, ctx: 300000, vision: true },
       { id: "qwen/qwen3.5-plus-20260420", brand: "Qwen", display: "Qwen 3.5 Plus", price: { in: 0.40, out: 1.60 }, ctx: 1000000 },
       { id: "qwen/qwen3.6-plus",          brand: "Qwen", display: "Qwen 3.6 Plus", price: { in: 0.50, out: 2.00 }, ctx: 1000000 },
@@ -92,7 +92,7 @@ export const CATEGORIES = {
       { id: "mistralai/mistral-medium-3-5", brand: "Mistral", display: "Mistral Medium 3.5", price: { in: 0.40, out: 2.00 }, ctx: 131072, vision: true },
       { id: "mistralai/mixtral-8x22b-instruct", brand: "Mistral", display: "Mixtral 8x22B Instruct", price: { in: 0.90, out: 0.90 }, ctx: 65536, tagline: "MoE 141B (39B actifs)", featuredLabel: { fr: "🇫🇷 3K tokens offerts", en: "🇫🇷 3K free tokens" }, freeMonthlyTokens: 3000 },
       { id: "meta-llama/llama-4-maverick", brand: "Meta", display: "Llama 4 Maverick", price: { in: 0.15, out: 0.60 }, ctx: 1048576, vision: true },
-      { id: "google/gemini-3.5-flash", brand: "Google", display: "Design pro", price: { in: 0.30, out: 2.50 }, ctx: 1048576, vision: true },
+      { id: "google/gemini-3.5-flash", brand: "Google", display: "Gemini 3.5 Flash", price: { in: 0.30, out: 2.50 }, ctx: 1048576, vision: true },
       { id: "anthropic/claude-haiku-4.5", brand: "Anthropic", display: "Claude Haiku 4.5", price: { in: 1.00, out: 5.00 }, ctx: 200000, vision: true },
       { id: "anthropic/claude-haiku-latest", brand: "Anthropic", display: "Claude Haiku (latest)", price: { in: 1.00, out: 5.00 }, ctx: 200000, vision: true },
       { id: "x-ai/grok-4.20", brand: "xAI", display: "Grok 4.20", price: { in: 1.25, out: 2.50 }, ctx: 2000000, vision: true },
@@ -105,7 +105,7 @@ export const CATEGORIES = {
     cost: 4,
     levelRange: [7, 8],
     models: [
-      { id: "z-ai/glm-5.2", brand: "Z.ai", display: "Builder", price: { in: 0.55, out: 2.20 }, ctx: 200000, vision: true, tagline: "Top code · rapport qualité/prix imbattable ⚡" },
+      { id: "z-ai/glm-5.2", brand: "Z.ai", display: "GLM 5.2", price: { in: 0.55, out: 2.20 }, ctx: 200000, vision: true, tagline: "Top code · rapport qualité/prix imbattable ⚡" },
       { id: "deepseek/deepseek-v4-pro", brand: "DeepSeek", display: "DeepSeek V4 Pro", price: { in: 0.40, out: 1.60 }, ctx: 163840, tagline: "Qualité premium, prix imbattable ⚡" },
       { id: "openai/gpt-5.4", brand: "OpenAI", display: "GPT-5.4", price: { in: 2.50, out: 15.00 }, ctx: 400000, vision: true },
       { id: "amazon/nova-premier-v1", brand: "Nova", display: "Nova Premier", price: { in: 2.50, out: 12.50 }, ctx: 1000000, vision: true },
@@ -127,7 +127,7 @@ export const CATEGORIES = {
     cost: 8,
     levelRange: [9, 10],
     models: [
-      { id: "openai/gpt-5.5", brand: "OpenAI", display: "Production", price: { in: 5.00, out: 30.00 }, ctx: 400000, vision: true },
+      { id: "openai/gpt-5.5", brand: "OpenAI", display: "GPT-5.5", price: { in: 5.00, out: 30.00 }, ctx: 400000, vision: true },
       { id: "anthropic/claude-fable-5", brand: "Anthropic", display: "Claude Fable 5", price: { in: 10.00, out: 50.00 }, ctx: 1000000, vision: true, tagline: "Le plus intelligent d'Anthropic — très cher (2× Opus)" },
       { id: "qwen/qwen3-max-thinking",         brand: "Qwen", display: "Qwen3 Max Thinking", price: { in: 3.00, out: 15.00 }, ctx: 1000000, tagline: "Raisonnement profond" },
       { id: "qwen/qwen3-vl-235b-a22b-thinking",brand: "Qwen", display: "Qwen3 VL 235B Thinking", price: { in: 2.50, out: 12.00 }, ctx: 256000, vision: true, tagline: "Vision + raisonnement, MoE 235B" },
@@ -144,6 +144,17 @@ export const CATEGORIES = {
     models: [
       { id: "openai/gpt-5.5-pro", brand: "OpenAI", display: "GPT-5.5 Pro", price: { in: 30.00, out: 180.00 }, ctx: 400000, vision: true },
       { id: "openai/gpt-5.4-pro", brand: "OpenAI", display: "GPT-5.4 Pro", price: { in: 30.00, out: 180.00 }, ctx: 400000, vision: true }
+    ]
+  },
+  // ── Légendes : les premiers modèles de chaque provider (nostalgie / opt-in) ──
+  // Pas ciblés par le routeur (tier hors NANO→PRO), masqués des sélecteurs normaux.
+  LEGACY: {
+    label: "Time Machine",
+    cost: 4,
+    legacy: true,
+    models: [
+      { id: "openai/gpt-3.5-turbo-16k", brand: "OpenAI",  display: "GPT-3.5 Turbo 16K", price: { in: 3.00, out: 4.00 }, ctx: 16385,   legacy: true, tagline: "Août 2023 · le contexte étendu" },
+      { id: "minimax/minimax-01",       brand: "MiniMax", display: "MiniMax-01",       price: { in: 0.20, out: 1.10 }, ctx: 1000000, legacy: true, tagline: "2025 · le contexte 1M" }
     ]
   }
 };
@@ -176,6 +187,7 @@ export const CREATIVE = {
     label: "Image",
     // Liste complète des modèles d'image (provider + cost en Cr + tagline)
     models: [
+      { id: "fal-ai/fast-sdxl",                      brand: "SDXL",   display: "Fast SDXL",       provider: "fal",        cost: 1,   tagline: "Le moins cher — brouillons rapides" },
       { id: "fal-ai/flux-1/schnell",                 brand: "Flux",   display: "FLUX Schnell",    provider: "fal",        cost: 5,   tagline: "Rapide & quotidien — éco" },
       { id: "fal-ai/bytedance/seedream/v5/lite/edit", brand: "ByteDance", display: "Seedream 5 Edit", provider: "fal",     cost: 15, type: "edit", tagline: "Édition image-à-image (à partir de pièces jointes)" },
       { id: "google/gemini-2.5-flash-image",         brand: "Google", display: "Nano Banana",     provider: "openrouter", cost: 8,   tagline: "Bonne qualité — usage standard" },

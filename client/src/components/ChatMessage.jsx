@@ -190,22 +190,30 @@ function DeepSearchBlock({ data, streaming }) {
 
       {steps.length > 0 && (
         <div className="mt-3 grid gap-1.5">
-          {steps.map((step, i) => (
-            <div key={`${step.label}-${i}`} className="flex items-center gap-2 text-[11px]">
-              <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold ${
-                step.status === "done"
-                  ? "bg-teal-600 text-white"
-                  : step.status === "running"
-                  ? "bg-white text-teal-700 border border-teal-300"
-                  : "bg-white/70 text-teal-300 border border-teal-100"
-              }`}>
-                {step.status === "done" ? "✓" : i + 1}
-              </span>
-              <span className={step.status === "pending" ? "text-teal-400" : "text-teal-800"}>
-                {step.label}
-              </span>
-            </div>
-          ))}
+          {steps.map((step, i) => {
+            const isReflect = /réflexion|reflexion/i.test(step.label);
+            return (
+              <div key={`${step.label}-${i}`} className="text-[11px]">
+                <div className="flex items-center gap-2">
+                  <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold ${
+                    step.status === "done"
+                      ? (isReflect ? "bg-indigo-500 text-white" : "bg-teal-600 text-white")
+                      : step.status === "running"
+                      ? "bg-white text-teal-700 border border-teal-300"
+                      : "bg-white/70 text-teal-300 border border-teal-100"
+                  }`}>
+                    {isReflect ? "💭" : step.status === "done" ? "✓" : i + 1}
+                  </span>
+                  <span className={step.status === "pending" ? "text-teal-400" : "text-teal-800"}>
+                    {step.label}
+                  </span>
+                </div>
+                {step.note && (
+                  <div className="ml-6 mt-0.5 text-[10.5px] text-teal-600/90 italic leading-snug">{step.note}</div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -360,7 +368,7 @@ function ThinkingBlock({ reasoning, thinking, streaming }) {
   );
 }
 
-function RemakePicker({ models, onSelect, onClose }) {
+function RemakePicker({ models, onSelect, onClose, align = "left", label = "Refaire avec…" }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -377,10 +385,10 @@ function RemakePicker({ models, onSelect, onClose }) {
   return (
     <div
       ref={ref}
-      className="absolute left-10 top-full mt-2 z-50 w-72 bg-white border border-delt-border rounded-xl shadow-lg overflow-hidden"
+      className={`absolute ${align === "right" ? "right-0" : "left-10"} top-full mt-2 z-50 w-72 bg-white border border-delt-border rounded-xl shadow-lg overflow-hidden`}
     >
       <div className="px-3 py-2 border-b border-delt-border text-xs font-semibold text-delt-muted uppercase tracking-widest">
-        Refaire avec…
+        {label}
       </div>
       <div className="max-h-80 overflow-y-auto">
         {grouped.map(({ tier, items }) => (
@@ -408,11 +416,43 @@ function RemakePicker({ models, onSelect, onClose }) {
   );
 }
 
-export default function ChatMessage({ msg, models = [], onRemake, onChooseVariant, onMerge, onOpenArtifact, hideAvatar = false, variantIndex, userQuestion }) {
+// Barre de progression « façon téléchargement » pendant la génération d'image.
+// Pas de % réel côté provider → progression simulée, plafonnée à 95% jusqu'à
+// l'arrivée de l'image (qui remplace alors la barre).
+function ImageProgressBar({ label }) {
+  const [pct, setPct] = useState(6);
+  useEffect(() => {
+    const id = setInterval(() => {
+      setPct((p) => {
+        if (p >= 95) return 95;
+        const inc = p < 55 ? 3 + Math.random() * 5 : p < 82 ? 1.4 : 0.5;
+        return Math.min(95, p + inc);
+      });
+    }, 550);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <div className="w-full max-w-sm">
+      <div className="flex items-center justify-between mb-1.5 text-[11px] text-blue-700">
+        <span className="truncate flex items-center gap-1.5">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+          Génération de l'image{label ? ` : ${label.slice(0, 40)}` : ""}…
+        </span>
+        <span className="font-mono font-semibold tabular-nums">{Math.round(pct)}%</span>
+      </div>
+      <div className="h-2 rounded-full bg-blue-100 overflow-hidden">
+        <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-500 ease-out" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+export default function ChatMessage({ msg, models = [], onRemake, onRemakeWith, onChooseVariant, onMerge, onOpenArtifact, hideAvatar = false, variantIndex, userQuestion }) {
   const isUser = msg.role === "user";
   const generatedTokens = Number(msg.tokensOut ?? 0);
   const [hovered, setHovered] = useState(false);
   const [remakeOpen, setRemakeOpen] = useState(false);
+  const [remakeWithOpen, setRemakeWithOpen] = useState(false);
 
   // Si le message vient du serveur, msg.model n'a que `{ id }` (genre
   // "openai/gpt-4o-mini") — on enrichit avec la marque dérivée du préfixe
@@ -560,6 +600,33 @@ export default function ChatMessage({ msg, models = [], onRemake, onChooseVarian
           </div>
         )}
 
+        {/* Bascule auto (quota épuisé) → on prévient l'utilisateur */}
+        {!isUser && msg.modelSwap && (
+          msg.modelSwap.reason === "monthly" ? (
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-rose-50 border border-rose-200 text-[12px] text-rose-800">
+              <span className="text-base leading-none">🙏</span>
+              <span>
+                Wow, tu utilises beaucoup notre service ! Nous sommes désolés, mais tu as dépassé le <b>seuil de rentabilité</b> ce mois-ci.
+                Tu passes sur <b>{msg.modelSwap.to}</b> (gratuit) en attendant — tu récupères l'accès complet le{" "}
+                <b>{msg.modelSwap.resetAt ? new Date(msg.modelSwap.resetAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "1er du mois prochain"}</b>.
+                {" "}<a href="/billing" className="underline font-semibold">Recharger pour continuer</a>
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-[12px] text-amber-800">
+              <span>⚡</span>
+              <span>
+                Quota atteint — passé de <b>{msg.modelSwap.from}</b> à <b>{msg.modelSwap.to}</b>
+                {msg.modelSwap.free ? " (modèle gratuit)" : " (modèle plus léger)"} pour continuer sans interruption.
+                {msg.modelSwap.resetAt && (
+                  <> Ton quota se renouvelle à <b>{new Date(msg.modelSwap.resetAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</b>.</>
+                )}
+                {" "}<a href="/billing" className="underline font-semibold">Recharger</a>
+              </span>
+            </div>
+          )
+        )}
+
         {/* Indicateur de génération musicale */}
         {!isUser && msg.musicLoading && (
           <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 text-sm text-purple-700">
@@ -619,13 +686,10 @@ export default function ChatMessage({ msg, models = [], onRemake, onChooseVarian
           </div>
         )}
 
-        {/* Images générées via %%generate_image */}
+        {/* Images générées via %%generate_image — barre de progression → image */}
         {!isUser && msg.imagePending && (
-          <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 text-sm text-blue-700">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin" style={{ animationDuration: "1.5s" }}>
-              <path d="M21 12a9 9 0 1 1-6.219-8.56" strokeLinecap="round"/>
-            </svg>
-            <span className="font-medium truncate">Génération image : {msg.imagePending.slice(0, 60)}…</span>
+          <div className="px-3 py-2.5 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
+            <ImageProgressBar label={msg.imagePending} />
           </div>
         )}
         {!isUser && msg.generatedImages?.length > 0 && (
@@ -784,6 +848,16 @@ export default function ChatMessage({ msg, models = [], onRemake, onChooseVarian
           </div>
         )}
 
+        {/* Debug beta : coût réel renvoyé par OpenRouter (usage.cost) */}
+        {!isUser && !msg.streaming && msg.costUsd != null && (
+          <div className="px-1 text-[10px] font-mono text-delt-muted/70 flex items-center gap-1.5" title="Coût brut OpenRouter pour ce message (debug bêta)">
+            <span className="px-1.5 py-0.5 rounded bg-delt-surface/60 border border-delt-border/50">
+              🧪 ${Number(msg.costUsd)}
+            </span>
+            {msg.creditCost != null && <span className="opacity-70">· {Number(msg.creditCost).toFixed(2)} Cr facturés</span>}
+          </div>
+        )}
+
         {/* Bouton Remake */}
         {!isUser && !msg.streaming && onRemake && models.length > 0 && (
           <div className={`relative transition-opacity ${hovered || remakeOpen ? "opacity-100" : "opacity-0"}`}>
@@ -803,6 +877,32 @@ export default function ChatMessage({ msg, models = [], onRemake, onChooseVarian
                 models={models}
                 onSelect={(m) => onRemake(m)}
                 onClose={() => setRemakeOpen(false)}
+              />
+            )}
+          </div>
+        )}
+
+        {/* Refaire avec — sous chaque prompt user, TOUJOURS visible → nouveau chat avec contexte */}
+        {isUser && onRemakeWith && models.length > 0 && (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setRemakeWithOpen((v) => !v)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] text-delt-muted hover:text-delt-text border border-delt-border hover:border-delt-text/30 bg-white/70 transition-colors"
+            >
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 4v6h6"/><path d="M23 20v-6h-6"/>
+                <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"/>
+              </svg>
+              Refaire avec
+            </button>
+            {remakeWithOpen && (
+              <RemakePicker
+                models={models}
+                align="right"
+                label="Refaire avec un autre modèle…"
+                onSelect={(m) => onRemakeWith(m)}
+                onClose={() => setRemakeWithOpen(false)}
               />
             )}
           </div>

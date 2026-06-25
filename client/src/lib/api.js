@@ -92,6 +92,7 @@ export const api = {
 
   // Quota
   quota: () => fetch(u("/api/quota"), { headers: authHeaders() }).then(json),
+  quotaBreakdown: () => fetch(u("/api/quota/breakdown"), { headers: authHeaders() }).then(json),
 
   // Usage detaillé
   usage: (period = "30d") => fetch(u(`/api/usage?period=${encodeURIComponent(period)}`), { headers: authHeaders() }).then(json),
@@ -304,8 +305,8 @@ export const api = {
   ageVerify: () =>
     fetch(u("/api/age-verify"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ confirmed: true }) }).then(json),
 
-  image: (prompt, modelId) =>
-    fetch(u("/api/image"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ prompt, modelId }) }).then(json),
+  image: (prompt, modelId, imageUrls) =>
+    fetch(u("/api/image"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ prompt, modelId, imageUrls }) }).then(json),
   video: (prompt, modelId) =>
     fetch(u("/api/video"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ prompt, modelId }) }).then(json),
 

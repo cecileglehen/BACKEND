@@ -92,6 +92,10 @@ export function parseSkillBlocks(content) {
   const cleaned = content
     .replace(WRITE_FILE_RE, (_, name) => `📄 *Fichier généré : ${name.trim()}*`)
     .replace(GEN_IMAGE_RE, (_, prompt) => `🎨 *Image générée : ${prompt.trim().slice(0, 80)}${prompt.trim().length > 80 ? "…" : ""}*`)
+    // Filet de sécurité : retire toute directive %% inconnue/hallucinée (ex: %%web_search
+    // que les modèles faibles inventent — la recherche web passe par le TOOL, pas par %%).
+    .replace(/%%[a-z_]+\s*:[\s\S]*?%%end/gi, "")
+    .replace(/%%[a-z_]+\s*:[^\n\r]*/gi, "")
     .trim();
 
   return { cleaned, artifacts, images };

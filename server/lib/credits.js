@@ -92,6 +92,17 @@ export async function getApiCredits(userId) {
   }
 }
 
+export async function addApiCredits(userId, amount) {
+  if (!(amount > 0)) return getApiCredits(userId);
+  const db = getDb();
+  const { rows } = await db.query(
+    `UPDATE users SET api_credits = api_credits + $2 WHERE id=$1 RETURNING api_credits`,
+    [userId, amount]
+  );
+  if (!rows[0]) throw new Error("Utilisateur introuvable pour ajout crédits API");
+  return Number(rows[0].api_credits);
+}
+
 export async function deductApiCredits(userId, amount) {
   if (amount <= 0) return getApiCredits(userId);
   const db = getDb();

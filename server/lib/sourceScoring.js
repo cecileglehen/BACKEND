@@ -4,19 +4,36 @@
 //   3. Cohérence avec les autres sources (présence dans clusters consensus)
 //   4. Citations / liens externes dans le contenu (proxy de qualité éditoriale)
 
-const HIGH_TRUST = /(wikipedia\.org|reuters\.com|apnews\.com|bbc\.co\.uk|nytimes\.com|lemonde\.fr|nature\.com|sciencedirect\.com|arxiv\.org|nih\.gov|who\.int|un\.org|oecd\.org|europa\.eu|insee\.fr|github\.com|stackexchange\.com)/i;
-const MEDIUM_TRUST_TLD = /\.(gov|edu|gouv\.fr)$/i;
-const LOW_TRUST = /(blogspot|wordpress\.com|medium\.com|substack|tumblr|reddit)/i;
-const SOCIAL = /(facebook|instagram|tiktok|x\.com|twitter\.com|pinterest)/i;
+// Domaines OFFICIELS / sources PRIMAIRES (un éditeur sur son propre site est LA
+// référence pour son propre produit). Une annonce sur openai.com, anthropic.com
+// ou blog.google est de la 1ʳᵉ main → fiabilité maximale, jamais "non vérifiée".
+const OFFICIAL_PRIMARY = /(openai\.com|anthropic\.com|deepmind\.google|blog\.google|developers\.googleblog\.com|ai\.google(\.dev)?|cloud\.google\.com|mistral\.ai|x\.ai|meta\.ai|ai\.meta\.com|llama\.com|microsoft\.com|azure\.com|apple\.com|nvidia\.com|huggingface\.co|cohere\.com|stability\.ai|databricks\.com|perplexity\.ai)/i;
+
+// Sources de référence / agences de presse / institutionnel → autorité maximale.
+const HIGH_TRUST = /(wikipedia\.org|reuters\.com|apnews\.com|afp\.com|bbc\.(co\.uk|com)|nature\.com|sciencedirect\.com|arxiv\.org|nih\.gov|who\.int|un\.org|oecd\.org|imf\.org|worldbank\.org|europa\.eu|insee\.fr|banque-france\.fr|github\.com|stackexchange\.com|stackoverflow\.com)/i;
+
+// Grande presse établie (rédactions professionnelles, fact-checking, déontologie).
+// Un média mainstream qui couvre un sujet d'actu N'EST PAS une source douteuse :
+// il mérite une autorité élevée, pas un médiocre 60.
+const NEWS_TRUST = /(lemonde\.fr|lefigaro\.fr|liberation\.fr|lesechos\.fr|leparisien\.fr|francetvinfo\.fr|france24\.com|tf1info\.fr|lci\.fr|bfmtv\.com|radiofrance\.fr|franceinfo\.fr|ouest-france\.fr|la-croix\.com|mediapart\.fr|courrierinternational\.com|nytimes\.com|washingtonpost\.com|wsj\.com|theguardian\.com|economist\.com|bloomberg\.com|ft\.com|cnn\.com|nbcnews\.com|cbsnews\.com|abcnews\.go\.com|npr\.org|politico\.(com|eu)|axios\.com|spiegel\.de|zeit\.de|elpais\.com|corriere\.it|aljazeera\.com|theverge\.com|techcrunch\.com|arstechnica\.com|wired\.com|nationalgeographic\.com|scientificamerican\.com)/i;
+
+const MEDIUM_TRUST_TLD = /\.(gov|edu|gouv\.fr|gc\.ca|gov\.uk)$/i;
+const LOW_TRUST = /(blogspot|wordpress\.com|tumblr|over-blog)/i;
+const SOCIAL = /(facebook|instagram|tiktok|pinterest)\./i;
+// Réseaux à contenu variable : ni whitelisté, ni blacklisté (souvent du primaire utile).
+const MIXED = /(reddit\.com|medium\.com|substack\.com|x\.com|twitter\.com|youtube\.com)/i;
 
 function domainAuthority(url = "") {
-  if (!url) return 30;
+  if (!url) return 40;
+  if (OFFICIAL_PRIMARY.test(url)) return 96; // source de 1ʳᵉ main sur son propre produit
   if (HIGH_TRUST.test(url)) return 95;
-  if (MEDIUM_TRUST_TLD.test(url)) return 85;
-  if (SOCIAL.test(url)) return 15;
-  if (LOW_TRUST.test(url)) return 45;
-  // Heuristique : domaine .com/.fr classique = 60
-  return 60;
+  if (NEWS_TRUST.test(url)) return 85;
+  if (MEDIUM_TRUST_TLD.test(url)) return 88;
+  if (SOCIAL.test(url)) return 25;
+  if (MIXED.test(url)) return 55;
+  if (LOW_TRUST.test(url)) return 50;
+  // Domaine .com/.fr classique non identifié : neutre-positif, pas suspect.
+  return 68;
 }
 
 // Détecte une date dans le texte ou un meta tag. Fraicheur en jours.
@@ -43,9 +60,10 @@ function coherenceScore(source, graph) {
   let confirmed = 0;
   let total = 0;
   for (const cluster of graph.clusters) {
-    if (cluster.sources?.includes(sourceId)) {
+    const cs = cluster.sourceIds || cluster.sources || [];
+    if (cs.includes(sourceId)) {
       total += 1;
-      if (cluster.confidence === "high" || (cluster.sources?.length || 0) >= 2) {
+      if (cluster.confidence === "high" || cs.length >= 2) {
         confirmed += 1;
       }
     }
@@ -85,7 +103,11 @@ export function scoreSource(source, graph, customWeights = null) {
 
   // Multiplicateur de type (benchmark 1.3, paper 1.2, doc 1.0, blog 0.8, reddit 0.5…)
   const typeMult = source.contentType?.multiplier ?? 1.0;
-  const total = Math.min(100, base * typeMult);
+  let total = Math.min(100, base * typeMult);
+
+  // Plancher : une source PRIMAIRE officielle (l'éditeur sur son propre produit)
+  // ne doit jamais passer pour douteuse, même sans citations externes ni date.
+  if (OFFICIAL_PRIMARY.test(source.url || "")) total = Math.max(total, 85);
 
   return {
     score: Math.round(total),

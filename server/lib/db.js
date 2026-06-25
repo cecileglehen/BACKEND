@@ -66,6 +66,12 @@ export async function initSchema() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarded_models BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS memory_profile JSONB NOT NULL DEFAULT '{}'::jsonb;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS quota_window_start TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS quota_window_used NUMERIC(12,2) NOT NULL DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_premium_start TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_premium_used NUMERIC(12,2) NOT NULL DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS monthly_premium_used NUMERIC(12,2) NOT NULL DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS monthly_premium_month TEXT;
 
     CREATE TABLE IF NOT EXISTS projects (
       id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -298,6 +304,7 @@ export async function initSchema() {
       created_at  TIMESTAMPTZ DEFAULT NOW()
     );
     ALTER TABLE messages ADD COLUMN IF NOT EXISTS model_id TEXT;
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS meta JSONB;
     CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conv_id, created_at);
 
     CREATE TABLE IF NOT EXISTS paypal_events (
@@ -397,5 +404,24 @@ export async function initSchema() {
     END;
     $$;
   `);
+
+  // ─── Sécurité RLS (RGPD) ──────────────────────────────────────────────────
+  // Active Row Level Security sur TOUTES les tables publiques + révoque les
+  // accès des rôles API publics de Supabase (anon/authenticated). Le backend
+  // se connecte en rôle propriétaire qui *bypass* RLS → aucun impact sur l'app.
+  // Sans ça, la clé anon (publique, embarquée dans le bundle front) permet de
+  // lire/écrire les tables via l'API REST auto de Supabase. Idempotent.
+  await db.query(`
+    DO $$
+    DECLARE t text;
+    BEGIN
+      FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+      LOOP
+        EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY;', t);
+        EXECUTE format('REVOKE ALL ON public.%I FROM anon, authenticated;', t);
+      END LOOP;
+    END $$;
+  `);
+
   console.log("✓ DB schema ready");
 }

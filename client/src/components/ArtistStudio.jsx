@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import MusicComposer from "./MusicComposer.jsx";
 import { useT } from "../lib/i18n.jsx";
@@ -72,10 +72,27 @@ function ImageTab({ catalog, onCreditsUsed }) {
   const [aspect, setAspect]       = useState("1:1");
   const [busy, setBusy]           = useState(false);
   const [error, setError]         = useState(null);
-  const [history, setHistory]     = useState([]);
+  const [history, setHistory]     = useState(() => {
+    try { return JSON.parse(localStorage.getItem("delt-studio-history") || "[]"); } catch { return []; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("delt-studio-history", JSON.stringify(history)); }
+    catch { /* quota localStorage (data URLs volumineuses) — on garde en mémoire */ }
+  }, [history]);
+  const [refs, setRefs]           = useState([]); // images de référence (image-à-image)
+  const fileRef = useRef(null);
 
   const imageModels = catalog?.creative?.IMAGE?.models || [];
   const selectedModel = imageModels.find((m) => m.id === modelId) || imageModels[0];
+
+  const addRefs = async (files) => {
+    for (const f of Array.from(files || [])) {
+      if (!f.type.startsWith("image/")) continue;
+      const url = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
+      setRefs((p) => [...p, { id: Math.random().toString(36).slice(2), url, name: f.name }].slice(0, 4));
+    }
+  };
+  const removeRef = (id) => setRefs((p) => p.filter((x) => x.id !== id));
 
   const generate = async () => {
     if (!prompt.trim() || busy) return;
@@ -83,7 +100,7 @@ function ImageTab({ catalog, onCreditsUsed }) {
     const stylePrompt = STYLE_PRESETS.find((s) => s.label === style)?.prompt || "";
     const fullPrompt = prompt + stylePrompt + (aspect !== "1:1" ? `, aspect ratio ${aspect}` : "");
     try {
-      const result = await api.image(fullPrompt, modelId);
+      const result = await api.image(fullPrompt, modelId, refs.map((r) => r.url));
       setHistory((prev) => [{
         id: Date.now(),
         url: result.url,
@@ -91,8 +108,8 @@ function ImageTab({ catalog, onCreditsUsed }) {
         model: selectedModel,
         style,
         aspect,
-        timestamp: new Date()
-      }, ...prev].slice(0, 12));
+        timestamp: Date.now()
+      }, ...prev].slice(0, 24));
       onCreditsUsed?.();
     } catch (e) {
       setError(e.message);
@@ -137,6 +154,25 @@ function ImageTab({ catalog, onCreditsUsed }) {
           placeholder={t("artist.prompt_image")}
           className="w-full text-sm outline-none resize-none bg-transparent placeholder:text-delt-muted"
         />
+        {/* Images de référence (image-à-image) */}
+        <div className="flex items-center gap-2 flex-wrap mt-2 pt-2 border-t border-delt-border/50">
+          {refs.map((r) => (
+            <div key={r.id} className="relative group">
+              <img src={r.url} alt="" className="w-12 h-12 rounded-lg object-cover border border-delt-border" />
+              <button onClick={() => removeRef(r.id)} className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-delt-text text-white text-[9px] flex items-center justify-center opacity-0 group-hover:opacity-100">✕</button>
+            </div>
+          ))}
+          {refs.length < 4 && (
+            <>
+              <input ref={fileRef} type="file" accept="image/*" multiple className="hidden"
+                onChange={(e) => { if (e.target.files?.length) addRefs(e.target.files); e.target.value = ""; }} />
+              <button onClick={() => fileRef.current?.click()} type="button"
+                className="w-12 h-12 rounded-lg border-2 border-dashed border-delt-border text-delt-muted hover:border-indigo-300 hover:text-delt-accent flex items-center justify-center text-lg"
+                title="Ajouter une image de référence (image-à-image)">＋</button>
+            </>
+          )}
+          {refs.length > 0 && <span className="text-[10px] text-delt-muted">image(s) de référence</span>}
+        </div>
         <div className="flex items-center justify-between text-[10px] text-delt-muted mt-1">
           <span>{prompt.length} / 2000</span>
           <span>⌘+Entrée pour générer</span>
@@ -216,7 +252,11 @@ function ImageTab({ catalog, onCreditsUsed }) {
       {/* History */}
       {history.length > 0 && (
         <div>
-          <div className="text-xs font-semibold uppercase tracking-wider text-delt-muted mb-3">Galerie · session</div>
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-semibold uppercase tracking-wider text-delt-muted">Galerie</span>
+            <button type="button" onClick={() => { if (confirm("Vider la galerie ?")) setHistory([]); }}
+              className="text-[10px] text-delt-muted hover:text-red-500 transition-colors">Vider</button>
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {history.map((item) => (
               <div key={item.id} className="group relative rounded-xl overflow-hidden bg-delt-surface border border-delt-border">

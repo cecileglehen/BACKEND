@@ -28,8 +28,23 @@ import { listDocs, createDoc, getDoc, updateDoc, deleteDoc } from "./lib/launchD
 import { createConnectLink, getConnectStatus, createCheckout, handleWebhook as handleLaunchPayWebhook } from "./lib/launchPay.js";
 import { getProjectNotion, setProjectNotion, notionLog, fetchNotionSchema, createOrdersDatabase, runNotionAction, searchNotionPages } from "./lib/launchIntegrations.js";
 import { TIER_MODELS, estimateCostEur } from "./config/plans.js";
-import { brandFromAlias, CREATIVE, findModelForBrand, findModelForFamily, findModelInCatalog, familyFromAlias, isBrandAlias, isFamilyAlias, normalizeTier, publicCatalog, supportsVision, pickVisionModelForTier } from "./config/models.js";
-import { createSubscriptionLink, activateSubscription, handleWebhook, PAYPAL_PLAN_IDS, createCreditOrder, captureCreditOrder } from "./lib/paypal.js";
+import { brandFromAlias, CATEGORIES, CREATIVE, findModelForBrand, findModelForFamily, findModelInCatalog, familyFromAlias, isBrandAlias, isFamilyAlias, normalizeTier, publicCatalog, supportsVision, pickVisionModelForTier } from "./config/models.js";
+
+// Bascule auto (façon Mammouth) : quand l'user n'a plus assez de crédits pour le
+// modèle choisi, on descend vers un modèle plus léger de la MÊME marque, et en
+// dernier recours un modèle gratuit (coût 0) → jamais bloqué + marge protégée.
+function findAffordableFallback(modelInfo, credits) {
+  for (const tier of ["NORMAL", "MINI", "NANO", "PICO"]) {
+    const found = findModelForBrand(modelInfo.brand, tier);
+    const m = found?.model;
+    if (m && m.id !== modelInfo.id && computeCreditCost(m.id, 1000, 500) <= credits) {
+      return { model: m, free: false };
+    }
+  }
+  const free = CATEGORIES.FREE?.models?.find((m) => !m.adult);
+  return free ? { model: free, free: true } : null;
+}
+import { createSubscriptionLink, activateSubscription, handleWebhook, PAYPAL_PLAN_IDS, createCreditOrder, captureCreditOrder, createApiTopupOrder, captureApiTopupOrder } from "./lib/paypal.js";
 import { CREDIT_PACKS } from "./config/plans.js";
 import { createClient } from "@supabase/supabase-js";
 import { routeMessage as groqRoute } from "./lib/router.js";
@@ -43,7 +58,41 @@ import v1Router from "./routes/v1.js";
 import { getProject } from "./lib/projects.js";
 import { getPlanLimits } from "./config/plans.js";
 import { buildMessageContent } from "./lib/attachments.js";
-import { shouldSearchHeuristic, performWebSearch, buildSearchSystemPrompt } from "./lib/websearch.js";
+import { shouldSearchHeuristic, performWebSearch, buildSearchSystemPrompt, searchWithQuery } from "./lib/websearch.js";
+import { getWindow, consumeWindow, getWindowBreakdown, windowQuotaFor, WINDOW_QUOTA, WINDOW_HOURS } from "./lib/quota.js";
+import { appendMemoryFact } from "./lib/memory.js";
+
+// Tool de recherche web : l'IA écrit elle-même sa requête et décide quand l'appeler.
+const WEB_SEARCH_TOOL = {
+  type: "function",
+  function: {
+    name: "web_search",
+    description: "Recherche sur le web (Google) en temps réel. À utiliser dès que la réponse dépend d'infos RÉCENTES, FACTUELLES ou que tu n'es pas sûr (prix, actualités, dates, sorties, scores, chiffres, événements après ta date de connaissance). Tu écris toi-même une requête précise et ciblée.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "La requête de recherche précise (ex: 'prix iPhone 17 2026 France'), PAS le message brut de l'utilisateur." },
+        num: { type: "integer", description: "Nombre de sources à récupérer (3 à 10 selon la complexité, défaut 6)." }
+      },
+      required: ["query"]
+    }
+  }
+};
+
+const WRITE_MEMORY_TOOL = {
+  type: "function",
+  function: {
+    name: "write_memory",
+    description: "Enregistre un fait DURABLE et important sur l'utilisateur, pour t'en souvenir dans TOUTES les futures conversations (et même avec d'autres modèles). À utiliser quand l'utilisateur révèle une info personnelle stable : prénom, métier, préférences, projets, contraintes, goûts, stack technique, objectifs. N'enregistre PAS l'éphémère (la question du moment). Écris le fait à la 3e personne, court et factuel.",
+    parameters: {
+      type: "object",
+      properties: {
+        fact: { type: "string", description: "Le fait à mémoriser, court et factuel (ex: « Travaille comme développeur React », « Préfère les réponses concises », « Construit une app appelée Launch »)." }
+      },
+      required: ["fact"]
+    }
+  }
+};
 
 const app = express();
 app.set("trust proxy", 1);
@@ -762,8 +811,8 @@ app.post("/api/chat/merge", requireAuth, async (req, res) => {
         { role: "user",   content: userPrompt }
       ],
       res,
-      onDone: async ({ tokensIn, tokensOut }) => {
-        const creditCost = computeCreditCost(found.model.id, tokensIn, tokensOut);
+      onDone: async ({ tokensIn, tokensOut, costUsd }) => {
+        const creditCost = computeCreditFromCost({ costUsd: Number(costUsd) || 0, modelId: found.model.id, tokensIn, tokensOut });
         deductCredits(user.id, creditCost).catch(() => {});
         recordUsage(user.id, found.tier, tokensIn, tokensOut).catch(() => {});
         logUsage({ userId: user.id, modelId: found.model.id, tier: found.tier, tokensIn, tokensOut, costCr: creditCost, source: "merge" });
@@ -855,7 +904,19 @@ app.get("/api/quota", requireAuth, async (req, res) => {
     const user = await refreshUser(req.user.id, req.user);
     const credits = await getCredits(user.id);
     const apiCredits = await getApiCredits(user.id);
-    res.json({ plan: user.plan, credits, apiCredits });
+    const window = await getWindow(user.id, user.plan);
+    res.json({ plan: user.plan, credits, apiCredits, window, windowQuotas: WINDOW_QUOTA });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Répartition de la conso de la fenêtre courante par provider (popover quota).
+app.get("/api/quota/breakdown", requireAuth, async (req, res) => {
+  try {
+    const user = await refreshUser(req.user.id, req.user);
+    const bd = await getWindowBreakdown(user.id, user.plan);
+    res.json(bd);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -1824,12 +1885,31 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
     const { throttled, waitMs } = checkThrottle(user.id);
     if (throttled) return res.status(429).json({ error: `Attends ${Math.ceil(waitMs / 1000)}s.`, waitMs });
 
-    const estimatedCost = (isFreePlan && isFreeQuotaModel) ? 0 : computeCreditCost(modelInfo.id, 1000, 500);
+    let estimatedCost = (isFreePlan && isFreeQuotaModel) ? 0 : computeCreditCost(modelInfo.id, 1000, 500);
+    let modelSwap = null;
+    // Quota glissant 3h (façon Mammouth) : pas de cap mensuel. Budget de conso par
+    // fenêtre + crédits top-up en overflow. Épuisé → bascule auto vers léger/gratuit.
+    const windowState = await getWindow(user.id, user.plan);
     if (estimatedCost > 0) {
-      const ok = await hasEnoughCredits(user.id, estimatedCost);
-      if (!ok) {
-        const credits = await getCredits(user.id);
-        return res.status(402).json({ error: `Crédits insuffisants (${Number(credits).toFixed(2)} Cr).` });
+      const credits = await getCredits(user.id);
+      const available = windowState.remaining + credits;
+      if (available < estimatedCost) {
+        const fb = findAffordableFallback(modelInfo, available);
+        if (fb) {
+          // Quelle limite mord ? (mensuel = seuil de rentabilité > 24h > fenêtre 3h)
+          const wRem = windowState.windowRemaining ?? Math.max(0, windowState.quota - windowState.used);
+          let swapReason = "quota", swapResetAt = windowState.resetAt;
+          if (windowState.monthlyRemaining <= Math.min(windowState.dailyRemaining ?? Infinity, wRem)) {
+            swapReason = "monthly"; swapResetAt = windowState.monthlyResetAt;
+          } else if ((windowState.dailyRemaining ?? Infinity) <= wRem) {
+            swapReason = "daily"; swapResetAt = windowState.dailyResetAt;
+          }
+          modelSwap = { from: modelInfo.display || modelInfo.id, to: fb.model.display || fb.model.id, reason: swapReason, free: !!fb.free, resetAt: swapResetAt };
+          modelInfo = fb.model;
+          estimatedCost = fb.free ? 0 : computeCreditCost(modelInfo.id, 1000, 500);
+        } else {
+          return res.status(402).json({ error: `Quota épuisé — recharge à ${new Date(windowState.resetAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}.` });
+        }
       }
     }
 
@@ -1841,7 +1921,7 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders();
-    res.write(`data: ${JSON.stringify({ type: "meta", tier: inTier, model: modelInfo, visionSwap })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: "meta", tier: inTier, model: modelInfo, visionSwap, modelSwap, quota: { used: windowState.used, remaining: windowState.remaining, quota: windowState.quota, resetAt: windowState.resetAt, windowHours: windowState.windowHours } })}\n\n`);
 
     // Heartbeat anti-timeout proxies (Render/Cloudflare/navigateur ferment les
     // SSE inactives ~30-60s). CRITIQUE pendant la boucle Composio non-streamée
@@ -1907,6 +1987,9 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
       if (mem.tone) memLines.push(`Préfère un ton ${mem.tone}.`);
       if (mem.lang) memLines.push(`Langue préférée : ${mem.lang}.`);
       if (mem.context) memLines.push(`Contexte personnel : ${mem.context}`);
+      if (Array.isArray(mem.facts) && mem.facts.length) {
+        for (const f of mem.facts) { if (f?.text) memLines.push(`- ${f.text}`); }
+      }
       if (memLines.length > 0) {
         compressed = [
           { role: "system", content: `À propos de l'utilisateur (à garder en tête) :\n${memLines.join("\n")}` },
@@ -1917,6 +2000,7 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
 
     // ─── Détection auto de recherche web ───────────────────────────────────
     const isSonar = /perplexity\/sonar/i.test(modelInfo.id);
+    const modelSupportsTools = !/^delt\/|gemma-/i.test(modelInfo.id); // sinon : pré-search heuristique
     const userLastMsg = [...compressed].reverse().find((m) => m.role === "user")?.content || "";
     const hasSerperKey = Boolean((process.env.SERPER_API_KEY || "").trim());
 
@@ -1929,7 +2013,9 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
       decision
     });
 
-    if (!isSonar && decision.needsSearch && hasSerperKey) {
+    // Pré-search par mots-clés UNIQUEMENT pour les modèles sans function-calling
+    // (les autres utilisent le tool web_search où l'IA écrit sa propre requête).
+    if (!isSonar && !modelSupportsTools && decision.needsSearch && hasSerperKey) {
       console.log("[websearch] → lancement Serper pour:", userLastMsg.slice(0, 100));
       res.write(`data: ${JSON.stringify({ type: "websearch", status: "searching" })}\n\n`);
 
@@ -2021,6 +2107,25 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
       composioTools = [];
     }
 
+    // Tool web_search : disponible pour tout modèle tool-capable (sauf Sonar qui
+    // a sa propre recherche). L'IA décide elle-même quand l'appeler et écrit sa requête.
+    if (hasSerperKey && modelSupportsTools && !isSonar) {
+      composioTools = [...composioTools, WEB_SEARCH_TOOL];
+      compressed = [{
+        role: "system",
+        content: "Tu disposes de l'outil web_search. Utilise-le DÈS QUE la réponse dépend d'infos récentes, factuelles ou dont tu n'es pas certain (prix, actualités, dates, sorties, scores, chiffres, événements). N'invente JAMAIS un chiffre/prix approximatif : si tu n'es pas sûr, appelle web_search. Tu écris TOI-MÊME une requête précise sur le SUJET (ex: « prix iPhone 17 2026 ») — jamais le message brut de l'utilisateur ni le mot « web ». Si l'utilisateur dit « cherche sur le web » sans préciser, base la requête sur le sujet de la conversation."
+      }, ...compressed];
+    }
+
+    // Tool write_memory : mémoire inter-modèles. Dispo pour tout modèle tool-capable.
+    if (modelSupportsTools) {
+      composioTools = [...composioTools, WRITE_MEMORY_TOOL];
+      compressed = [{
+        role: "system",
+        content: "Tu disposes de l'outil write_memory. Dès que l'utilisateur révèle une info personnelle DURABLE et utile pour les prochaines conversations (prénom, métier, stack, préférences de style, projets en cours, contraintes, objectifs), appelle write_memory pour la retenir — en plus de répondre normalement. Ne mémorise jamais l'éphémère (la question du moment). Sois discret : pas besoin d'annoncer « je mémorise »."
+      }, ...compressed];
+    }
+
     let directAnswerFromToolLoop = null; // { content, usage } si le modèle a répondu sans tool
     if (composioTools.length > 0) {
       const MAX_TOOL_ROUNDS = 5;
@@ -2098,6 +2203,22 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
           let args = {};
           try { args = JSON.parse(tc.function?.arguments || tc.arguments || "{}"); } catch {}
           res.write(`data: ${JSON.stringify({ type: "tool_call", id: tc.id, name, args })}\n\n`);
+          // Recherche web : l'IA a écrit sa propre requête dans args.query
+          if (name === "web_search") {
+            res.write(`data: ${JSON.stringify({ type: "websearch", status: "searching", query: args.query })}\n\n`);
+            const sd = await searchWithQuery(args.query, args.num);
+            const found = sd?.results?.length || 0;
+            if (found) res.write(`data: ${JSON.stringify({ type: "websearch", status: "found", count: found, query: args.query, results: sd.results.slice(0, 10).map((r) => ({ title: r.title, url: r.url, snippet: r.snippet })) })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: "tool_result", id: tc.id, name, ok: found > 0, error: found ? null : "aucun résultat", preview: `${found} source(s) pour "${String(args.query || "").slice(0, 60)}"` })}\n\n`);
+            return { tool_call_id: tc.id, role: "tool", name, content: (sd?.contextText || "Aucun résultat de recherche.").slice(0, 8000) };
+          }
+          // Mémoire inter-modèles : l'IA enregistre un fait durable sur l'utilisateur
+          if (name === "write_memory") {
+            const r = await appendMemoryFact(user.id, args.fact);
+            res.write(`data: ${JSON.stringify({ type: "memory", ok: !!r.ok, fact: String(args.fact || "").slice(0, 200) })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: "tool_result", id: tc.id, name, ok: !!r.ok, error: r.ok ? null : (r.error || "échec"), preview: r.duplicate ? "déjà mémorisé" : `mémorisé (${r.count || 0} faits)` })}\n\n`);
+            return { tool_call_id: tc.id, role: "tool", name, content: r.ok ? "Fait mémorisé." : `Échec: ${r.error || "inconnu"}` };
+          }
           const result = await executeToolCall({ userId: user.id, toolName: name, args });
           const ok = !result?.error;
           res.write(`data: ${JSON.stringify({
@@ -2191,7 +2312,7 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
         if (!aborted) {
           try {
             res.write(`data: ${JSON.stringify({
-              type: "done", tokensIn, tokensOut, thinkingTokens, creditCost: totalCreditCost, costEur
+              type: "done", tokensIn, tokensOut, thinkingTokens, creditCost: totalCreditCost, costEur, costUsd
             })}\n\n`);
             res.end();
           } catch { /* socket already closed */ }
@@ -2205,7 +2326,14 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
             ? deductFreeNanoTokens(user.id, tokensIn + tokensOut)
             : (isFreePlan && isFreeQuotaModel
                 ? deductFreeModelTokens(user.id, modelInfo.id, tokensIn + tokensOut)
-                : deductCredits(user.id, creditCost + extraImageCost)),
+                : (async () => {
+                    // Conso sur la fenêtre 3h d'abord, crédits top-up en overflow.
+                    const total = creditCost + extraImageCost;
+                    const fromWindow = Math.min(total, windowState?.remaining ?? total);
+                    if (fromWindow > 0) await consumeWindow(user.id, fromWindow);
+                    const overflow = total - fromWindow;
+                    if (overflow > 0) await deductCredits(user.id, overflow);
+                  })()),
           recordUsage(user.id, inTier, tokensIn, tokensOut),
           logUsage({ userId: user.id, modelId: modelInfo.id, tier: inTier, tokensIn, tokensOut, costCr: creditCost + extraImageCost, source: aborted ? "chat_aborted" : "chat" })
         ]).catch((e) => console.error("[chat/stream] DB background:", e));
@@ -2336,6 +2464,35 @@ app.post("/api/credits/capture", requireAuth, async (req, res) => {
   }
 });
 
+// ─── PAYG API : top-up PayPal à montant libre du pool api_credits ─────────────
+app.post("/api/api-credits/order", requireAuth, async (req, res) => {
+  try {
+    const amountEur = Number(req.body?.amountEur);
+    const origin = req.headers.origin || `https://${req.headers.host}`;
+    const { orderId, approveUrl, amountEur: eur } = await createApiTopupOrder(
+      req.user.id,
+      amountEur,
+      `${origin}/api?topup=success`,
+      `${origin}/api?topup=cancel`
+    );
+    res.json({ orderId, approveUrl, amountEur: eur });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post("/api/api-credits/capture", requireAuth, async (req, res) => {
+  try {
+    const orderId = String(req.body?.orderId || "");
+    if (!orderId) return res.status(400).json({ error: "orderId requis" });
+    const result = await captureApiTopupOrder(req.user.id, orderId);
+    const apiBalance = await getApiCredits(req.user.id);
+    res.json({ ...result, apiCredits: Number(apiBalance) });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // Webhook PayPal (configurer l'URL dans le dashboard PayPal)
 app.post("/api/paypal/webhook", async (req, res) => {
   try {
@@ -2354,17 +2511,23 @@ app.post("/api/image", requireAuth, async (req, res) => {
     const prompt = String(req.body?.prompt || "").trim().slice(0, 4000);
     if (!prompt) return res.status(400).json({ error: "prompt requis" });
 
+    // Images de référence (image-à-image) : data URLs ou URLs http, max 4.
+    const imageUrls = Array.isArray(req.body?.imageUrls)
+      ? req.body.imageUrls.filter((u) => typeof u === "string" && /^(data:image\/|https?:\/\/)/i.test(u)).slice(0, 4)
+      : [];
+
     const requestedModelId = String(req.body?.modelId || "").trim();
     const imageModels = CREATIVE.IMAGE.models;
     const chosenModel = imageModels.find((m) => m.id === requestedModelId) || imageModels[0];
     const cost = chosenModel.cost ?? 8;
 
-    // Vérification crédits avant appel
-    const ok = await hasEnoughCredits(req.user.id, cost);
-    if (!ok) {
-      const credits = await getCredits(req.user.id);
+    // Même quota glissant 3h que le chat : fenêtre d'abord, crédits top-up en overflow.
+    const imgWindow = await getWindow(req.user.id, req.user.plan);
+    const imgCredits = await getCredits(req.user.id);
+    if (imgWindow.remaining + imgCredits < cost) {
+      const reset = new Date(imgWindow.resetAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
       return res.status(402).json({
-        error: `Crédits insuffisants (${Number(credits).toFixed(1)} Cr restants, requis : ${cost} Cr).`
+        error: `Quota épuisé pour générer une image (${cost} Cr requis). Ton quota se renouvelle à ${reset}, ou recharge des crédits.`
       });
     }
 
@@ -2372,7 +2535,7 @@ app.post("/api/image", requireAuth, async (req, res) => {
     if (chosenModel.provider === "fal") {
       // fal.ai (FLUX, etc.)
       const { falGenerateImage } = await import("./lib/fal.js");
-      const result = await falGenerateImage(chosenModel.id, prompt);
+      const result = await falGenerateImage(chosenModel.id, prompt, { imageUrls });
       url = result.url;
     } else {
       // OpenRouter (Gemini, etc.)
@@ -2388,7 +2551,12 @@ app.post("/api/image", requireAuth, async (req, res) => {
         },
         body: JSON.stringify({
           model: chosenModel.id,
-          messages: [{ role: "user", content: prompt }],
+          messages: [{
+            role: "user",
+            content: imageUrls.length
+              ? [{ type: "text", text: prompt }, ...imageUrls.map((u) => ({ type: "image_url", image_url: { url: u } }))]
+              : prompt
+          }],
           modalities: ["image"]
         })
       });
@@ -2402,8 +2570,14 @@ app.post("/api/image", requireAuth, async (req, res) => {
 
     if (!url) return res.status(502).json({ error: "Réponse provider invalide" });
 
-    // Déduit le coût en crédits sur le pool plan
-    try { await deductCredits(req.user.id, cost); } catch { /* ignore */ }
+    // Conso sur la fenêtre 3h d'abord, crédits top-up en overflow (comme le chat).
+    try {
+      const fromWindow = Math.min(cost, imgWindow.remaining);
+      if (fromWindow > 0) await consumeWindow(req.user.id, fromWindow);
+      const overflow = cost - fromWindow;
+      if (overflow > 0) await deductCredits(req.user.id, overflow);
+      logUsage({ userId: req.user.id, modelId: chosenModel.id, tier: "IMAGE", tokensIn: 0, tokensOut: 0, costCr: cost, source: "image" });
+    } catch { /* ignore */ }
 
     res.json({
       provider: chosenModel.provider,
@@ -2530,11 +2704,12 @@ app.post("/api/video", requireAuth, async (req, res) => {
     const duration = Math.max(1, Math.min(10, Number(req.body?.duration) || 5));
     const cost = Math.ceil((chosenModel.crPerSecond720p ?? 50) * duration);
 
-    const ok = await hasEnoughCredits(req.user.id, cost);
-    if (!ok) {
-      const credits = await getCredits(req.user.id);
+    const vidWindow = await getWindow(req.user.id, req.user.plan);
+    const vidCredits = await getCredits(req.user.id);
+    if (vidWindow.remaining + vidCredits < cost) {
+      const reset = new Date(vidWindow.resetAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
       return res.status(402).json({
-        error: `Crédits insuffisants (${Number(credits).toFixed(1)} Cr restants, requis : ${cost} Cr).`
+        error: `Quota épuisé pour générer une vidéo (${cost} Cr requis). Renouvellement à ${reset}, ou recharge des crédits.`
       });
     }
 
@@ -2545,7 +2720,12 @@ app.post("/api/video", requireAuth, async (req, res) => {
     const { falGenerateVideo } = await import("./lib/fal.js");
     const result = await falGenerateVideo(chosenModel.id, prompt, { duration, resolution: "720p" });
 
-    try { await deductCredits(req.user.id, cost); } catch { /* ignore */ }
+    try {
+      const fromWindow = Math.min(cost, vidWindow.remaining);
+      if (fromWindow > 0) await consumeWindow(req.user.id, fromWindow);
+      if (cost - fromWindow > 0) await deductCredits(req.user.id, cost - fromWindow);
+      logUsage({ userId: req.user.id, modelId: chosenModel.id, tier: "VIDEO", tokensIn: 0, tokensOut: 0, costCr: cost, source: "video" });
+    } catch { /* ignore */ }
 
     res.json({
       provider: chosenModel.provider,
@@ -2570,11 +2750,12 @@ app.post("/api/music", requireAuth, async (req, res) => {
     const musicModel = CREATIVE.MUSIC.models[0];
     const cost = musicModel.cost;
 
-    const ok = await hasEnoughCredits(req.user.id, cost);
-    if (!ok) {
-      const credits = await getCredits(req.user.id);
+    const musWindow = await getWindow(req.user.id, req.user.plan);
+    const musCredits = await getCredits(req.user.id);
+    if (musWindow.remaining + musCredits < cost) {
+      const reset = new Date(musWindow.resetAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
       return res.status(402).json({
-        error: `Crédits insuffisants (${Number(credits).toFixed(1)} Cr restants, requis : ${cost} Cr).`
+        error: `Quota épuisé pour générer de la musique (${cost} Cr requis). Renouvellement à ${reset}, ou recharge des crédits.`
       });
     }
 

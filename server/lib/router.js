@@ -29,6 +29,9 @@ Default to 3-4 for standard tasks. Only go above 6 for genuinely hard problems.
 ═══ IMAGE MODEL SELECTION (when intent=="image") ═══
 Pick the BEST model based on these rules :
 
+0. "fal-ai/fast-sdxl" — CHEAPEST. Use for very quick drafts, throwaway sketches, ultra-simple
+   subjects with no quality requirement. Pick it when the user wants "vite", "pas cher", "un brouillon".
+
 1. "fal-ai/flux-1/schnell" — Fast & cheap. Use for:
    - Simple subjects, generic illustrations, casual concepts
    - NO text needed in the image (or just 1-2 letters)
@@ -41,21 +44,19 @@ Pick the BEST model based on these rules :
 3. "google/gemini-3.1-flash-image-preview" (Nano Banana 2) — High quality.
    Use for detailed scenes, character art, complex compositions with clear directives.
 
-4. "google/gemini-3-pro-image-preview" (Nano Banana Pro) — Top tier non-text quality.
-   Use when user explicitly asks for "qualité maximale", "haute définition", "rendu pro" or photoréalisme complexe.
-
 5. "openai/gpt-5-image-mini" — Decent OpenAI quality, mid budget.
 
-6. "openai/gpt-5-image" — High quality OpenAI, complex scenes.
+6. "openai/gpt-5-image" — High quality OpenAI, complex scenes OR images with readable TEXT
+   (affiches, posters, mockups, infographies). Best choice for text in chat.
 
-7. "openai/gpt-5.4-image-2" — BEST for images with TEXT (affiches, posters, infographies, mockups UI, captures avec du texte lisible). ALWAYS pick this if the user wants readable text/words/numbers in the image.
+⚠️ INTERDITS EN CHAT (réservés au Studio) : ne choisis JAMAIS "google/gemini-3-pro-image-preview"
+(Nano Banana Pro) ni "openai/gpt-5.4-image-2" (GPT Image 2).
 
 ═══ DECISION RULES (priority order) ═══
-- If image contains text/words/numbers → "openai/gpt-5.4-image-2"
-- If user asks "haute qualité / pro / parfait" → "google/gemini-3-pro-image-preview"
-- If user asks for detailed character or complex scene → "google/gemini-3.1-flash-image-preview"
-- Simple subject, no text → "fal-ai/flux-1/schnell" (default for image)
+- Image contains text/words/numbers → "openai/gpt-5-image"
+- "haute qualité / pro / parfait" or detailed character / complex scene → "google/gemini-3.1-flash-image-preview"
 - Standard quality request → "google/gemini-2.5-flash-image"
+- Simple subject, no text → "fal-ai/flux-1/schnell" (default for image)
 
 Return ONLY the JSON, no other text.`;
 
@@ -99,14 +100,15 @@ export async function routeMessage(userMessage) {
   }
 
   const allowedIntents = new Set(["text", "image", "video", "music"]);
+  // Modèles d'image autorisés EN CHAT — Nano Banana Pro et GPT Image 2 sont
+  // volontairement exclus (réservés à l'Art Studio).
   const allowedImageModels = new Set([
+    "fal-ai/fast-sdxl",
     "fal-ai/flux-1/schnell",
     "google/gemini-2.5-flash-image",
     "openai/gpt-5-image-mini",
     "google/gemini-3.1-flash-image-preview",
-    "google/gemini-3-pro-image-preview",
-    "openai/gpt-5-image",
-    "openai/gpt-5.4-image-2"
+    "openai/gpt-5-image"
   ]);
 
   const intent = allowedIntents.has(parsed.intent) ? parsed.intent : "text";

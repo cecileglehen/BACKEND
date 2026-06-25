@@ -32,7 +32,101 @@ async function getAccessToken() {
 
 // ─── Commandes one-time (packs de crédits prépayés / PAYG) ──────────────────
 import { getCreditPack } from "../config/plans.js";
-import { addCredits } from "./credits.js";
+import { addCredits, addApiCredits } from "./credits.js";
+
+// ─── PAYG API : top-up à montant LIBRE du pool api_credits ───────────────────
+// PayPal ne fait pas d'auto-recharge off-session simplement (Reference
+// Transactions = approbation spéciale), donc PAYG API = recharges prépayées.
+// 1€ = 100 crédits API. Bornes anti-erreur : 5€ min, 500€ max.
+const API_TOPUP_MIN_EUR = Number(process.env.API_TOPUP_MIN_EUR || 5);
+const API_TOPUP_MAX_EUR = Number(process.env.API_TOPUP_MAX_EUR || 500);
+const API_CR_PER_EUR = 100;
+
+function sanitizeTopupEur(amountEur) {
+  const v = Math.round(Number(amountEur) * 100) / 100;
+  if (!Number.isFinite(v) || v < API_TOPUP_MIN_EUR || v > API_TOPUP_MAX_EUR) {
+    throw new Error(`Montant invalide (entre ${API_TOPUP_MIN_EUR}€ et ${API_TOPUP_MAX_EUR}€)`);
+  }
+  return v;
+}
+
+export async function createApiTopupOrder(userId, amountEur, returnUrl, cancelUrl) {
+  const eur = sanitizeTopupEur(amountEur);
+  const token = await getAccessToken();
+  const res = await fetch(`${baseUrl()}/v2/checkout/orders`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      Prefer: "return=representation"
+    },
+    body: JSON.stringify({
+      intent: "CAPTURE",
+      purchase_units: [{
+        custom_id: `${userId}:apitopup:${eur.toFixed(2)}`,
+        description: `DELT AI — crédits API (${eur.toFixed(2)}€)`,
+        amount: { currency_code: "EUR", value: eur.toFixed(2) }
+      }],
+      application_context: {
+        brand_name: "DELT AI",
+        locale: "fr-FR",
+        shipping_preference: "NO_SHIPPING",
+        user_action: "PAY_NOW",
+        return_url: returnUrl,
+        cancel_url: cancelUrl
+      }
+    })
+  });
+  const data = await res.json();
+  if (!data.id) throw new Error("PayPal order error: " + JSON.stringify(data));
+  const approveUrl = data.links?.find((l) => l.rel === "approve")?.href;
+  return { orderId: data.id, approveUrl, amountEur: eur };
+}
+
+export async function captureApiTopupOrder(userId, orderId) {
+  const db = getDb();
+
+  // Idempotence : déjà traité ?
+  const existing = await db.query(`SELECT status, credits FROM credit_orders WHERE id=$1`, [orderId]);
+  if (existing.rows[0]?.status === "completed") {
+    return { ok: true, alreadyProcessed: true, apiCredits: Number(existing.rows[0].credits) };
+  }
+
+  const token = await getAccessToken();
+  const res = await fetch(`${baseUrl()}/v2/checkout/orders/${orderId}/capture`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
+  });
+  const data = await res.json();
+  if (data.status !== "COMPLETED") {
+    throw new Error("Paiement non complété: " + (data.message || data.status || "inconnu"));
+  }
+
+  // Vérifie l'appartenance + le montant via custom_id (userId:apitopup:eur)
+  const pu = data.purchase_units?.[0];
+  const customId = pu?.payments?.captures?.[0]?.custom_id || pu?.custom_id || "";
+  const [ownerId, kind, eurStr] = customId.split(":");
+  if (ownerId !== userId || kind !== "apitopup") throw new Error("Commande API non liée à cet utilisateur");
+  const eur = sanitizeTopupEur(eurStr);
+
+  const paidValue = Number(pu?.payments?.captures?.[0]?.amount?.value || pu?.amount?.value || 0);
+  if (paidValue + 0.001 < eur) throw new Error("Montant payé insuffisant");
+
+  const apiCr = Math.round(eur * API_CR_PER_EUR * 100) / 100;
+
+  // Enregistre la commande (idempotence) PUIS crédite le pool API
+  const ins = await db.query(
+    `INSERT INTO credit_orders (id, user_id, pack_id, credits, amount_eur, status)
+     VALUES ($1,$2,'api_topup',$3,$4,'completed')
+     ON CONFLICT (id) DO NOTHING RETURNING id`,
+    [orderId, userId, apiCr, eur]
+  );
+  if (ins.rowCount === 0) {
+    return { ok: true, alreadyProcessed: true, apiCredits: apiCr };
+  }
+  const balance = await addApiCredits(userId, apiCr);
+  return { ok: true, apiCreditsAdded: apiCr, apiCredits: balance, amountEur: eur };
+}
 
 // Crée une commande PayPal (Orders API v2) pour un pack de crédits.
 export async function createCreditOrder(userId, packId, returnUrl, cancelUrl) {
