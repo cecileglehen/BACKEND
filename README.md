@@ -33,6 +33,18 @@ The model picker exposes GPT-5.6 as an expandable family (Sol / Terra / Luna), a
 
 ---
 
+## 🔑 Try it — test account for judges
+
+| | |
+|---|---|
+| **URL** | **[https://deltai.fr](https://deltai.fr)** (Launch: [https://launch.deltai.fr](https://launch.deltai.fr)) |
+| **Email** | `devpost.openai@test.com` |
+| **Password** | `openaitest2026.` |
+
+*(All IPs limited to $5 of credits.)*
+
+---
+
 ## Table of contents
 
 1. [Product surfaces](#product-surfaces)
