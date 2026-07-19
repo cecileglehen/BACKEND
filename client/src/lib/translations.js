@@ -656,7 +656,7 @@ export const TRANSLATIONS = {
   "docs.streaming":          { fr: "Streaming SSE",                      en: "SSE Streaming" },
   "docs.chunks_format":      { fr: "Format des chunks",                  en: "Chunks format" },
   "docs.vision":             { fr: "Vision & multimodal",                en: "Vision & multimodal" },
-  "docs.vision_compat":      { fr: "Modèles compatibles : <strong>GPT-5.4</strong>, <strong>GPT-5.5</strong>, <strong>Claude Sonnet 4.5/Opus 4.8</strong>, <strong>Gemini 2.5 Flash/Pro</strong>, <strong>Grok 4.20</strong>.", en: "Compatible models: <strong>GPT-5.4</strong>, <strong>GPT-5.5</strong>, <strong>Claude Sonnet 4.5/Opus 4.8</strong>, <strong>Gemini 2.5 Flash/Pro</strong>, <strong>Grok 4.20</strong>." },
+  "docs.vision_compat":      { fr: "Modèles compatibles : <strong>GPT-5.4</strong>, <strong>GPT-5.5</strong>, <strong>Claude Sonnet 5/Opus 4.8</strong>, <strong>Gemini 2.5 Flash/Pro</strong>, <strong>Grok 4.20</strong>.", en: "Compatible models: <strong>GPT-5.4</strong>, <strong>GPT-5.5</strong>, <strong>Claude Sonnet 5/Opus 4.8</strong>, <strong>Gemini 2.5 Flash/Pro</strong>, <strong>Grok 4.20</strong>." },
   "docs.catalog":            { fr: "Catalogue de modèles",               en: "Models catalog" },
   "docs.catalog_intro":      { fr: "<strong>{{n}}</strong> modèles disponibles, organisés par tier. Les modèles <strong>FREE</strong> sont 100 % gratuits.", en: "<strong>{{n}}</strong> models available, organized by tier. <strong>FREE</strong> models are 100% free." },
   "docs.creative_cats":      { fr: "Catégories créatives",               en: "Creative categories" },
@@ -699,7 +699,7 @@ export const TRANSLATIONS = {
   "land.month_short":        { fr: "/mois",                              en: "/mo" },
 
   // Plans features (Landing)
-  "land.plan_free_f1":       { fr: "Modèles gratuits (Ring, GPT OSS, Gemma)", en: "Free models (Ring, GPT OSS, Gemma)" },
+  "land.plan_free_f1":       { fr: "Modèles gratuits (Ring, Kimi, Gemma)", en: "Free models (Ring, Kimi, Gemma)" },
   "land.plan_free_f2":       { fr: "🇫🇷 50K tokens Mistral Small 4 (le sommet français) + 15K Mistral Large + 3K Mixtral 8x22B — offerts chaque mois", en: "🇫🇷 50K Mistral Small 4 tokens (the pinnacle of French AI) + 15K Mistral Large + 3K Mixtral 8x22B — free every month" },
   "land.plan_free_f3":       { fr: "Messages illimités",                 en: "Unlimited messages" },
   "land.plan_basic_f1":      { fr: "Tout DELT AI débloqué",              en: "All of DELT AI unlocked" },

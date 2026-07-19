@@ -59,18 +59,18 @@ const PLANS = [
 ];
 
 const CATEGORY_TABLE = [
-  { cat: "FREE",       models: "Ring 2.6 1T · Gemma 4 31B · GPT OSS 120B · Trinity Thinking · DeepSeek V4 Flash (free)",       badge: "" },
+  { cat: "FREE",       models: "Ring 2.6 1T · Gemma 4 31B · Kimi K2.6 · Trinity Thinking · DeepSeek V4 Flash (free)",       badge: "" },
   { cat: "UNCENSORED", models: "Venice Dolphin Mistral 24B",                                                                    badge: "badge-venice" },
   { cat: "PICO",       models: "Gemini 2.5 Flash Lite · DeepSeek V4 Flash",                                                     badge: "badge-pico" },
   { cat: "NANO",       models: "Mistral Small 4 · GPT-4o Mini · GPT-5.4 Nano · Gemini 2.5 Flash",                              badge: "badge-eco" },
   { cat: "MINI",       models: "Mistral Large 3 · Mixtral 8x22B · GPT-5.4 Mini · Llama 4 Maverick · Gemini 3.1 Flash Lite · Claude Haiku 4.5 · Grok 4.20 · Grok 4.3", badge: "badge-mini" },
-  { cat: "NORMAL",     models: "GPT-5.4 · Claude Sonnet 4.5 · Mistral Large · Sonar Web Search",                                            badge: "badge-normal" },
+  { cat: "NORMAL",     models: "GPT-5.4 · Claude Sonnet 5 · Mistral Large · Sonar Web Search",                                            badge: "badge-normal" },
   { cat: "EXPERT",     models: "GPT-5.5 · Claude Fable 5 (très cher) · Claude Opus 4.8 · Grok 4.20 Multi-Agent · Sonar Deep Research", badge: "badge-expert" },
   { cat: "PRO",        models: "GPT-5.4 Pro · GPT-5.5 Pro",                                                                    badge: "badge-pro" },
 ];
 
 const IMAGE_TABLE = [
-  { name: "FLUX Schnell",    brand: "Black Forest Labs", tag: "Quotidien · éco" },
+  { name: "Gemini Flash Lite", brand: "Google",           tag: "Quotidien · éco" },
   { name: "Nano Banana",     brand: "Google",            tag: "Bonne qualité" },
   { name: "GPT Image Mini",  brand: "OpenAI",            tag: "Bon ratio qualité/prix" },
   { name: "Nano Banana 2",   brand: "Google",            tag: "Rendu presque parfait" },
@@ -203,14 +203,14 @@ function PricingContent({ user, config, onSubscribed }) {
                     <div className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
                       plan.dark ? "bg-white/15 text-white" : "bg-indigo-50 text-indigo-700"
                     }`}>
-                      🤖 {plan.agents} agent{plan.agents > 1 ? "s" : ""}
+                      {plan.agents} agent{plan.agents > 1 ? "s" : ""}
                     </div>
                   )}
                   {plan.knowledge && (
                     <div className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
                       plan.dark ? "bg-white/15 text-white" : "bg-cyan-50 text-cyan-700"
                     }`}>
-                      📄 {plan.knowledge}
+                      {plan.knowledge}
                     </div>
                   )}
                 </div>
@@ -237,7 +237,7 @@ function PricingContent({ user, config, onSubscribed }) {
                   </button>
                 ) : isLower ? (
                   <button className="w-full py-3 rounded-2xl text-sm font-semibold opacity-40 cursor-not-allowed border border-current" disabled>
-                    🔒 Plan inférieur
+                    Plan inférieur
                   </button>
                 ) : !planId ? (
                   <button
