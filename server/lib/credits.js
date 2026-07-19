@@ -7,12 +7,12 @@ const memCredits = new Map();
 
 // ─── Compte de test partagé (jurés hackathon) : cap de crédits PAR IP ─────────
 // Le compte devpost.openai@test.com est public (README) — chaque IP dispose de
-// ~5 $ de crédits (1000 Cr à 200 Cr/$) pour que CHAQUE juré puisse tester sans
-// qu'un seul vide le compte. Contexte requête propagé par AsyncLocalStorage
+// ~5 € de crédits (500 Cr au tarif d'achat 1 € = 100 Cr) pour que CHAQUE juré
+// puisse tester sans qu'un seul vide le compte. Contexte requête propagé par AsyncLocalStorage
 // (posé par un middleware dans server.js) pour connaître l'IP au moment du débit.
 export const reqContext = new AsyncLocalStorage();
 const TEST_EMAIL = (process.env.TEST_ACCOUNT_EMAIL || "devpost.openai@test.com").toLowerCase();
-const TEST_IP_CAP_CR = Number(process.env.TEST_ACCOUNT_IP_CAP_CR || 1000);
+const TEST_IP_CAP_CR = Number(process.env.TEST_ACCOUNT_IP_CAP_CR || 500);
 const testIpSpend = new Map(); // ip → Cr consommés
 let _testUserId; // cache (undefined = pas encore résolu, null = compte absent)
 
