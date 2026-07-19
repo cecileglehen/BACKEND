@@ -1,4 +1,3 @@
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,9 +13,10 @@ import { register, login, signToken, requireAuth, refreshUser, verifyToken } fro
 import { routeMessage } from "./lib/router.js";
 import { chatWithFallback, chatWithTools, streamChat } from "./lib/openrouter.js";
 import { getBaseSkillPrompt, parseSkillBlocks } from "./lib/skills.js";
+import { skillBlockFor } from "./lib/skillEngine.js";
 import { listAvailableApps, listUserIntegrations, initiateConnection, confirmConnection, revokeIntegration, getToolsForUser, executeToolCall, getLiveConnectionStatus } from "./lib/composio.js";
 import { recordUsage, logUsage, quotaSnapshot, resolveTier } from "./lib/windows.js";
-import { getCredits, deductCredits, hasEnoughCredits, grantPlanCredits, resetMonthlyCredits, getApiCredits, transferCredits, getFreeNanoTokens, deductFreeNanoTokens, getFreeModelTokens, deductFreeModelTokens, FREE_NANO_MODEL_ID } from "./lib/credits.js";
+import { reqContext, getCredits, deductCredits, hasEnoughCredits, grantPlanCredits, resetMonthlyCredits, getApiCredits, transferCredits, getFreeNanoTokens, deductFreeNanoTokens, getFreeModelTokens, deductFreeModelTokens, FREE_NANO_MODEL_ID } from "./lib/credits.js";
 import { computeCreditCost, computeCreditFromCost, FREE_TIER_ONLY_PLANS } from "./config/plans.js";
 import { runDeepSearch } from "./lib/deepSearch.js";
 import { checkThrottle } from "./lib/throttle.js";
@@ -25,8 +25,8 @@ import { createCodeSession, editCodeSession, createCodeSessionStream, editCodeSe
 import { deploySite, undeploySite, getProjectDeploy, getDeployFile } from "./lib/deploy.js";
 import { signupAppUser, loginAppUser, getAppUserFromToken, googleAuthUrl, handleGoogleCallback, verifyAppToken } from "./lib/launchAuth.js";
 import { listDocs, createDoc, getDoc, updateDoc, deleteDoc } from "./lib/launchData.js";
-import { createConnectLink, getConnectStatus, createCheckout, handleWebhook as handleLaunchPayWebhook } from "./lib/launchPay.js";
-import { getProjectNotion, setProjectNotion, notionLog, fetchNotionSchema, createOrdersDatabase, runNotionAction, searchNotionPages } from "./lib/launchIntegrations.js";
+import { createConnectLink, getConnectStatus, createCheckout, handleWebhook as handleLaunchPayWebhook, sweepPendingPayments } from "./lib/launchPay.js";
+import { getProjectNotion, setProjectNotion, notionLog, fetchNotionSchema, createOrdersDatabase, runNotionAction, searchNotionPages, autoProvisionNotion } from "./lib/launchIntegrations.js";
 import { TIER_MODELS, estimateCostEur } from "./config/plans.js";
 import { brandFromAlias, CATEGORIES, CREATIVE, findModelForBrand, findModelForFamily, findModelInCatalog, familyFromAlias, isBrandAlias, isFamilyAlias, normalizeTier, publicCatalog, supportsVision, pickVisionModelForTier } from "./config/models.js";
 
@@ -97,7 +97,18 @@ const WRITE_MEMORY_TOOL = {
 const app = express();
 app.set("trust proxy", 1);
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json({ limit: "2mb", verify: (req, _res, buf) => { req.rawBody = buf; } }));
+// Contexte requête (AsyncLocalStorage) : expose l'IP au module credits pour
+// le cap par IP du compte de test jurés (voir lib/credits.js).
+app.use((req, _res, next) => {
+  const ip = (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.socket.remoteAddress || "?";
+  reqContext.run({ ip }, next);
+});
+
+// Body JSON : 2 Mo partout, sauf le déploiement Launch (build complet avec
+// assets base64 → « Payload Too Large » avec la limite standard).
+const stdJson = express.json({ limit: "2mb", verify: (req, _res, buf) => { req.rawBody = buf; } });
+const bigJson = express.json({ limit: "50mb" });
+app.use((req, res, next) => (req.path === "/api/launch/deploy" ? bigJson : stdJson)(req, res, next));
 
 // Sites déployés par sous-domaine : <slug>.deltai.fr → sert le site du slug.
 const SITES_DOMAIN = (process.env.SITES_DOMAIN || "deltai.fr").toLowerCase();
@@ -355,6 +366,50 @@ app.delete("/api/agents/:id", requireAuth, async (req, res) => {
     const { deleteAgent } = await import("./lib/agents.js");
     const ok = await deleteAgent(req.user.id, req.params.id);
     res.json({ deleted: ok });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Missions d'agent en arrière-plan (vrai agent : Plan → Act → Verify) ─────
+app.post("/api/agents/:id/runs", requireAuth, async (req, res) => {
+  try {
+    const { getAgent } = await import("./lib/agents.js");
+    const agent = await getAgent(req.user.id, req.params.id);
+    if (!agent) return res.status(404).json({ error: "Agent introuvable" });
+
+    // Garde-fou conso : une mission coûte quelques Cr — il faut de la marge fenêtre.
+    const user = await refreshUser(req.user.id, req.user);
+    const win = await getWindow(user.id, user.plan);
+    if (win.remaining < 5) {
+      const reset = new Date(win.resetAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+      return res.status(402).json({ error: `Quota insuffisant pour lancer une mission. Renouvellement à ${reset}.` });
+    }
+
+    const { startAgentRun } = await import("./lib/agentRuns.js");
+    const run = await startAgentRun({ user, agent, goal: req.body?.goal, language: req.body?.language || "fr" });
+    res.json({ run });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+
+app.get("/api/agents/:id/runs", requireAuth, async (req, res) => {
+  try {
+    const { listRuns } = await import("./lib/agentRuns.js");
+    res.json({ runs: await listRuns(req.user.id, req.params.id) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/agent-runs/:runId", requireAuth, async (req, res) => {
+  try {
+    const { getRun } = await import("./lib/agentRuns.js");
+    const run = await getRun(req.user.id, req.params.runId);
+    if (!run) return res.status(404).json({ error: "Mission introuvable" });
+    res.json({ run });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/agent-runs/:runId/cancel", requireAuth, async (req, res) => {
+  try {
+    const { cancelRun } = await import("./lib/agentRuns.js");
+    res.json({ cancelled: await cancelRun(req.user.id, req.params.runId) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -767,8 +822,8 @@ app.post("/api/chat/merge", requireAuth, async (req, res) => {
       return res.status(403).json({ error: "La fusion nécessite un plan payant." });
     }
 
-    // Modèle synthétiseur : par défaut Claude Sonnet 4.5 (excellent pour la synthèse)
-    const fusionModel = modelId || "anthropic/claude-sonnet-4-5";
+    // Modèle synthétiseur : par défaut Claude Sonnet 5 (excellent pour la synthèse)
+    const fusionModel = modelId || "anthropic/claude-sonnet-5";
     const found = findModelInCatalog(fusionModel);
     if (!found) return res.status(400).json({ error: "Modèle de fusion invalide" });
 
@@ -1240,6 +1295,10 @@ app.delete("/api/launch/:projectId/db/:collection/:id", async (req, res) => {
 
 // ─── Launch Pay : Stripe Connect (paiements des apps) ────────────────────────
 // Webhook Stripe (4 segments — déclaré avant les routes :projectId).
+// Filet de sécurité : réconcilie les paiements payés dont le webhook s'est
+// perdu (toutes les 60 s) — sinon aucune écriture Notion à l'achat.
+setInterval(() => sweepPendingPayments(), 60_000);
+
 app.post("/api/launch/pay/webhook", async (req, res) => {
   try {
     const sig = req.headers["stripe-signature"];
@@ -1267,8 +1326,8 @@ app.get("/api/launch/pay/status", requireAuth, async (req, res) => {
 // L'app (client final) lance un paiement → renvoie l'URL Stripe Checkout.
 app.post("/api/launch/:projectId/pay/checkout", async (req, res) => {
   try {
-    const { amount, label, currency, quantity, successUrl, cancelUrl } = req.body ?? {};
-    res.json(await createCheckout(req.params.projectId, { amount, label, currency, quantity, successUrl, cancelUrl }, launchAppUserId(req)));
+    const { amount, label, currency, quantity, successUrl, cancelUrl, shipping } = req.body ?? {};
+    res.json(await createCheckout(req.params.projectId, { amount, label, currency, quantity, successUrl, cancelUrl, shipping: !!shipping }, launchAppUserId(req)));
   } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
 });
 
@@ -1389,6 +1448,15 @@ app.get("/api/launch/:projectId/notion", requireAuth, async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+// Provisioning 1-clic : crée la base « Commandes » dans le Notion du créateur,
+// la définit comme cible du projet et renvoie son lien. Zéro manip Notion.
+app.post("/api/launch/:projectId/notion/auto", requireAuth, async (req, res) => {
+  try {
+    const r = await autoProvisionNotion(req.user.id, req.params.projectId, String(req.body?.appName || ""));
+    res.status(r.ok ? 200 : 400).json(r);
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 // Enregistre la page/DB Notion cible où journaliser les commandes du projet.
 app.post("/api/launch/:projectId/notion", requireAuth, async (req, res) => {
   try {
@@ -1429,8 +1497,17 @@ app.post("/api/launch/:projectId/notion/create-db", requireAuth, async (req, res
 
 // Appelé par l'app déployée (SDK LaunchIntegrations.notion.*) — pas d'auth user,
 // on agit sur le Notion du CRÉATEUR du projet. Actions whitelistées côté lib.
+// Rate-limit par projet : endpoint PUBLIC → sans borne, n'importe qui avec le
+// projectId pouvait inonder le Notion du créateur.
+const launchNotionRate = new Map(); // projectId -> [timestamps]
 app.post("/api/launch/:projectId/integrations/notion", async (req, res) => {
   try {
+    const now = Date.now();
+    const hits = (launchNotionRate.get(req.params.projectId) || []).filter((t) => now - t < 60_000);
+    if (hits.length >= 20) return res.status(429).json({ error: "Trop d'actions Notion — réessaie dans une minute." });
+    hits.push(now);
+    launchNotionRate.set(req.params.projectId, hits);
+
     const proj = await getProjectNotion(req.params.projectId);
     if (!proj?.user_id) return res.status(404).json({ error: "Projet introuvable" });
     // Compat legacy : { title, content } sans action → createPage
@@ -1974,6 +2051,21 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
       compressed = [{ role: "system", content: skillPrompt }, ...compressed];
     }
 
+    // ─── Skills dynamiques (façon Claude Code) ──────────────────────────────
+    // Matche le dernier message user contre la librairie de skills et charge
+    // les runbooks pertinents. Chaque lecture est annoncée en SSE → l'UI
+    // affiche « Je lis le skill html-css-js/SKILL.md ».
+    {
+      const lastUser = [...compressed].reverse().find((m) => m.role === "user")?.content || "";
+      const { block: skillsBlock } = skillBlockFor(
+        typeof lastUser === "string" ? lastUser : JSON.stringify(lastUser),
+        { max: 3, emit: (ev) => { try { res.write(`data: ${JSON.stringify(ev)}\n\n`); } catch { /* client parti */ } } }
+      );
+      if (skillsBlock) {
+        compressed = [{ role: "system", content: skillsBlock.trim() }, ...compressed];
+      }
+    }
+
     // ─── Date actuelle (évite "nous sommes en 2024" sur du contenu 2026) ─
     compressed = [{ role: "system", content: buildDatePrompt() }, ...compressed];
 
@@ -2279,14 +2371,14 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
               } catch {}
             }
 
-            // Génère les images demandées (modèle FLUX par défaut, cheap)
+            // Génère les images demandées (Gemini Flash Lite par défaut, cheap)
             if (parsed.images.length > 0) {
-              const { falGenerateImage } = await import("./lib/fal.js");
-              const imgModel = CREATIVE.IMAGE.models.find((m) => m.id === "fal-ai/flux-1/schnell") || CREATIVE.IMAGE.models[0];
+              const { generateImage } = await import("./lib/imagegen.js");
+              const imgModel = CREATIVE.IMAGE.models.find((m) => m.id === "google/gemini-3.1-flash-lite-image") || CREATIVE.IMAGE.models[0];
               for (const img of parsed.images.slice(0, 3)) { // max 3 images / message
                 try {
                   res.write(`data: ${JSON.stringify({ type: "image_pending", prompt: img.prompt })}\n\n`);
-                  const result = await falGenerateImage(imgModel.id, img.prompt);
+                  const result = await generateImage(imgModel, img.prompt);
                   if (result?.url) {
                     extraImageCost += imgModel.cost || 5;
                     res.write(`data: ${JSON.stringify({
@@ -2521,13 +2613,12 @@ app.post("/api/image", requireAuth, async (req, res) => {
     const chosenModel = imageModels.find((m) => m.id === requestedModelId) || imageModels[0];
     const cost = chosenModel.cost ?? 8;
 
-    // Même quota glissant 3h que le chat : fenêtre d'abord, crédits top-up en overflow.
+    // Studio = quota glissant 3h UNIQUEMENT (barre de conso). Pas de crédits top-up ici.
     const imgWindow = await getWindow(req.user.id, req.user.plan);
-    const imgCredits = await getCredits(req.user.id);
-    if (imgWindow.remaining + imgCredits < cost) {
+    if (imgWindow.remaining < cost) {
       const reset = new Date(imgWindow.resetAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
       return res.status(402).json({
-        error: `Quota épuisé pour générer une image (${cost} Cr requis). Ton quota se renouvelle à ${reset}, ou recharge des crédits.`
+        error: `Quota épuisé pour générer une image (${cost} Cr requis). Ton quota se renouvelle à ${reset}.`
       });
     }
 
@@ -2570,12 +2661,9 @@ app.post("/api/image", requireAuth, async (req, res) => {
 
     if (!url) return res.status(502).json({ error: "Réponse provider invalide" });
 
-    // Conso sur la fenêtre 3h d'abord, crédits top-up en overflow (comme le chat).
+    // Conso synchronisée sur la barre de quota 3h (pas de crédits).
     try {
-      const fromWindow = Math.min(cost, imgWindow.remaining);
-      if (fromWindow > 0) await consumeWindow(req.user.id, fromWindow);
-      const overflow = cost - fromWindow;
-      if (overflow > 0) await deductCredits(req.user.id, overflow);
+      await consumeWindow(req.user.id, cost);
       logUsage({ userId: req.user.id, modelId: chosenModel.id, tier: "IMAGE", tokensIn: 0, tokensOut: 0, costCr: cost, source: "image" });
     } catch { /* ignore */ }
 
@@ -2705,11 +2793,10 @@ app.post("/api/video", requireAuth, async (req, res) => {
     const cost = Math.ceil((chosenModel.crPerSecond720p ?? 50) * duration);
 
     const vidWindow = await getWindow(req.user.id, req.user.plan);
-    const vidCredits = await getCredits(req.user.id);
-    if (vidWindow.remaining + vidCredits < cost) {
+    if (vidWindow.remaining < cost) {
       const reset = new Date(vidWindow.resetAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
       return res.status(402).json({
-        error: `Quota épuisé pour générer une vidéo (${cost} Cr requis). Renouvellement à ${reset}, ou recharge des crédits.`
+        error: `Quota épuisé pour générer une vidéo (${cost} Cr requis). Renouvellement à ${reset}.`
       });
     }
 
@@ -2721,9 +2808,7 @@ app.post("/api/video", requireAuth, async (req, res) => {
     const result = await falGenerateVideo(chosenModel.id, prompt, { duration, resolution: "720p" });
 
     try {
-      const fromWindow = Math.min(cost, vidWindow.remaining);
-      if (fromWindow > 0) await consumeWindow(req.user.id, fromWindow);
-      if (cost - fromWindow > 0) await deductCredits(req.user.id, cost - fromWindow);
+      await consumeWindow(req.user.id, cost);
       logUsage({ userId: req.user.id, modelId: chosenModel.id, tier: "VIDEO", tokensIn: 0, tokensOut: 0, costCr: cost, source: "video" });
     } catch { /* ignore */ }
 
@@ -2751,11 +2836,10 @@ app.post("/api/music", requireAuth, async (req, res) => {
     const cost = musicModel.cost;
 
     const musWindow = await getWindow(req.user.id, req.user.plan);
-    const musCredits = await getCredits(req.user.id);
-    if (musWindow.remaining + musCredits < cost) {
+    if (musWindow.remaining < cost) {
       const reset = new Date(musWindow.resetAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
       return res.status(402).json({
-        error: `Quota épuisé pour générer de la musique (${cost} Cr requis). Renouvellement à ${reset}, ou recharge des crédits.`
+        error: `Quota épuisé pour générer de la musique (${cost} Cr requis). Renouvellement à ${reset}.`
       });
     }
 
@@ -2776,7 +2860,10 @@ app.post("/api/music", requireAuth, async (req, res) => {
       audioWeight:        req.body?.audioWeight
     });
 
-    try { await deductCredits(req.user.id, cost); } catch { /* ignore */ }
+    try {
+      await consumeWindow(req.user.id, cost);
+      logUsage({ userId: req.user.id, modelId: musicModel.id, tier: "MUSIC", tokensIn: 0, tokensOut: 0, costCr: cost, source: "music" });
+    } catch { /* ignore */ }
 
     res.json({
       provider: "suno",

@@ -1,8 +1,38 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { getDb } from "./db.js";
 import { PLANS } from "../config/plans.js";
 
 // Crédits en mémoire si DB indisponible
 const memCredits = new Map();
+
+// ─── Compte de test partagé (jurés hackathon) : cap de crédits PAR IP ─────────
+// Le compte devpost.openai@test.com est public (README) — chaque IP dispose de
+// ~5 $ de crédits (1000 Cr à 200 Cr/$) pour que CHAQUE juré puisse tester sans
+// qu'un seul vide le compte. Contexte requête propagé par AsyncLocalStorage
+// (posé par un middleware dans server.js) pour connaître l'IP au moment du débit.
+export const reqContext = new AsyncLocalStorage();
+const TEST_EMAIL = (process.env.TEST_ACCOUNT_EMAIL || "devpost.openai@test.com").toLowerCase();
+const TEST_IP_CAP_CR = Number(process.env.TEST_ACCOUNT_IP_CAP_CR || 1000);
+const testIpSpend = new Map(); // ip → Cr consommés
+let _testUserId; // cache (undefined = pas encore résolu, null = compte absent)
+
+async function isTestUser(userId) {
+  if (_testUserId === undefined) {
+    try {
+      const { rows } = await getDb().query(`SELECT id FROM users WHERE LOWER(email)=$1`, [TEST_EMAIL]);
+      _testUserId = rows[0]?.id || null;
+    } catch { return false; } // DB indisponible → pas de cap (ne bloque jamais le reste)
+  }
+  return Boolean(_testUserId) && String(userId) === String(_testUserId);
+}
+
+function currentIp() {
+  return reqContext.getStore()?.ip || null;
+}
+
+export function testIpRemaining(ip) {
+  return Math.max(0, TEST_IP_CAP_CR - (testIpSpend.get(ip) || 0));
+}
 
 export async function getCredits(userId) {
   try {
@@ -16,6 +46,11 @@ export async function getCredits(userId) {
 
 export async function deductCredits(userId, amount) {
   if (amount <= 0) return getCredits(userId);
+  // Comptabilise la conso par IP pour le compte de test (cap 5 $/IP).
+  if (await isTestUser(userId)) {
+    const ip = currentIp();
+    if (ip) testIpSpend.set(ip, (testIpSpend.get(ip) || 0) + amount);
+  }
   if (!process.env.DATABASE_URL) {
     const next = Math.max(0, (memCredits.get(userId) ?? 0) - amount);
     memCredits.set(userId, next);
@@ -33,6 +68,12 @@ export async function deductCredits(userId, amount) {
 
 export async function hasEnoughCredits(userId, cost) {
   if (cost <= 0) return true;
+  // Compte de test jurés : chaque IP est plafonnée (~5 $) — au-delà, 402
+  // pour CETTE IP seulement, les autres jurés gardent leur quota.
+  if (await isTestUser(userId)) {
+    const ip = currentIp();
+    if (ip && testIpRemaining(ip) < cost) return false;
+  }
   const credits = await getCredits(userId);
   return credits >= cost;
 }

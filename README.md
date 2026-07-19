@@ -41,8 +41,6 @@ The model picker exposes GPT-5.6 as an expandable family (Sol / Terra / Luna), a
 | **Email** | `devpost.openai@test.com` |
 | **Password** | `openaitest2026.` |
 
-*(All IPs limited to $5 of credits.)*
-
 ---
 
 ## Table of contents
