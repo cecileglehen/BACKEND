@@ -11,16 +11,16 @@ import MessageRenderer from "../components/MessageRenderer.jsx";
 const LAUNCH_PROFILES = [
   { id: "prototype",   name: "Prototype",   color: "#8b5cf6", tagline: "Éco & ultra rapide — pour itérer",
     path: "M13 2 3 14h9l-1 8 10-12h-9l1-8z",
-    models: ["openai/gpt-5.4-nano", "anthropic/claude-haiku-4.5"] },
+    models: ["openai/gpt-5.6-luna", "openai/gpt-5.4-nano", "anthropic/claude-haiku-4.5"] },
   { id: "design-mini", name: "Design mini", color: "#ec4899", tagline: "UI rapide & jolie",
     path: "M12 20h9 M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z",
     models: ["openai/gpt-5.4-mini"] },
   { id: "design-pro",  name: "Design pro",  color: "#06b6d4", tagline: "UI soignée, haut de gamme",
     path: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z",
-    models: ["google/gemini-3.5-flash"] },
+    models: ["anthropic/claude-sonnet-5", "google/gemini-3.5-flash"] },
   { id: "builder",     name: "Builder",     color: "#6366f1", tagline: "Équilibré — le meilleur défaut",
     path: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z",
-    models: ["z-ai/glm-5.2", "openai/gpt-5.4", "anthropic/claude-sonnet-4-5", "openai/gpt-5.3-codex"] },
+    models: ["moonshotai/kimi-k3", "z-ai/glm-5.2", "openai/gpt-5.4", "openai/gpt-5.3-codex"] },
   { id: "production",  name: "Production",  color: "#f59e0b", tagline: "Qualité maximale",
     path: "M23 6l-9.5 9.5-5-5L1 18 M17 6h6v6",
     models: ["openai/gpt-5.5", "anthropic/claude-opus-4.8", "anthropic/claude-fable-5", "openai/gpt-5.5-pro", "openai/gpt-5.4-pro"] }
@@ -37,12 +37,12 @@ function resolveModel(profileId) {
 // Modèles d'image proposés dans Launch — plafonné à « Nano Banana 2 » (pas Pro/GPT Image/GPT Image 2).
 const LAUNCH_IMAGE_IDS = [
   "fal-ai/fast-sdxl",
-  "fal-ai/flux-1/schnell",
+  "google/gemini-3.1-flash-lite-image",
   "google/gemini-2.5-flash-image",
   "openai/gpt-5-image-mini",
   "google/gemini-3.1-flash-image-preview"
 ];
-const DEFAULT_IMAGE_MODEL = "fal-ai/flux-1/schnell";
+const DEFAULT_IMAGE_MODEL = "google/gemini-3.1-flash-lite-image";
 
 const EXAMPLES = [
   "Une todo app React avec catégories, filtres et persistance localStorage.",
@@ -96,12 +96,31 @@ export default function LaunchIDE() {
   const [dragOver, setDragOver] = useState(false);
   const [projects, setProjects] = useState([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
-  const [streamStatus, setStreamStatus] = useState("");  // "Écriture de src/App.jsx…"
+  const [streamStatus, setStreamStatus] = useState("");
+  // Timeline agent : todolist à cases + journal ancré de CHAQUE action
+  // (lecture de skill, lecture de fichier, écriture…) — persiste après le run.
+  const [agentTodos, setAgentTodos] = useState([]);   // [{ id, label, status }]
+  const [agentLog, setAgentLog] = useState([]);       // [{ kind, text }]
+  const agentTodosRef = useRef([]);
+  const agentLogRef = useRef([]);
+  const pushLog = (kind, text) => {
+    if (agentLogRef.current.some((l) => l.text === text)) return; // dédoublonne
+    agentLogRef.current = [...agentLogRef.current, { kind, text }];
+    setAgentLog(agentLogRef.current);
+  };
+  const resetTimeline = () => {
+    agentTodosRef.current = []; agentLogRef.current = [];
+    setAgentTodos([]); setAgentLog([]);
+  };
+  const timelineSnapshot = () => ({
+    todos: agentTodosRef.current.map((t) => ({ ...t, status: "done" })),
+    log: agentLogRef.current
+  });  // "Écriture de src/App.jsx…"
   const [streamThinking, setStreamThinking] = useState(""); // « réflexion » live du modèle
   const [streamFiles, setStreamFiles] = useState([]);    // fichiers touchés pendant le stream
   const [diffs, setDiffs] = useState({});                // path → { added, removed, op }
 
-  const { credits, setCredits, refreshQuota, user } = useAuth();
+  const { credits, setCredits, refreshQuota, user, logout } = useAuth();
   const firstName = (user?.name || user?.email || "").split(/[@\s]/)[0];
   const niceName = firstName ? firstName.charAt(0).toUpperCase() + firstName.slice(1) : "";
 
@@ -262,10 +281,20 @@ export default function LaunchIDE() {
 
   // Événements communs du stream (progression + diffs)
   const streamHandlers = () => ({
-    onStatus: (t) => setStreamStatus(t),
+    onStatus: (t) => { setStreamStatus(t); pushLog("status", t); },
+    onSkill: (s) => pushLog("skill", `Je lis le skill ${s.file || s.name}`),
+    onTodoList: (items) => {
+      agentTodosRef.current = items.map((it) => ({ ...it, status: "pending" }));
+      setAgentTodos(agentTodosRef.current);
+    },
+    onTodoState: ({ id, status }) => {
+      agentTodosRef.current = agentTodosRef.current.map((t) => t.id === id ? { ...t, status } : t);
+      setAgentTodos(agentTodosRef.current);
+    },
     onThinking: (delta) => { thinkingBufRef.current += delta; setStreamThinking(thinkingBufRef.current); },
     onAction: (path) => {
       setStreamStatus(`Écriture de ${path}…`);
+      pushLog("write", `Écriture de ${path}`);
       setStreamFiles((s) => (s.includes(path) ? s : [...s, path]));
     },
     onFile: (f) => setDiffs((d) => ({ ...d, [f.path]: { added: f.added, removed: f.removed, op: f.op } })),
@@ -285,7 +314,7 @@ export default function LaunchIDE() {
     setPhase("working");
     setChat([{ role: "user", text: p }, { role: "assistant", text: "Parfait, je vais te construire ça ! 🚀 Je mets en place la structure du projet et les composants…", thinking: true }]);
     setTerminal([]); setPreviewUrl(""); setTab("preview"); setShowPreview(false);
-    setDiffs({}); setStreamFiles([]); setStreamStatus("Démarrage…");
+    setDiffs({}); resetTimeline(); setStreamFiles([]); setStreamStatus("Démarrage…");
     thinkingBufRef.current = ""; setStreamThinking("");
     api.codeStream({
       prompt: p + attachmentNote(), modelId: resolveModel(modelId), mode: "react", imageModel, history: buildHistory(chat), ...streamHandlers(),
@@ -293,7 +322,7 @@ export default function LaunchIDE() {
         setSession(sess);
         if (sess.slug) setProjectUrl(sess.slug);
         if (sess.creditsLeft != null) setCredits(sess.creditsLeft);
-        setChat((c) => [...c.filter((m) => !m.thinking), { role: "assistant", text: sess.summary, cost: sess.creditCost, reasoning: thinkingBufRef.current || undefined, questions: sess.questions || undefined }]);
+        setChat((c) => [...c.filter((m) => !m.thinking), { role: "assistant", text: sess.summary, cost: sess.creditCost, reasoning: thinkingBufRef.current || undefined, questions: sess.questions || undefined, timeline: timelineSnapshot() }]);
         setStreamThinking("");
         setStreamStatus("");
         try {
@@ -344,9 +373,9 @@ export default function LaunchIDE() {
     const p = (typeof forced === "string" ? forced : editPrompt).trim();
     if (!p || !session?.id || busy) return;
     setBusy(true); setError(null);
-    setChat((c) => [...c, { role: "user", text: p }, { role: "assistant", text: "D'accord, je m'en occupe ! ✨ J'applique les modifications…", thinking: true }]);
+    setChat((c) => [...c, { role: "user", text: p }, { role: "assistant", text: "D'accord, je m'en occupe ! J'applique les modifications…", thinking: true }]);
     setEditPrompt("");
-    setDiffs({}); setStreamFiles([]); setStreamStatus("Démarrage…");
+    setDiffs({}); resetTimeline(); setStreamFiles([]); setStreamStatus("Démarrage…");
     thinkingBufRef.current = ""; setStreamThinking("");
     const uploadP = attachments.length ? uploadAttachmentsToProject(session.id) : Promise.resolve([]);
     api.codeStream({
@@ -354,7 +383,7 @@ export default function LaunchIDE() {
       onDone: async (sess) => {
         setSession(sess);
         if (sess.creditsLeft != null) setCredits(sess.creditsLeft);
-        setChat((c) => [...c.filter((m) => !m.thinking), { role: "assistant", text: sess.summary, cost: sess.creditCost, reasoning: thinkingBufRef.current || undefined, questions: sess.questions || undefined }]);
+        setChat((c) => [...c.filter((m) => !m.thinking), { role: "assistant", text: sess.summary, cost: sess.creditCost, reasoning: thinkingBufRef.current || undefined, questions: sess.questions || undefined, timeline: timelineSnapshot() }]);
         setStreamThinking("");
         setStreamStatus("");
         try {
@@ -413,7 +442,7 @@ export default function LaunchIDE() {
       // 1er déploiement → choix du nom, DÉFINITIF.
       const suggested = (session?.slug || session?.summary || "app").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30);
       slug = window.prompt(
-        "Choisis le nom de ton site :\n\ndeltai.fr/sites/<nom>\n\n⚠️ Ce nom est DÉFINITIF — il ne pourra plus être modifié (sauf en retirant puis redéployant le site).",
+        "Choisis le nom de ton site :\n\ndeltai.fr/sites/<nom>\n\nCe nom est DÉFINITIF — il ne pourra plus être modifié (sauf en retirant puis redéployant le site).",
         suggested
       );
       if (!slug) return;
@@ -522,9 +551,9 @@ export default function LaunchIDE() {
         <div className="flex flex-wrap gap-1.5 mb-1.5">
           {attachments.map((a) => (
             <span key={a.id} className="inline-flex items-center gap-1.5 pl-1 pr-1.5 py-0.5 rounded-lg bg-white border border-delt-border text-[11px]">
-              {a.isImage ? <img src={a.dataUrl} alt="" className="w-4 h-4 rounded object-cover" /> : <span>📄</span>}
+              {a.isImage ? <img src={a.dataUrl} alt="" className="w-4 h-4 rounded object-cover" /> : <span className="text-delt-muted"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>}
               <span className="font-mono text-delt-text">@{a.name}</span>
-              <button onClick={() => removeAttachment(a.id)} className="text-delt-muted hover:text-red-500">✕</button>
+              <button onClick={() => removeAttachment(a.id)} className="text-delt-muted hover:text-red-500"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
             </span>
           ))}
         </div>
@@ -533,10 +562,10 @@ export default function LaunchIDE() {
         <div className="absolute z-40 bottom-full mb-2 left-2 w-64 rounded-xl glass-strong shadow-xl border border-delt-border/60 p-1.5">
           <div className="px-2 py-1 text-[10px] font-bold uppercase text-delt-muted">Lier une pièce jointe</div>
           {attachments.length === 0
-            ? <div className="px-2 py-1.5 text-[11px] text-delt-muted">Aucune pièce jointe — clique 📎 pour en ajouter.</div>
+            ? <div className="px-2 py-1.5 text-[11px] text-delt-muted">Aucune pièce jointe — clique le trombone pour en ajouter.</div>
             : attachments.map((a) => (
                 <button key={a.id} onClick={() => insertMention(a)} className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-delt-surface text-left">
-                  {a.isImage ? <img src={a.dataUrl} alt="" className="w-5 h-5 rounded object-cover" /> : <span>📄</span>}
+                  {a.isImage ? <img src={a.dataUrl} alt="" className="w-5 h-5 rounded object-cover" /> : <span className="text-delt-muted"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>}
                   <span className="text-[12px] font-mono text-delt-text">@{a.name}</span>
                   <span className="text-[10px] text-delt-muted truncate ml-auto">{a.fileName}</span>
                 </button>
@@ -569,7 +598,7 @@ export default function LaunchIDE() {
           .sort((a, b) => a.path.localeCompare(b.path)));
         const wc = wcRef.current;
         if (wc) { await wc.fs.mkdir("public", { recursive: true }).catch(() => {}); await wc.fs.writeFile(path, b64ToBytes(base64)).catch(() => {}); }
-        setChat((c) => [...c, { role: "assistant", text: `🖼️ Image ajoutée : /${name} — demande-moi de l'utiliser (logo, hero…).` }]);
+        setChat((c) => [...c, { role: "assistant", text: `Image ajoutée : /${name} — demande-moi de l'utiliser (logo, hero…).` }]);
       } catch (e) { setError(e.message); }
     }
   };
@@ -598,7 +627,7 @@ export default function LaunchIDE() {
       const idx = full.find((f) => f.path === "index.html");
       if (idx && wcRef.current) await wcRef.current.fs.writeFile("index.html", idx.content).catch(() => {});
       setPreviewNonce((n) => n + 1);
-      setChat((c) => [...c, { role: "assistant", text: "✅ Logo de l'app défini." }]);
+      setChat((c) => [...c, { role: "assistant", text: "Logo de l'app défini." }]);
     } catch (e) { setError(e.message); }
   };
 
@@ -616,7 +645,7 @@ export default function LaunchIDE() {
     if (af.attempts >= 2) return; // anti-boucle
     af.attempts++; af.running = true; setAutoFixing(true);
     const errLines = String(errorText).split("\n").map((s) => s.trim()).filter(Boolean).slice(-15).join("\n");
-    setChat((c) => [...c, { role: "assistant", text: "🔧 Erreur détectée — correction automatique…" }]);
+    setChat((c) => [...c, { role: "assistant", text: "Erreur détectée — correction automatique…" }]);
     api.codeStream({
       id: session.id, prompt: `L'app a une erreur (compilation/runtime). Corrige-la précisément, sans rien casser d'autre.\n\nErreur:\n${errLines}`,
       modelId: resolveModel(modelId), mode: "react",
@@ -636,7 +665,7 @@ export default function LaunchIDE() {
             }
             await ensureVisualScript(wc);
           }
-          setChat((c) => [...c, { role: "assistant", text: `✅ Correction appliquée.` }]);
+          setChat((c) => [...c, { role: "assistant", text: `Correction appliquée.` }]);
           setTimeout(() => setPreviewNonce((n) => n + 1), 1200);
         } catch (e) { setError(e.message); }
         af.running = false; setAutoFixing(false);
@@ -700,13 +729,29 @@ export default function LaunchIDE() {
       if (visualSel.text !== visualSel.originalText && visualSel.originalText) {
         const r = await api.launchVisualText(session.id, visualSel.originalText, visualSel.text);
         if (!r.found) await runEdit(`Change le texte exact "${visualSel.originalText}" en "${visualSel.text}".`);
+        else {
+          // Le serveur a modifié les fichiers : sans resynchro WebContainer +
+          // reload, la preview restait sur l'ancienne version (bug).
+          const { files: srv } = await api.codeSessionFiles(session.id);
+          setFiles(srv);
+          const wc = wcRef.current;
+          if (wc) {
+            for (const f of srv) {
+              if (f.encoding === "base64") continue;
+              const dir = f.path.split("/").slice(0, -1).join("/");
+              if (dir) await wc.fs.mkdir(dir, { recursive: true }).catch(() => {});
+              await wc.fs.writeFile(f.path, f.content).catch(() => {});
+            }
+          }
+          setTimeout(() => setPreviewNonce((v) => v + 1), 600);
+        }
       }
       const ns = visualSel.newStyle || {};
       if (Object.keys(ns).length) {
         const desc = Object.entries(ns).map(([k, v]) => `${k}: ${v}`).join(", ");
         await runEdit(`Pour l'élément <${visualSel.tag}> qui contient le texte "${(visualSel.text || "").slice(0, 60)}", applique ce style : ${desc}.`);
       }
-      setChat((c) => [...c, { role: "assistant", text: "✅ Modification visuelle appliquée." }]);
+      setChat((c) => [...c, { role: "assistant", text: "Modification visuelle appliquée." }]);
       setVisualSel(null);
     } catch (e) { setError(e.message); }
     setBusy(false);
@@ -772,7 +817,7 @@ export default function LaunchIDE() {
     setPhase("empty"); setSession(null); setFiles([]); setSelected(null);
     setChat([]); setPrompt(""); setEditPrompt(""); setError(null);
     setPreviewUrl(""); setTerminal([]); setWcStatus("idle");
-    setDiffs({}); setStreamFiles([]); setStreamStatus(""); setShowPreview(false);
+    setDiffs({}); resetTimeline(); setStreamFiles([]); setStreamStatus(""); setShowPreview(false);
     setProjectUrl(null);
   };
 
@@ -787,13 +832,26 @@ export default function LaunchIDE() {
   if (phase === "empty") {
     return (
       <div className="h-full overflow-y-auto">
+        {/* Top bar : logo + compte */}
+        <div className="sticky top-0 z-30 flex items-center justify-between px-4 h-14 backdrop-blur-xl bg-white/60 border-b border-delt-border/50">
+          <div className="flex items-center gap-2.5 font-bold text-delt-text tracking-tight">
+            <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-slate-900 text-white">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            </span>
+            Launch
+          </div>
+          <div className="flex items-center gap-2.5">
+            <CreditsBadge credits={credits} compact />
+            <AccountMenu user={user} logout={logout} />
+          </div>
+        </div>
         {/* Hero dégradé façon Lovable */}
         <div className="relative px-4 pt-16 pb-12 sm:pt-24 sm:pb-16 overflow-hidden">
           <div className="absolute inset-0 -z-10"
             style={{ background: "radial-gradient(120% 80% at 50% -10%, rgba(99,102,241,.28), rgba(6,182,212,.14) 40%, rgba(236,72,153,.10) 70%, transparent)" }} />
           <div className="max-w-2xl mx-auto text-center">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass-pill text-xs font-semibold text-delt-text mb-6">
-              <span className="w-4 h-4 rounded flex items-center justify-center text-white text-[9px]" style={{ background: "linear-gradient(135deg,#6366f1,#06b6d4)" }}>⚡</span>
+              <span className="w-4 h-4 rounded flex items-center justify-center text-white text-[9px]" style={{ background: "#0f172a" }}><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg></span>
               Launch — construis ton app en parlant
             </div>
             <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-delt-text">
@@ -802,7 +860,7 @@ export default function LaunchIDE() {
 
             {!isIsolated() && (
               <div className="mt-5 rounded-xl bg-amber-50 border border-amber-200 px-4 py-2.5 text-sm text-amber-700 text-left">
-                ⚠ Preview indisponible : contexte non isolé (utilise Chrome + HTTPS).
+                Preview indisponible : contexte non isolé (utilise Chrome + HTTPS).
               </div>
             )}
 
@@ -813,7 +871,7 @@ export default function LaunchIDE() {
               {renderAttach("prompt")}
               <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)}
                 onKeyDown={(e) => { onComposerKeyDown(e, "prompt"); if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) generate(); }}
-                rows={3} placeholder="Demande à Launch de créer une app… (📎 joins des images, @réfère-les)"
+                rows={3} placeholder="Demande à Launch de créer une app… (joins des images, @réfère-les)"
                 className="w-full text-[15px] outline-none resize-none placeholder:text-delt-muted bg-transparent px-2 pt-1.5" />
               <div className="flex items-center justify-between gap-2 mt-1.5 px-1">
                 <div className="flex items-center gap-2">
@@ -898,7 +956,7 @@ export default function LaunchIDE() {
       onDrop={onDrop}>
       {dragOver && (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-indigo-500/10 backdrop-blur-sm border-4 border-dashed border-indigo-400 rounded-xl pointer-events-none">
-          <div className="text-indigo-700 font-bold text-lg">🖼️ Dépose ton image ici</div>
+          <div className="text-indigo-700 font-bold text-lg">Dépose ton image ici</div>
         </div>
       )}
       {/* Top bar */}
@@ -945,7 +1003,7 @@ export default function LaunchIDE() {
             title="Notion : journaliser les commandes payées"
             className={`hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
               notion.target ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-delt-border text-delt-text hover:bg-delt-surface"}`}>
-            <span>📔</span> Notion {notion.target ? "✓" : ""}
+            <span><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline-block align-[-2px]"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span> Notion {notion.target ? <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" className="inline-block align-[-2px]"><polyline points="20 6 9 17 4 12"/></svg> : ""}
           </button>
           <button onClick={connectStripe}
             title={payReady?.chargesEnabled ? "Stripe actif — prêt à encaisser" : payReady?.connected ? "Onboarding Stripe à terminer" : "Connecter Stripe (paiements de l'app)"}
@@ -954,7 +1012,7 @@ export default function LaunchIDE() {
               : payReady?.connected ? "border-amber-300 bg-amber-50 text-amber-700"
               : "border-delt-border text-delt-text hover:bg-delt-surface"}`}>
             <span style={{ color: payReady?.chargesEnabled ? "#22c55e" : "#635bff" }}>●</span>
-            Stripe {payReady?.chargesEnabled ? "✓" : payReady?.connected ? "⏳ Finir" : ""}
+            Stripe {payReady?.chargesEnabled ? <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" className="inline-block align-[-2px]"><polyline points="20 6 9 17 4 12"/></svg> : payReady?.connected ? "Finir" : ""}
           </button>
           <button onClick={deploy} disabled={deploying || wcStatus !== "ready"}
             title={wcStatus !== "ready" ? "Attends que l'app tourne" : "Déployer"}
@@ -962,6 +1020,7 @@ export default function LaunchIDE() {
             style={{ background: "linear-gradient(135deg, #2563eb, #06b6d4)" }}>
             {deploying ? "Déploiement…" : deployedUrl ? "Mettre à jour" : "Déployer"}
           </button>
+          <AccountMenu user={user} logout={logout} />
         </div>
       </div>
 
@@ -973,6 +1032,7 @@ export default function LaunchIDE() {
            <div className={`p-3 space-y-2 ${!showPreview ? "max-w-3xl mx-auto w-full" : ""}`}>
             {chat.map((m, i) => (
               <div key={i} className={m.role === "user" ? "flex justify-end" : "space-y-1.5"}>
+                {m.timeline && <AgentTimeline todos={m.timeline.todos} log={m.timeline.log} />}
                 {m.reasoning && <ThinkingBlock text={m.reasoning} />}
                 <div className={`text-sm rounded-xl px-3 py-2 ${m.role === "user" ? "bg-indigo-50 text-delt-text max-w-[85%] whitespace-pre-wrap" : m.plan ? "bg-violet-50 text-delt-text border border-violet-100" : m.thinking ? "text-delt-muted italic whitespace-pre-wrap" : "bg-delt-surface text-delt-text"}`}>
                   {(m.role === "user" || m.thinking)
@@ -987,7 +1047,7 @@ export default function LaunchIDE() {
                   <div className="space-y-1">
                     {m.toolEvents.map((t, ti) => (
                       <div key={ti} className="flex items-center gap-1.5 text-[11px]">
-                        <span className={t.ok ? "text-emerald-600" : "text-red-500"}>{t.ok ? "✅" : "✖"}</span>
+                        <span className={t.ok ? "text-emerald-600" : "text-red-500"}>{t.ok ? <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" className="inline-block align-[-2px]"><polyline points="20 6 9 17 4 12"/></svg> : "✖"}</span>
                         <span className="font-mono text-delt-muted truncate">{String(t.name || "").replace(/_/g, " ").toLowerCase()}</span>
                       </div>
                     ))}
@@ -1009,6 +1069,9 @@ export default function LaunchIDE() {
                 ))}
               </div>
             ))}
+            {busy && (agentTodos.length > 0 || agentLog.length > 0) && (
+              <AgentTimeline todos={agentTodos} log={agentLog} live />
+            )}
             {busy && streamThinking && <ThinkingBlock text={streamThinking} live />}
             {(busy || streamFiles.length > 0) && (streamStatus || streamFiles.length > 0) && (
               <div className="space-y-1.5">
@@ -1062,7 +1125,7 @@ export default function LaunchIDE() {
             {renderAttach("edit")}
             <div className="flex items-center justify-between gap-2">
               <div className="inline-flex p-0.5 rounded-full glass-pill text-[11px]">
-                {[["code", "⚡ Code"], ["plan", "💬 Plan"]].map(([m, label]) => (
+                {[["code", "Code"], ["plan", "Plan"]].map(([m, label]) => (
                   <button key={m} onClick={() => setComposerMode(m)}
                     className={`px-2.5 py-1 rounded-full font-semibold transition-colors ${
                       composerMode === m ? "bg-delt-text text-white" : "text-delt-muted hover:text-delt-text"}`}>
@@ -1117,7 +1180,7 @@ export default function LaunchIDE() {
                 <button onClick={toggleVisual} title="Édition visuelle : clique un élément pour le modifier"
                   className={`px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${
                     visualMode ? "bg-violet-600 text-white" : "border border-delt-border text-delt-text hover:bg-delt-surface"}`}>
-                  🎯 Édition visuelle
+                  Édition visuelle
                 </button>
               )}
               {tab === "preview" && previewUrl && (
@@ -1143,8 +1206,15 @@ export default function LaunchIDE() {
           <div className="flex-1 min-h-0 bg-white relative">
             {tab === "preview" ? (
               previewUrl ? (
+                <>
+                <button onClick={() => setPreviewNonce((v) => v + 1)}
+                  title="Recharger la preview"
+                  className="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-white/90 border border-delt-border text-delt-muted hover:text-delt-text shadow-sm flex items-center justify-center">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 4v6h6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10"/><path d="M23 20v-6h-6"/><path d="M3.51 15a9 9 0 0 0 14.85 3.36L23 14"/></svg>
+                </button>
                 <iframe ref={iframeRef} key={`${previewUrl}#${previewNonce}`} src={previewUrl} title="Preview"
                   className="w-full h-full border-0 bg-white" allow="cross-origin-isolated" />
+                </>
               ) : (
                 <BootStepper wcStatus={wcStatus} />
               )
@@ -1187,7 +1257,7 @@ export default function LaunchIDE() {
             {tab === "preview" && previewUrl && (
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-0.5 p-1.5 rounded-2xl bg-slate-900/90 backdrop-blur shadow-xl border border-white/10">
                 <button onClick={toggleVisual} title="Édition visuelle"
-                  className={`w-9 h-9 rounded-xl flex items-center justify-center text-base transition-colors ${visualMode ? "bg-violet-600 text-white" : "text-slate-300 hover:text-white hover:bg-white/10"}`}>🎯</button>
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center text-base transition-colors ${visualMode ? "bg-violet-600 text-white" : "text-slate-300 hover:text-white hover:bg-white/10"}`}><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/></svg></button>
                 <button onClick={() => setPreviewNonce((n) => n + 1)} title="Recharger"
                   className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-300 hover:text-white hover:bg-white/10">
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
@@ -1217,7 +1287,7 @@ export default function LaunchIDE() {
       {/* Bascule mobile Chat / App (seulement quand la preview est ouverte) */}
       {showPreview && (
       <div className="lg:hidden flex items-center gap-1 p-1.5 border-t border-delt-border/70 bg-white/70 backdrop-blur">
-        {[["chat", "💬 Chat"], ["main", "👁 App"]].map(([m, label]) => (
+        {[["chat", "Chat"], ["main", "App"]].map(([m, label]) => (
           <button key={m} onClick={() => setMobileShow(m)}
             className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-colors ${
               mobileShow === m ? "bg-delt-text text-white" : "text-delt-muted"}`}>
@@ -1244,7 +1314,7 @@ function VisualPanel({ sel, setSel, applyLive, onApply, onClose, busy }) {
     <div className="absolute top-3 right-3 z-30 w-64 rounded-2xl glass-strong shadow-xl border border-violet-200 p-3 space-y-3">
       <div className="flex items-center justify-between">
         <span className="text-[11px] font-bold uppercase tracking-wide text-violet-700">✦ Édition · &lt;{sel.tag}&gt;</span>
-        <button onClick={onClose} className="text-delt-muted hover:text-delt-text text-sm">✕</button>
+        <button onClick={onClose} className="text-delt-muted hover:text-delt-text text-sm"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <div>
         <label className="text-[10px] font-semibold text-delt-muted uppercase">Texte</label>
@@ -1273,6 +1343,49 @@ function VisualPanel({ sel, setSel, applyLive, onApply, onClose, busy }) {
         <button onClick={onClose} className="px-3 py-2 rounded-xl text-xs font-semibold text-delt-muted hover:bg-delt-surface">Annuler</button>
       </div>
       <p className="text-[10px] text-delt-muted">Texte = gratuit · style = 1 édition IA</p>
+    </div>
+  );
+}
+
+// ─── Timeline agent : todolist à cases + journal de chaque action ─────────────
+function AgentTimeline({ todos = [], log = [], live = false }) {
+  if (!todos.length && !log.length) return null;
+  const iconFor = (kind) => kind === "skill"
+    ? <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+    : kind === "write"
+    ? <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+    : <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>;
+  return (
+    <div className="rounded-xl border border-delt-border bg-white overflow-hidden text-[12px]">
+      {todos.length > 0 && (
+        <div className="px-3 py-2 space-y-1 border-b border-delt-border/60 bg-delt-surface/40">
+          {todos.map((t) => (
+            <div key={t.id} className="flex items-start gap-2">
+              <span className="mt-0.5 flex-shrink-0">
+                {t.status === "done" ? (
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#059669" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><polyline points="8 12.5 11 15.5 16 9.5"/></svg>
+                ) : t.status === "running" ? (
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#6366f1" strokeWidth="2.4" strokeLinecap="round" className="animate-spin" style={{ animationDuration: "1.2s" }}><path d="M21 12a9 9 0 1 1-6.2-8.55"/></svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#94a3b8" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="5"/></svg>
+                )}
+              </span>
+              <span className={`leading-snug ${t.status === "done" ? "text-delt-muted line-through decoration-delt-border" : t.status === "running" ? "text-delt-text font-semibold" : "text-delt-muted"}`}>{t.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {log.length > 0 && (
+        <div className="px-3 py-1.5 max-h-44 overflow-y-auto space-y-0.5">
+          {log.map((l, i) => (
+            <div key={i} className={`flex items-start gap-1.5 ${l.kind === "skill" ? "text-indigo-600" : "text-delt-muted"}`}>
+              <span className="mt-[3px] flex-shrink-0">{iconFor(l.kind)}</span>
+              <span className="truncate">{l.text}</span>
+            </div>
+          ))}
+          {live && <div ref={(el) => el?.scrollIntoView({ block: "nearest" })} />}
+        </div>
+      )}
     </div>
   );
 }
@@ -1365,6 +1478,50 @@ function DiffBadge({ added, removed }) {
   );
 }
 
+// ─── Menu compte (avatar → email, retour DELT AI, déconnexion) ────────────────
+function AccountMenu({ user, logout }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+  const initial = (user?.name || user?.email || "?").trim().charAt(0).toUpperCase();
+  return (
+    <div ref={ref} className="relative flex-shrink-0">
+      <button onClick={() => setOpen((o) => !o)} title={user?.email || "Compte"}
+        className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold bg-slate-900 hover:bg-slate-700 transition-colors">
+        {user?.picture
+          ? <img src={user.picture} alt="" referrerPolicy="no-referrer" className="w-8 h-8 rounded-full object-cover" />
+          : initial}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-10 z-50 w-60 rounded-2xl bg-white border border-delt-border/80 shadow-xl shadow-slate-900/10 py-1.5 text-sm">
+          <div className="px-4 py-2.5 border-b border-delt-border/60">
+            <div className="font-semibold text-delt-text truncate">{user?.name || "Mon compte"}</div>
+            <div className="text-[12px] text-delt-muted truncate">{user?.email}</div>
+          </div>
+          <a href="https://deltai.fr" className="flex items-center gap-2.5 px-4 py-2.5 text-delt-text hover:bg-delt-surface transition-colors">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            Retour à DELT AI
+          </a>
+          <a href="https://deltai.fr/billing" className="flex items-center gap-2.5 px-4 py-2.5 text-delt-text hover:bg-delt-surface transition-colors">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            Abonnement & crédits
+          </a>
+          <button onClick={logout}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-red-600 hover:bg-red-50 transition-colors border-t border-delt-border/60 mt-1">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            Se déconnecter
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Solde de crédits (même source que le reste du site : useAuth) ────────────
 function CreditsBadge({ credits, compact }) {
   const val = credits == null ? "…" : Number(credits).toLocaleString("fr-FR", { maximumFractionDigits: 2 });
@@ -1386,6 +1543,12 @@ const NOTION_FIELD_OF = (name) => {
   if (/montant|amount|prix|price|total/.test(n)) return "Montant";
   if (/client|mail|customer|acheteur/.test(n)) return "Client";
   if (/produit|product|article|offre|item/.test(n)) return "Produit";
+  if (/code\s*postal|zip/.test(n)) return "Code postal";
+  if (/t[ée]l[ée]phone|phone/.test(n)) return "Téléphone";
+  if (/adresse|address|livraison/.test(n)) return "Adresse";
+  if (/ville|city/.test(n)) return "Ville";
+  if (/pays|country/.test(n)) return "Pays";
+  if (/\bnom\b|\bname\b/.test(n)) return "Nom";
   if (/date/.test(n)) return "Date";
   return null;
 };
@@ -1433,12 +1596,41 @@ function NotionModal({ projectId, notion, onClose, onSaved }) {
         onSaved?.({ connected, target: d.target });
         setColumns([
           { name: "Produit", type: "title" }, { name: "Statut", type: "select" },
-          { name: "Montant", type: "number" }, { name: "Client", type: "email" }, { name: "Date", type: "date" }
+          { name: "Montant", type: "number" }, { name: "Client", type: "email" },
+          { name: "Nom", type: "rich_text" }, { name: "Téléphone", type: "phone_number" },
+          { name: "Adresse", type: "rich_text" }, { name: "Ville", type: "rich_text" },
+          { name: "Code postal", type: "rich_text" }, { name: "Pays", type: "rich_text" },
+          { name: "Date", type: "date" }
         ]);
-        setMsg("✅ Base « Commandes » créée et configurée !");
+        setMsg("Base « Commandes » créée et configurée !");
       } else { setMsg(d?.error || "Échec de la création."); }
     } catch (e) { setMsg(e.message); }
     setCreating(false);
+  };
+
+  const [autoBusy, setAutoBusy] = useState(false);
+  const [autoUrl, setAutoUrl] = useState("");
+  const autoCreate = async () => {
+    if (!projectId) return;
+    setAutoBusy(true); setMsg(""); setAutoUrl("");
+    try {
+      const d = await api.launchNotionAuto(projectId);
+      if (d?.ok && d.target) {
+        setTarget(d.target);
+        onSaved?.({ connected, target: d.target });
+        setColumns([
+          { name: "Produit", type: "title" }, { name: "Statut", type: "select" },
+          { name: "Montant", type: "number" }, { name: "Client", type: "email" },
+          { name: "Nom", type: "rich_text" }, { name: "Téléphone", type: "phone_number" },
+          { name: "Adresse", type: "rich_text" }, { name: "Ville", type: "rich_text" },
+          { name: "Code postal", type: "rich_text" }, { name: "Pays", type: "rich_text" },
+          { name: "Date", type: "date" }
+        ]);
+        setAutoUrl(d.url || "");
+        setMsg(`Base « Commandes » créée${d.parentTitle ? ` dans « ${d.parentTitle} »` : ""} et configurée !`);
+      } else setMsg(d?.error || "Création automatique impossible.");
+    } catch (e) { setMsg(e.message); }
+    setAutoBusy(false);
   };
 
   const connect = async () => {
@@ -1458,7 +1650,7 @@ function NotionModal({ projectId, notion, onClose, onSaved }) {
     try {
       await api.launchNotionSave(projectId, target.trim());
       onSaved?.({ connected, target: target.trim() });
-      setMsg("✅ Enregistré.");
+      setMsg("Enregistré.");
       setTimeout(onClose, 600);
     } catch (e) { setMsg(e.message); }
     setBusy(false);
@@ -1468,9 +1660,9 @@ function NotionModal({ projectId, notion, onClose, onSaved }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-delt-border p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2">
-          <span className="text-xl">📔</span>
+          <span className="text-delt-text"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline-block align-[-2px]"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>
           <h3 className="text-base font-bold text-delt-text flex-1">Notion — journal des commandes</h3>
-          <button onClick={onClose} className="text-delt-muted hover:text-delt-text">✕</button>
+          <button onClick={onClose} className="text-delt-muted hover:text-delt-text"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
         <p className="text-[13px] text-delt-muted">
           À chaque commande <b>payée</b> dans ton app, une entrée « Statut : Payé » est créée automatiquement dans ta page Notion.
@@ -1495,6 +1687,25 @@ function NotionModal({ projectId, notion, onClose, onSaved }) {
                 </button>
               </div>}
         </div>
+
+        {/* Full auto : zéro manip Notion — la base est créée et branchée en 1 clic */}
+        {connected && (
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+            <button onClick={autoCreate} disabled={autoBusy}
+              className="w-full px-4 py-2.5 rounded-full text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 transition-colors disabled:opacity-50">
+              {autoBusy ? "Création de la base…" : "Tout créer pour moi (recommandé)"}
+            </button>
+            <p className="text-[11px] text-delt-muted text-center">
+              Je crée la base « Commandes » dans ton Notion, je la connecte au projet, et je te donne le lien. Rien à faire.
+            </p>
+            {autoUrl && (
+              <a href={autoUrl} target="_blank" rel="noreferrer"
+                className="block text-center text-[12px] font-semibold text-indigo-600 hover:underline truncate">
+                Ouvrir ma base dans Notion →
+              </a>
+            )}
+          </div>
+        )}
 
         <div>
           <label className="text-[11px] font-semibold text-delt-muted uppercase">ID de la page (ou base) Notion cible</label>
@@ -1533,12 +1744,12 @@ function NotionModal({ projectId, notion, onClose, onSaved }) {
 
         {/* Création auto de la base — choisis une page parmi tes pages Notion */}
         <div className="rounded-xl bg-indigo-50/60 border border-indigo-100 p-3 space-y-2">
-          <div className="text-[12px] font-semibold text-delt-text">✨ Pas de tableau ? Je le crée pour toi</div>
+          <div className="text-[12px] font-semibold text-delt-text">Pas de tableau ? Je le crée pour toi</div>
           <p className="text-[11px] text-delt-muted">Choisis une <b>page</b> Notion → je crée une base « Commandes » (Produit · Statut · Montant · Client · Date) dedans, déjà configurée.</p>
           {pages === null ? (
             <button onClick={loadPages} disabled={loadingPages || !connected}
               className="text-[12px] font-semibold text-indigo-600 hover:text-indigo-700 disabled:opacity-40">
-              {loadingPages ? "Chargement…" : "📄 Charger mes pages Notion"}
+              {loadingPages ? "Chargement…" : "Charger mes pages Notion"}
             </button>
           ) : pages.length === 0 ? (
             <div className="text-[11px] text-amber-700 bg-amber-50 rounded-lg px-2 py-1.5">Aucune page accessible. Clique <b>🔑 Réaccorder l'accès</b> ci-dessus et <b>coche les pages</b> à partager, puis recharge.</div>
