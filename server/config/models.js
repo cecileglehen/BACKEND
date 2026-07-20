@@ -110,6 +110,7 @@ export const CATEGORIES = {
       { id: "openai/gpt-5.4", brand: "OpenAI", display: "GPT-5.4", price: { in: 2.50, out: 15.00 }, ctx: 400000, vision: true },
       { id: "openai/gpt-5.6-terra", brand: "OpenAI", display: "GPT Terra", price: { in: 2.50, out: 14.00 }, ctx: 400000, vision: true, tagline: "GPT-5.6 équilibré" },
       { id: "amazon/nova-premier-v1", brand: "Nova", display: "Nova Premier", price: { in: 2.50, out: 12.50 }, ctx: 1000000, vision: true },
+      { id: "moonshotai/kimi-k3", brand: "Moonshot", display: "Kimi K3", price: { in: 0.60, out: 2.50 }, ctx: 262144, tagline: "Le nouveau flagship open-weights de Moonshot" },
       { id: "qwen/qwen3.6-max-preview", brand: "Qwen", display: "Qwen 3.6 Max", price: { in: 2.00, out: 6.00 }, ctx: 1000000 },
       { id: "qwen/qwen3.7-max",         brand: "Qwen", display: "Qwen 3.7 Max", price: { in: 2.50, out: 10.00 }, ctx: 1000000 },
       { id: "openai/gpt-4.1",  brand: "OpenAI", display: "GPT-4.1", price: { in: 2.00, out: 8.00 }, ctx: 1047576, vision: true },
