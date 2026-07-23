@@ -6,19 +6,26 @@
 
 export const PICKER = [
   { brand: "OpenAI", label: "GPT", models: [
-    { id: "openai/gpt-5.4-nano",     label: "GPT-5.4 Nano", kind: "fast"  },
+    { id: "openai/gpt-5.6-luna",     label: "GPT Luna",     kind: "fast"  },
     { id: "openai/gpt-5.4",          label: "GPT-5.4",      kind: "chat"  },
-    { id: "openai/gpt-5.5",          label: "GPT-5.5",      kind: "think" },
+    // Famille GPT-5.6 : entrée dépliable → Sol / Terra / Luna
+    { label: "GPT-5.6", kind: "think", children: [
+      { id: "openai/gpt-5.6-sol",   label: "GPT Sol",   kind: "think" },
+      { id: "openai/gpt-5.6-terra", label: "GPT Terra", kind: "chat"  },
+      { id: "openai/gpt-5.6-luna",  label: "GPT Luna",  kind: "fast"  }
+    ]},
     { id: "openai/gpt-5.4-image-2",  label: "GPT Image 2",  kind: "image" }
   ]},
   { brand: "Anthropic", label: "Claude", models: [
     { id: "anthropic/claude-haiku-4.5",  label: "Haiku 4.5",  kind: "fast"  },
-    { id: "anthropic/claude-sonnet-4-5", label: "Sonnet 4.5", kind: "chat"  },
-    { id: "anthropic/claude-opus-4.8",   label: "Opus 4.8",   kind: "think" }
+    { id: "anthropic/claude-sonnet-5", label: "Sonnet 5", kind: "chat"  },
+    { id: "anthropic/claude-opus-4.8",   label: "Opus 4.8",   kind: "think" },
+    { id: "anthropic/claude-fable-5",    label: "Fable 5",    kind: "think" }
   ]},
   { brand: "Google", label: "Gemini", models: [
     { id: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", kind: "fast"  },
-    { id: "google/gemini-3.5-flash", label: "Gemini 3.5 Flash", kind: "chat"  },
+    { id: "google/gemini-3.6-flash", label: "Gemini 3.6 Flash", kind: "chat"  },
+    { id: "google/gemini-3.1-flash-lite-image", label: "Nano Banana Flash Lite", kind: "image" },
     { id: "google/gemini-3.1-flash-image-preview", label: "Nano Banana 2", kind: "image" }
   ]},
   { brand: "xAI", label: "Grok", models: [
@@ -60,11 +67,30 @@ export function pickerForBrand(brand) {
   return PICKER.find((b) => b.brand === brand) || null;
 }
 
+// Groupe de sélection pour une marque HORS catalogue curé (InclusionAI, Moonshot,
+// Arcee…) : construit depuis le catalogue serveur pour que le verrou marque
+// n'affiche QUE les modèles de cette marque — jamais tout le catalogue.
+export function brandGroupFromCatalog(brand, catalog) {
+  if (!brand || !catalog?.categories) return null;
+  const models = [];
+  const seen = new Set();
+  for (const [tier, cat] of Object.entries(catalog.categories)) {
+    if (tier === "LEGACY" || cat.legacy) continue;
+    for (const m of cat.models || []) {
+      if (m.brand !== brand || seen.has(m.id)) continue;
+      seen.add(m.id);
+      models.push({ id: m.id, label: m.display, kind: "chat" });
+    }
+  }
+  return models.length ? { brand, label: brand, models } : null;
+}
+
 // Déduit la marque depuis le préfixe d'un id de modèle (pour reverrouiller au refresh).
 const ID_PREFIX_BRAND = {
   "openai/": "OpenAI", "anthropic/": "Anthropic", "google/": "Google",
   "x-ai/": "xAI", "mistralai/": "Mistral", "deepseek/": "DeepSeek", "qwen/": "Qwen",
-  "z-ai/": "Z.ai", "meta-llama/": "Meta", "perplexity/": "Perplexity", "amazon/": "Nova", "moonshotai/": "Moonshot"
+  "z-ai/": "Z.ai", "meta-llama/": "Meta", "perplexity/": "Perplexity", "amazon/": "Nova", "moonshotai/": "Moonshot",
+  "inclusionai/": "InclusionAI", "arcee-ai/": "Arcee", "cognitivecomputations/": "Venice", "minimax/": "MiniMax"
 };
 export function brandFromModelId(id) {
   if (!id) return null;
@@ -88,11 +114,15 @@ export function estimateCost(id, catalog) {
   return 0;
 }
 
-// Trouve l'entrée curée (avec kind) d'un modèle par son id.
+// Trouve l'entrée curée (avec kind) d'un modèle par son id — y compris dans
+// les sous-familles dépliables (children, ex. GPT-5.6 → Sol/Terra/Luna).
 export function pickerEntry(id) {
   for (const b of PICKER) {
-    const m = b.models.find((x) => x.id === id);
-    if (m) return { ...m, brand: b.brand, brandLabel: b.label };
+    for (const m of b.models) {
+      if (m.id === id) return { ...m, brand: b.brand, brandLabel: b.label };
+      const child = m.children?.find((c) => c.id === id);
+      if (child) return { ...child, brand: b.brand, brandLabel: b.label };
+    }
   }
   return null;
 }

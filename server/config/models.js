@@ -92,7 +92,7 @@ export const CATEGORIES = {
       { id: "mistralai/mistral-medium-3-5", brand: "Mistral", display: "Mistral Medium 3.5", price: { in: 0.40, out: 2.00 }, ctx: 131072, vision: true },
       { id: "mistralai/mixtral-8x22b-instruct", brand: "Mistral", display: "Mixtral 8x22B Instruct", price: { in: 0.90, out: 0.90 }, ctx: 65536, tagline: "MoE 141B (39B actifs)", featuredLabel: { fr: "🇫🇷 3K tokens offerts", en: "🇫🇷 3K free tokens" }, freeMonthlyTokens: 3000 },
       { id: "meta-llama/llama-4-maverick", brand: "Meta", display: "Llama 4 Maverick", price: { in: 0.15, out: 0.60 }, ctx: 1048576, vision: true },
-      { id: "google/gemini-3.5-flash", brand: "Google", display: "Gemini 3.5 Flash", price: { in: 0.30, out: 2.50 }, ctx: 1048576, vision: true },
+      { id: "google/gemini-3.6-flash", brand: "Google", display: "Gemini 3.6 Flash", price: { in: 0.30, out: 2.50 }, ctx: 1048576, vision: true },
       { id: "anthropic/claude-haiku-4.5", brand: "Anthropic", display: "Claude Haiku 4.5", price: { in: 1.00, out: 5.00 }, ctx: 200000, vision: true },
       { id: "anthropic/claude-haiku-latest", brand: "Anthropic", display: "Claude Haiku (latest)", price: { in: 1.00, out: 5.00 }, ctx: 200000, vision: true },
       { id: "x-ai/grok-4.20", brand: "xAI", display: "Grok 4.20", price: { in: 1.25, out: 2.50 }, ctx: 2000000, vision: true },
@@ -314,7 +314,7 @@ const FAMILY_RULES = {
     { id: "fable",     label: "Claude Fable",  test: (id) => /claude-fable/.test(id) }
   ],
   Google: [
-    { id: "gemini-3.5",label: "Gemini 3.5",  test: (id) => /gemini-3\.5/.test(id) },
+    { id: "gemini-3.6",label: "Gemini 3.6",  test: (id) => /gemini-3\.6/.test(id) },
     { id: "gemini-3.1",label: "Gemini 3.1",  test: (id) => /gemini-3\.1/.test(id) },
     { id: "gemini-3",  label: "Gemini 3",    test: (id) => /gemini-3(?!\.\d)/.test(id) },
     { id: "gemini-2.5",label: "Gemini 2.5",  test: (id) => /gemini-2\.5/.test(id) }
