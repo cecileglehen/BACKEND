@@ -336,18 +336,25 @@ function ImageTab({ catalog, onCreditsUsed }) {
 function VoiceTab({ catalog, onCreditsUsed }) {
   const [text, setText]     = useState("");
   const [modelId, setModelId] = useState("minimax/speech-2.8-turbo");
+  const [voiceId, setVoiceId] = useState(null);
   const [busy, setBusy]     = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError]   = useState(null);
 
   const voiceModels = catalog?.creative?.VOICE?.models || [];
   const selectedModel = voiceModels.find((m) => m.id === modelId) || voiceModels[0];
+  const voiceOptions = selectedModel?.voices || [];
+
+  const changeModel = (id) => {
+    setModelId(id);
+    setVoiceId(voiceModels.find((m) => m.id === id)?.voices?.[0]?.id || null);
+  };
 
   const generate = async () => {
     if (!text.trim() || busy) return;
     setBusy(true); setError(null); setResult(null);
     try {
-      const r = await api.voice(text, modelId);
+      const r = await api.voice(text, modelId, voiceId ? { voiceId } : {});
       setResult(r);
       onCreditsUsed?.();
     } catch (e) {
@@ -361,8 +368,30 @@ function VoiceTab({ catalog, onCreditsUsed }) {
     <div className="space-y-5">
       <div>
         <div className="text-xs font-semibold uppercase tracking-wider text-delt-muted mb-2">Modèle</div>
-        <BrandModelPicker models={voiceModels} modelId={modelId} onChange={setModelId} />
+        <BrandModelPicker models={voiceModels} modelId={modelId} onChange={changeModel} />
       </div>
+
+      {voiceOptions.length > 0 && (
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-delt-muted mb-2">Voix</div>
+          <div className="flex flex-wrap gap-1.5">
+            {voiceOptions.map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => setVoiceId(v.id)}
+                className={`text-xs px-3 py-1.5 rounded-full border font-medium transition-colors ${
+                  voiceId === v.id
+                    ? "bg-delt-text text-white border-delt-text"
+                    : "glass-pill text-delt-muted border-transparent hover:text-delt-text"
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="rounded-2xl glass-card p-4 focus-within:border-indigo-200">
         <textarea

@@ -269,7 +269,11 @@ export const CREATIVE = {
         display: "Qwen Audio 3.0 TTS Plus",
         provider: "fal",
         cost: 10,
-        tagline: "Multilingue — bon rapport qualité/prix"
+        tagline: "Multilingue — bon rapport qualité/prix",
+        voices: [
+          { id: "longanlingxin", label: "Femme" },
+          { id: "longanlufeng",  label: "Homme" }
+        ]
       },
       {
         id: "microsoft/mai-voice-2-flash",

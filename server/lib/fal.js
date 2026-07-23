@@ -36,8 +36,14 @@ export async function falGenerateImage(modelId, prompt, options = {}) {
   return { url, raw: data };
 }
 
-// Text-to-speech (ex: MiniMax Speech 2.8). Renvoie l'URL audio générée.
+// Text-to-speech (MiniMax Speech 2.8, Qwen Audio TTS, MAI Voice…). Le champ
+// voix diffère selon le provider — chaque famille a sa propre convention.
 export async function falGenerateSpeech(modelId, text, options = {}) {
+  const voiceField = options.voiceId
+    ? modelId.startsWith("qwen/")
+      ? { voice: options.voiceId }
+      : { voice_setting: { voice_id: options.voiceId } }
+    : {};
   const res = await fetch(`${FAL_BASE}/${modelId}`, {
     method: "POST",
     headers: {
@@ -46,7 +52,7 @@ export async function falGenerateSpeech(modelId, text, options = {}) {
     },
     body: JSON.stringify({
       text,
-      ...(options.voiceId && { voice_setting: { voice_id: options.voiceId } }),
+      ...voiceField,
       ...(options.speed && { speed: options.speed })
     })
   });
