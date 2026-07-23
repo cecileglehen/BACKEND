@@ -58,6 +58,11 @@ export const api = {
   createAgent: (data) => fetch(u("/api/agents"), { method: "POST", headers: authHeaders(), body: JSON.stringify(data) }).then(json),
   updateAgent: (id, data) => fetch(u(`/api/agents/${id}`), { method: "PUT", headers: authHeaders(), body: JSON.stringify(data) }).then(json),
   deleteAgent: (id) => fetch(u(`/api/agents/${id}`), { method: "DELETE", headers: authHeaders() }).then(json),
+  // Missions d'agent en arrière-plan (agent autonome : Plan → Act → Verify)
+  startAgentRun:  (id, goal, language) => fetch(u(`/api/agents/${id}/runs`), { method: "POST", headers: authHeaders(), body: JSON.stringify({ goal, language }) }).then(json),
+  listAgentRuns:  (id) => fetch(u(`/api/agents/${id}/runs`), { headers: authHeaders() }).then(json),
+  getAgentRun:    (runId) => fetch(u(`/api/agent-runs/${runId}`), { headers: authHeaders() }).then(json),
+  cancelAgentRun: (runId) => fetch(u(`/api/agent-runs/${runId}/cancel`), { method: "POST", headers: authHeaders() }).then(json),
   // Fichiers de connaissances (RAG)
   listAgentFiles: (id) => fetch(u(`/api/agents/${id}/files`), { headers: authHeaders() }).then(json),
   uploadAgentFile: (id, file) => {
@@ -159,7 +164,7 @@ export const api = {
   },
 
   // Chat streaming SSE
-  chatStream: ({ messages, tier, modelId, manual, projectId, agentId, enabledTools, onDelta, onThinking, onMeta, onDone, onError, onWebsearch, onArtifact, onImage, onTool }) => {
+  chatStream: ({ messages, tier, modelId, manual, projectId, agentId, enabledTools, onDelta, onThinking, onMeta, onDone, onError, onWebsearch, onArtifact, onImage, onTool, onSkill }) => {
     const ctrl = new AbortController();
     fetch(u("/api/chat/stream"), {
       method: "POST",
@@ -191,6 +196,7 @@ export const api = {
             else if (msg.type === "thinking") onThinking?.(msg.delta || "");
             else if (msg.type === "websearch") onWebsearch?.(msg);
             else if (msg.type === "artifact") onArtifact?.(msg);
+            else if (msg.type === "skill") onSkill?.(msg);
             else if (msg.type === "image" || msg.type === "image_pending" || msg.type === "image_error") onImage?.(msg);
             else if (msg.type === "tool_call" || msg.type === "tool_result") onTool?.(msg);
             else if (msg.delta !== undefined) onDelta?.(msg.delta);
@@ -312,6 +318,8 @@ export const api = {
 
   music: (params) =>
     fetch(u("/api/music"), { method: "POST", headers: authHeaders(), body: JSON.stringify(params) }).then(json),
+  voice: (text, modelId, opts) =>
+    fetch(u("/api/voice"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ text, modelId, ...opts }) }).then(json),
 
   codeSession: (prompt, modelId, mode) =>
     fetch(u("/api/code/session"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ prompt, modelId, mode }) }).then(json),
@@ -342,7 +350,7 @@ export const api = {
   codeRenameSession: (id, name) =>
     fetch(u(`/api/code/session/${id}`), { method: "PATCH", headers: authHeaders(), body: JSON.stringify({ name }) }).then(json),
   // Streaming SSE : génération / édition avec progression + diffs par fichier
-  codeStream: ({ id, prompt, modelId, mode = "react", imageModel, history, onStatus, onAction, onFile, onThinking, onDone, onError }) => {
+  codeStream: ({ id, prompt, modelId, mode = "react", imageModel, history, onStatus, onAction, onFile, onThinking, onDone, onError , onTodoList, onTodoState, onSkill}) => {
     const path = id ? `/api/code/session/${id}/edit/stream` : "/api/code/session/stream";
     const ctrl = new AbortController();
     fetch(u(path), { method: "POST", headers: authHeaders(), body: JSON.stringify({ prompt, modelId, mode, imageModel, history }), signal: ctrl.signal })
@@ -362,6 +370,9 @@ export const api = {
             try {
               const msg = JSON.parse(line.slice(6));
               if (msg.type === "status") onStatus?.(msg.text);
+              else if (msg.type === "skill") onSkill ? onSkill(msg) : onStatus?.(`Je lis le skill ${msg.file || msg.name}…`);
+              else if (msg.type === "todo_list") onTodoList?.(msg.items || []);
+              else if (msg.type === "todo_state") onTodoState?.(msg);
               else if (msg.type === "thinking") onThinking?.(msg.delta);
               else if (msg.type === "action") onAction?.(msg.path);
               else if (msg.type === "file") onFile?.(msg);
@@ -405,6 +416,8 @@ export const api = {
     fetch(u(`/api/launch/${projectId}/notion/create-db`), { method: "POST", headers: authHeaders(), body: JSON.stringify({ parentId }) }).then(json),
   launchNotionPages: (projectId) =>
     fetch(u(`/api/launch/${projectId}/notion/pages`), { headers: authHeaders() }).then(json),
+  launchNotionAuto: (projectId, appName) =>
+    fetch(u(`/api/launch/${projectId}/notion/auto`), { method: "POST", headers: authHeaders(), body: JSON.stringify({ appName }) }).then(json),
   codeZip: (id) =>
     fetch(u(`/api/code/session/${id}.zip`), { headers: authHeaders() }).then(blob),
   codePreviewUrl: (id, filePath = "index.html") => {

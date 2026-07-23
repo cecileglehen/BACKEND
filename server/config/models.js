@@ -50,7 +50,7 @@ export const CATEGORIES = {
     cost: 0.1,
     levelRange: [1, 2],
     models: [
-      { id: "google/gemini-2.5-flash-lite", brand: "Google", display: "Gemini 2.5 Flash Lite", price: { in: 0.10, out: 0.40 }, ctx: 1048576, vision: true, tagline: "Ultra rapide & ultra cheap" },
+      { id: "google/gemini-3.5-flash-lite", brand: "Google", display: "Gemini 3.5 Flash Lite", price: { in: 0.10, out: 0.40 }, ctx: 1048576, vision: true, tagline: "Ultra rapide & ultra cheap" },
       { id: "amazon/nova-micro-v1", brand: "Nova", display: "Nova Micro", price: { in: 0.035, out: 0.14 }, ctx: 128000 },
       { id: "amazon/nova-2-lite-v1", brand: "Nova", display: "Nova 2 Lite", price: { in: 0.06, out: 0.24 }, ctx: 300000, vision: true },
       { id: "qwen/qwen3.5-flash-02-23", brand: "Qwen", display: "Qwen 3.5 Flash", price: { in: 0.10, out: 0.30 }, ctx: 1000000 },
@@ -95,7 +95,7 @@ export const CATEGORIES = {
       { id: "google/gemini-3.6-flash", brand: "Google", display: "Gemini 3.6 Flash", price: { in: 0.30, out: 2.50 }, ctx: 1048576, vision: true },
       { id: "anthropic/claude-haiku-4.5", brand: "Anthropic", display: "Claude Haiku 4.5", price: { in: 1.00, out: 5.00 }, ctx: 200000, vision: true },
       { id: "anthropic/claude-haiku-latest", brand: "Anthropic", display: "Claude Haiku (latest)", price: { in: 1.00, out: 5.00 }, ctx: 200000, vision: true },
-      { id: "x-ai/grok-4.20", brand: "xAI", display: "Grok 4.20", price: { in: 1.25, out: 2.50 }, ctx: 2000000, vision: true },
+      { id: "x-ai/grok-4.5", brand: "xAI", display: "Grok 4.5", price: { in: 1.25, out: 2.50 }, ctx: 2000000, vision: true },
       { id: "x-ai/grok-build-0.1", brand: "xAI", display: "Grok Agent", price: { in: 1.50, out: 3.50 }, ctx: 256000, tagline: "Agent xAI — actions multi-étapes" },
       { id: "x-ai/grok-4.3", brand: "xAI", display: "Grok 4.3", price: { in: 0.50, out: 2.00 }, ctx: 2000000, vision: true }
     ]
@@ -198,7 +198,10 @@ export const CREATIVE = {
       { id: "google/gemini-3.1-flash-image-preview", brand: "Google", display: "Nano Banana 2",   provider: "openrouter", cost: 20,  tagline: "Rendu presque parfait" },
       { id: "google/gemini-3-pro-image-preview",     brand: "Google", display: "Nano Banana Pro", provider: "openrouter", cost: 35,  tagline: "Rendu parfait" },
       { id: "openai/gpt-5-image",                    brand: "OpenAI", display: "GPT Image",       provider: "openrouter", cost: 50,  tagline: "OpenAI haut de gamme" },
-      { id: "openai/gpt-5.4-image-2",                brand: "OpenAI", display: "GPT Image 2",     provider: "openrouter", cost: 120, tagline: "Texte parfait — rendu pro" }
+      { id: "openai/gpt-5.4-image-2",                brand: "OpenAI", display: "GPT Image 2",     provider: "openrouter", cost: 120, tagline: "Texte parfait — rendu pro" },
+      { id: "krea/krea-2-medium-turbo",              brand: "Krea",   display: "Krea 2 Medium Turbo", provider: "fal",     cost: 6,   tagline: "Krea rapide — style photo réaliste" },
+      { id: "krea/krea-2-medium",                    brand: "Krea",   display: "Krea 2 Medium",   provider: "fal",        cost: 14,  tagline: "Équilibré — bon rendu, bon prix" },
+      { id: "krea/krea-2-large",                     brand: "Krea",   display: "Krea 2 Large",    provider: "fal",        cost: 30,  tagline: "Rendu Krea haut de gamme" }
     ],
     get model() { return this.models[0]; },
     get cost() { return this.models[0].cost; }
@@ -236,6 +239,29 @@ export const CREATIVE = {
         provider: "suno",
         cost: 25,
         tagline: "Génération musicale ~1-3 min · 2 pistes"
+      }
+    ],
+    get model() { return this.models[0]; },
+    get cost() { return this.models[0].cost; }
+  },
+  VOICE: {
+    label: "Voix",
+    models: [
+      {
+        id: "minimax/speech-2.8-turbo",
+        brand: "MiniMax",
+        display: "Speech 2.8 Turbo",
+        provider: "fal",
+        cost: 8,
+        tagline: "Rapide & naturel — usage quotidien"
+      },
+      {
+        id: "minimax/speech-2.8-hd",
+        brand: "MiniMax",
+        display: "Speech 2.8 HD",
+        provider: "fal",
+        cost: 18,
+        tagline: "Qualité studio — rendu premium"
       }
     ],
     get model() { return this.models[0]; },
@@ -327,7 +353,8 @@ const FAMILY_RULES = {
   ],
   xAI: [
     { id: "grok-4.3",   label: "Grok 4.3",    test: (id) => /grok-4\.3/.test(id) },
-    { id: "grok-4.20",  label: "Grok 4.20",   test: (id) => /grok-4\.20/.test(id) },
+    { id: "grok-4.5",   label: "Grok 4.5",    test: (id) => /grok-4\.5(?!\.)/.test(id) },
+    { id: "grok-4.20-multi-agent", label: "Grok 4.20 Multi-Agent", test: (id) => /grok-4\.20/.test(id) },
     { id: "grok-build", label: "Grok Agent",  test: (id) => /grok-build/.test(id) }
   ],
   InclusionAI: [

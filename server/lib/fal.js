@@ -36,6 +36,31 @@ export async function falGenerateImage(modelId, prompt, options = {}) {
   return { url, raw: data };
 }
 
+// Text-to-speech (ex: MiniMax Speech 2.8). Renvoie l'URL audio générée.
+export async function falGenerateSpeech(modelId, text, options = {}) {
+  const res = await fetch(`${FAL_BASE}/${modelId}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Key ${getKey()}`
+    },
+    body: JSON.stringify({
+      text,
+      ...(options.voiceId && { voice_setting: { voice_id: options.voiceId } }),
+      ...(options.speed && { speed: options.speed })
+    })
+  });
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`fal.ai ${res.status}: ${txt.slice(0, 300)}`);
+  }
+  const data = await res.json();
+  const url = data?.audio?.url ?? null;
+  if (!url) throw new Error("Réponse fal.ai invalide (pas d'URL audio)");
+  return { url, raw: data };
+}
+
 // Génération vidéo (ex: Seedance 2)
 export async function falGenerateVideo(modelId, prompt, options = {}) {
   const res = await fetch(`${FAL_BASE}/${modelId}`, {

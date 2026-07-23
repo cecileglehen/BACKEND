@@ -2878,6 +2878,41 @@ app.post("/api/music", requireAuth, async (req, res) => {
   }
 });
 
+// ─── Voix (MiniMax Speech 2.8, via fal.ai) ───────────────────────────────────
+app.post("/api/voice", requireAuth, async (req, res) => {
+  try {
+    const text = String(req.body?.text || "").trim().slice(0, 5000);
+    if (!text) return res.status(400).json({ error: "text requis" });
+
+    const voiceModel = CREATIVE.VOICE.models.find((m) => m.id === req.body?.modelId) || CREATIVE.VOICE.models[0];
+    const cost = voiceModel.cost;
+
+    const voxWindow = await getWindow(req.user.id, req.user.plan);
+    if (voxWindow.remaining < cost) {
+      const reset = new Date(voxWindow.resetAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+      return res.status(402).json({
+        error: `Quota épuisé pour générer de la voix (${cost} Cr requis). Renouvellement à ${reset}.`
+      });
+    }
+
+    const { falGenerateSpeech } = await import("./lib/fal.js");
+    const result = await falGenerateSpeech(voiceModel.id, text, {
+      voiceId: req.body?.voiceId,
+      speed: req.body?.speed
+    });
+
+    try {
+      await consumeWindow(req.user.id, cost);
+      logUsage({ userId: req.user.id, modelId: voiceModel.id, tier: "VOICE", tokensIn: 0, tokensOut: 0, costCr: cost, source: "voice" });
+    } catch { /* ignore */ }
+
+    res.json({ provider: "fal", model: voiceModel, url: result.url, cost });
+  } catch (e) {
+    console.error("[voice]", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── Intégrations Composio (Gmail, Drive, Notion, …) ────────────────────────
 
 app.get("/api/integrations", requireAuth, async (req, res) => {

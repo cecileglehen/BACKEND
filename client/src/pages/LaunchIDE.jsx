@@ -20,7 +20,7 @@ const LAUNCH_PROFILES = [
     models: ["anthropic/claude-sonnet-5", "google/gemini-3.6-flash"] },
   { id: "builder",     name: "Builder",     color: "#6366f1", tagline: "Équilibré — le meilleur défaut",
     path: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z",
-    models: ["moonshotai/kimi-k3", "z-ai/glm-5.2", "openai/gpt-5.4", "openai/gpt-5.3-codex"] },
+    models: ["moonshotai/kimi-k3"] }, // forcé — aucun fallback vers un autre modèle
   { id: "production",  name: "Production",  color: "#f59e0b", tagline: "Qualité maximale",
     path: "M23 6l-9.5 9.5-5-5L1 18 M17 6h6v6",
     models: ["openai/gpt-5.5", "anthropic/claude-opus-4.8", "anthropic/claude-fable-5", "openai/gpt-5.5-pro", "openai/gpt-5.4-pro"] }

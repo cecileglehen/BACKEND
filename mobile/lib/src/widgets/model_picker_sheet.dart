@@ -49,7 +49,7 @@ const curatedPicker = <CuratedBrand>[
   ]),
   CuratedBrand('xAI', 'Grok', [
     CuratedModel('x-ai/grok-4.3', 'Grok 4.3', 'chat'),
-    CuratedModel('x-ai/grok-4.20', 'Grok 4.20', 'think'),
+    CuratedModel('x-ai/grok-4.5', 'Grok 4.5', 'think'),
   ]),
   CuratedBrand('Mistral', 'Mistral', [
     CuratedModel('mistralai/mistral-small-2603', 'Small 4', 'fast'),

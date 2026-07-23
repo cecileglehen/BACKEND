@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import MusicComposer from "./MusicComposer.jsx";
 import { useT } from "../lib/i18n.jsx";
+import { BRAND_CONFIG } from "../lib/brands.js";
 
 const STYLE_PRESETS = [
   { label: "Aucun",         prompt: "" },
@@ -37,6 +38,66 @@ async function downloadMedia(url, ext = "png") {
   }
 }
 
+function BrandLogo({ brand, size = 20 }) {
+  const cfg = BRAND_CONFIG[brand];
+  if (!cfg?.icon) {
+    return (
+      <span className="inline-flex items-center justify-center rounded-full bg-delt-text text-white text-[10px] font-bold flex-shrink-0"
+        style={{ width: size, height: size }}>
+        {brand.charAt(0)}
+      </span>
+    );
+  }
+  return <img src={cfg.icon} alt={brand} width={size} height={size} className="flex-shrink-0 object-contain" />;
+}
+
+// Sélecteur de modèles groupé par marque : logos en grille, clic → déroule les
+// modèles de cette marque (même principe que le picker curé du chat/Launch).
+function BrandModelPicker({ models, modelId, onChange }) {
+  const brands = [...new Set(models.map((m) => m.brand))];
+  const [openBrand, setOpenBrand] = useState(() => models.find((m) => m.id === modelId)?.brand || brands[0]);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        {brands.map((brand) => (
+          <button
+            key={brand}
+            type="button"
+            onClick={() => setOpenBrand(openBrand === brand ? null : brand)}
+            title={brand}
+            className={`w-11 h-11 rounded-2xl flex items-center justify-center border-2 transition-all ${
+              openBrand === brand ? "border-delt-accent bg-indigo-50" : "border-transparent glass-card hover:border-delt-border"
+            }`}
+          >
+            <BrandLogo brand={brand} size={22} />
+          </button>
+        ))}
+      </div>
+      {openBrand && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 animate-fadeIn">
+          {models.filter((m) => m.brand === openBrand).map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => onChange(m.id)}
+              className={`text-left rounded-xl p-3 border-2 transition-all ${
+                modelId === m.id ? "border-delt-accent bg-indigo-50" : "border-transparent glass-card"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-bold text-delt-text truncate">{m.display}</span>
+                <span className="text-[10px] font-bold text-delt-accent flex-shrink-0 ml-1">{m.cost} Cr</span>
+              </div>
+              <div className="text-[10px] text-delt-muted truncate">{m.tagline}</div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TabButton({ active, onClick, icon, label, sub }) {
   return (
     <button
@@ -47,7 +108,7 @@ function TabButton({ active, onClick, icon, label, sub }) {
           ? "border-transparent text-white shadow-md"
           : "border-transparent glass-card text-delt-text"
       }`}
-      style={active ? { background: "linear-gradient(135deg, #6366f1, #06b6d4)" } : {}}
+      style={active ? { background: "#0f172a" } : {}}
     >
       <div
         className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
@@ -67,7 +128,7 @@ function TabButton({ active, onClick, icon, label, sub }) {
 function ImageTab({ catalog, onCreditsUsed }) {
   const t = useT();
   const [prompt, setPrompt]       = useState("");
-  const [modelId, setModelId]     = useState("fal-ai/flux-1/schnell");
+  const [modelId, setModelId]     = useState("google/gemini-3.1-flash-lite-image");
   const [style, setStyle]         = useState(STYLE_PRESETS[0].label);
   const [aspect, setAspect]       = useState("1:1");
   const [busy, setBusy]           = useState(false);
@@ -120,29 +181,10 @@ function ImageTab({ catalog, onCreditsUsed }) {
 
   return (
     <div className="space-y-5">
-      {/* Model selector */}
+      {/* Model selector — groupé par marque, clic sur le logo pour dérouler */}
       <div>
         <div className="text-xs font-semibold uppercase tracking-wider text-delt-muted mb-2">Modèle</div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-          {imageModels.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => setModelId(m.id)}
-              className={`text-left rounded-xl p-3 border-2 transition-all ${
-                modelId === m.id
-                  ? "border-delt-accent bg-indigo-50"
-                  : "border-transparent glass-card"
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-bold text-delt-text truncate">{m.display}</span>
-                <span className="text-[10px] font-bold text-delt-accent flex-shrink-0 ml-1">{m.cost} Cr</span>
-              </div>
-              <div className="text-[10px] text-delt-muted truncate">{m.tagline}</div>
-            </button>
-          ))}
-        </div>
+        <BrandModelPicker models={imageModels} modelId={modelId} onChange={setModelId} />
       </div>
 
       {/* Prompt */}
@@ -231,7 +273,7 @@ function ImageTab({ catalog, onCreditsUsed }) {
         onClick={generate}
         disabled={busy || !prompt.trim()}
         className="w-full py-3 rounded-2xl font-bold text-white text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        style={{ background: prompt.trim() && !busy ? "linear-gradient(135deg, #6366f1, #06b6d4)" : "#94a3b8" }}
+        style={{ background: prompt.trim() && !busy ? "#0f172a" : "#94a3b8" }}
       >
         {busy ? (
           <>
@@ -285,6 +327,94 @@ function ImageTab({ catalog, onCreditsUsed }) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VoiceTab({ catalog, onCreditsUsed }) {
+  const [text, setText]     = useState("");
+  const [modelId, setModelId] = useState("minimax/speech-2.8-turbo");
+  const [busy, setBusy]     = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError]   = useState(null);
+
+  const voiceModels = catalog?.creative?.VOICE?.models || [];
+  const selectedModel = voiceModels.find((m) => m.id === modelId) || voiceModels[0];
+
+  const generate = async () => {
+    if (!text.trim() || busy) return;
+    setBusy(true); setError(null); setResult(null);
+    try {
+      const r = await api.voice(text, modelId);
+      setResult(r);
+      onCreditsUsed?.();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <div className="text-xs font-semibold uppercase tracking-wider text-delt-muted mb-2">Modèle</div>
+        <BrandModelPicker models={voiceModels} modelId={modelId} onChange={setModelId} />
+      </div>
+
+      <div className="rounded-2xl glass-card p-4 focus-within:border-indigo-200">
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value.slice(0, 5000))}
+          rows={5}
+          placeholder="Le texte à transformer en voix…"
+          className="w-full text-sm outline-none resize-none bg-transparent placeholder:text-delt-muted"
+        />
+        <div className="text-[10px] text-delt-muted text-right mt-1">{text.length} / 5000</div>
+      </div>
+
+      <button
+        onClick={generate}
+        disabled={busy || !text.trim()}
+        className="w-full py-3 rounded-2xl font-bold text-white text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        style={{ background: text.trim() && !busy ? "#0f172a" : "#94a3b8" }}
+      >
+        {busy ? (
+          <>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" className="animate-spin">
+              <path d="M21 12a9 9 0 1 1-6.2-8.55"/>
+            </svg>
+            Génération…
+          </>
+        ) : (
+          `Générer la voix · ${selectedModel?.cost || 8} Cr`
+        )}
+      </button>
+
+      {error && (
+        <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">{error}</div>
+      )}
+
+      {result?.url && (
+        <div className="rounded-2xl glass-card p-4 focus-within:border-indigo-200">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-xs font-semibold uppercase tracking-wider text-delt-muted">Résultat</div>
+            <button
+              type="button"
+              onClick={() => downloadMedia(result.url, "mp3")}
+              className="text-xs font-semibold text-delt-muted hover:text-delt-text flex items-center gap-1"
+            >
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              MP3
+            </button>
+          </div>
+          <audio src={result.url} controls className="w-full" />
         </div>
       )}
     </div>
@@ -438,12 +568,12 @@ export default function ArtistStudio() {
       </div>
 
       {/* Tabs */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <TabButton
           active={tab === "image"}
           onClick={() => setTab("image")}
           label={t("artist.tab_image")}
-          sub="FLUX, Nano Banana, GPT Image"
+          sub="Gemini, Nano Banana, GPT Image"
           icon={
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke={tab === "image" ? "white" : "#6366f1"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2"/>
@@ -477,12 +607,26 @@ export default function ArtistStudio() {
             </svg>
           }
         />
+        <TabButton
+          active={tab === "voice"}
+          onClick={() => setTab("voice")}
+          label="Voix"
+          sub="MiniMax Speech 2.8"
+          icon={
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke={tab === "voice" ? "white" : "#f59e0b"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+            </svg>
+          }
+        />
       </div>
 
       {/* Content */}
       {tab === "image" && <ImageTab catalog={catalog} onCreditsUsed={refresh} />}
       {tab === "video" && <VideoTab catalog={catalog} onCreditsUsed={refresh} />}
       {tab === "music" && <MusicComposer cost={catalog?.creative?.MUSIC?.models?.[0]?.cost ?? 25} onCreditsUsed={refresh} />}
+      {tab === "voice" && <VoiceTab catalog={catalog} onCreditsUsed={refresh} />}
     </div>
   );
 }

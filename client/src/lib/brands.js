@@ -24,7 +24,10 @@ export const BRAND_CONFIG = {
   Qwen:        { icon: "/brands/qwen-color.svg",       label: "Qwen" },
   DeepSeek:    { icon: "/brands/deepseek-color.svg",   label: "DeepSeek" },
   "Z.ai":      { icon: null,                           label: "GLM" },
-  Suno:        { icon: null,                           label: "Suno" }
+  Suno:        { icon: null,                           label: "Suno" },
+  MiniMax:     { icon: "/brands/minimax-color.svg",     label: "MiniMax" },
+  Krea:        { icon: "/brands/krea-color.svg",        label: "Krea" },
+  SDXL:        { icon: "/brands/stability-color.svg",   label: "SDXL" }
 };
 
 // Map brand → chemin du logo (null filtré). Compatible avec l'usage BRAND_LOGO[brand].

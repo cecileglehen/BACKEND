@@ -30,7 +30,7 @@ export const PICKER = [
   ]},
   { brand: "xAI", label: "Grok", models: [
     { id: "x-ai/grok-4.3",  label: "Grok 4.3",  kind: "chat"  },
-    { id: "x-ai/grok-4.20", label: "Grok 4.20", kind: "think" }
+    { id: "x-ai/grok-4.5", label: "Grok 4.5", kind: "think" }
   ]},
   { brand: "Mistral", label: "Mistral", models: [
     { id: "mistralai/mistral-small-2603", label: "Small 4",     kind: "fast"  },
