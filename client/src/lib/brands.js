@@ -27,7 +27,8 @@ export const BRAND_CONFIG = {
   Suno:        { icon: null,                           label: "Suno" },
   MiniMax:     { icon: "/brands/minimax-color.svg",     label: "MiniMax" },
   Krea:        { icon: "/brands/krea-color.svg",        label: "Krea" },
-  SDXL:        { icon: "/brands/stability-color.svg",   label: "SDXL" }
+  SDXL:        { icon: "/brands/stability-color.svg",   label: "SDXL" },
+  Microsoft:   { icon: "/brands/microsoft-color.svg",   label: "Microsoft" }
 };
 
 // Map brand → chemin du logo (null filtré). Compatible avec l'usage BRAND_LOGO[brand].

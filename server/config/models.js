@@ -262,6 +262,22 @@ export const CREATIVE = {
         provider: "fal",
         cost: 18,
         tagline: "Qualité studio — rendu premium"
+      },
+      {
+        id: "qwen/qwen-audio-3.0-tts-plus",
+        brand: "Qwen",
+        display: "Qwen Audio 3.0 TTS Plus",
+        provider: "fal",
+        cost: 10,
+        tagline: "Multilingue — bon rapport qualité/prix"
+      },
+      {
+        id: "microsoft/mai-voice-2-flash",
+        brand: "Microsoft",
+        display: "MAI Voice 2 Flash",
+        provider: "fal",
+        cost: 7,
+        tagline: "Le plus rapide — voix courtes"
       }
     ],
     get model() { return this.models[0]; },
