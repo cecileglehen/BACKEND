@@ -134,7 +134,7 @@ export const CATEGORIES = {
       { id: "anthropic/claude-fable-5", brand: "Anthropic", display: "Claude Fable 5", price: { in: 10.00, out: 50.00 }, ctx: 1000000, vision: true, tagline: "Le plus intelligent d'Anthropic — très cher (2× Opus)" },
       { id: "qwen/qwen3-max-thinking",         brand: "Qwen", display: "Qwen3 Max Thinking", price: { in: 3.00, out: 15.00 }, ctx: 1000000, tagline: "Raisonnement profond" },
       { id: "qwen/qwen3-vl-235b-a22b-thinking",brand: "Qwen", display: "Qwen3 VL 235B Thinking", price: { in: 2.50, out: 12.00 }, ctx: 256000, vision: true, tagline: "Vision + raisonnement, MoE 235B" },
-      { id: "anthropic/claude-opus-4.8", brand: "Anthropic", display: "Claude Opus 4.8", price: { in: 5.00, out: 25.00 }, ctx: 1000000, vision: true },
+      { id: "anthropic/claude-opus-5", brand: "Anthropic", display: "Claude Opus 5", price: { in: 5.00, out: 25.00 }, ctx: 1000000, vision: true },
       { id: "anthropic/claude-opus-4-5", brand: "Anthropic", display: "Claude Opus 4.5", price: { in: 5.00, out: 25.00 }, ctx: 1000000, vision: true },
       { id: "x-ai/grok-4.20-multi-agent", brand: "xAI", display: "Grok 4.20 Multi-Agent", price: { in: 2.00, out: 6.00 }, ctx: 2000000, vision: true },
       { id: "perplexity/sonar-deep-research", brand: "Perplexity", display: "Sonar Deep Research", price: { in: 2.00, out: 8.00 }, ctx: 128000 }

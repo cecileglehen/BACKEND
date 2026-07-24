@@ -38,7 +38,7 @@ const curatedPicker = <CuratedBrand>[
   CuratedBrand('Anthropic', 'Claude', [
     CuratedModel('anthropic/claude-haiku-4.5', 'Haiku 4.5', 'fast'),
     CuratedModel('anthropic/claude-sonnet-5', 'Sonnet 5', 'chat'),
-    CuratedModel('anthropic/claude-opus-4.8', 'Opus 4.8', 'think'),
+    CuratedModel('anthropic/claude-opus-5', 'Opus 5', 'think'),
     CuratedModel('anthropic/claude-fable-5', 'Fable 5', 'think'),
   ]),
   CuratedBrand('Google', 'Gemini', [

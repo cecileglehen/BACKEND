@@ -20,16 +20,27 @@ const LAUNCH_PROFILES = [
     models: ["anthropic/claude-sonnet-5", "google/gemini-3.6-flash"] },
   { id: "builder",     name: "Builder",     color: "#6366f1", tagline: "Équilibré — le meilleur défaut",
     path: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z",
-    models: ["moonshotai/kimi-k3"] }, // forcé — aucun fallback vers un autre modèle
+    // Choix explicite (jamais de fallback silencieux) : voir BUILDER_CHOICES.
+    models: ["moonshotai/kimi-k3", "anthropic/claude-opus-5"] },
   { id: "production",  name: "Production",  color: "#f59e0b", tagline: "Qualité maximale",
     path: "M23 6l-9.5 9.5-5-5L1 18 M17 6h6v6",
-    models: ["openai/gpt-5.5", "anthropic/claude-opus-4.8", "anthropic/claude-fable-5", "openai/gpt-5.5-pro", "openai/gpt-5.4-pro"] }
+    models: ["openai/gpt-5.5", "anthropic/claude-opus-5", "anthropic/claude-fable-5", "openai/gpt-5.5-pro", "openai/gpt-5.4-pro"] }
 ];
 const DEFAULT_PROFILE = "builder";
 
+// Choix explicite proposé quand on sélectionne le profil Builder — pas de
+// fallback auto entre les deux, l'utilisateur tranche en connaissance de cause.
+const BUILDER_CHOICES = [
+  { id: "moonshotai/kimi-k3",     name: "Kimi K3",   tagline: "Rapide — le défaut recommandé" },
+  { id: "anthropic/claude-opus-5", name: "Claude Opus 5", tagline: "Qualité supérieure — consomme ~3× plus vite ton quota" }
+];
+const BUILDER_MODEL_KEY = "delt-launch-builder-model";
+
 // « Routeur » : un profil → un id de modèle réel (modèle d'ancrage du niveau).
-// Le fallback inter-modèles du même tier est géré côté serveur.
-function resolveModel(profileId) {
+// Le fallback inter-modèles du même tier est géré côté serveur — SAUF Builder,
+// dont le modèle est un choix explicite de l'utilisateur (voir BUILDER_CHOICES).
+function resolveModel(profileId, builderModel) {
+  if (profileId === "builder") return builderModel || BUILDER_CHOICES[0].id;
   const p = LAUNCH_PROFILES.find((x) => x.id === profileId);
   return p ? p.models[0] : profileId;
 }
@@ -64,6 +75,13 @@ export default function LaunchIDE() {
   const [phase, setPhase] = useState("empty");          // empty | working
   const [prompt, setPrompt] = useState("");
   const [modelId, setModelId] = useState(DEFAULT_PROFILE);  // id de profil Launch (résolu par resolveModel)
+  const [builderModel, setBuilderModel] = useState(() => {
+    try { return localStorage.getItem(BUILDER_MODEL_KEY) || BUILDER_CHOICES[0].id; } catch { return BUILDER_CHOICES[0].id; }
+  });
+  const chooseBuilderModel = (id) => {
+    setBuilderModel(id);
+    try { localStorage.setItem(BUILDER_MODEL_KEY, id); } catch {}
+  };
   const [imageModel, setImageModel] = useState(DEFAULT_IMAGE_MODEL); // modèle de génération d'images
   const [imageModels, setImageModels] = useState([]);   // catalogue d'images plafonné (≤ Nano Banana 2)
   const [attachments, setAttachments] = useState([]);   // pièces jointes du prompt (@refs)
@@ -342,7 +360,7 @@ export default function LaunchIDE() {
     setDiffs({}); resetTimeline(); setStreamFiles([]); streamFilesRef.current = []; setStreamStatus("Démarrage…");
     thinkingBufRef.current = ""; setStreamThinking("");
     api.codeStream({
-      prompt: p + attachmentNote(), modelId: resolveModel(modelId), mode: "react", imageModel, history: buildHistory(chat), ...streamHandlers(),
+      prompt: p + attachmentNote(), modelId: resolveModel(modelId, builderModel), mode: "react", imageModel, history: buildHistory(chat), ...streamHandlers(),
       onDone: async (sess) => {
         setSession(sess);
         if (sess.slug) setProjectUrl(sess.slug);
@@ -372,7 +390,7 @@ export default function LaunchIDE() {
     const newChat = [...chat, { role: "user", text: p }];
     setChat(newChat); setEditPrompt("");
     try {
-      const r = await api.launchPlan({ messages: newChat, projectId: session?.id, modelId: resolveModel(modelId) });
+      const r = await api.launchPlan({ messages: newChat, projectId: session?.id, modelId: resolveModel(modelId, builderModel) });
       if (r.creditsLeft != null) setCredits(r.creditsLeft);
       setChat((c) => [...c, { role: "assistant", text: r.message, questions: r.questions, toolEvents: r.toolEvents, cost: r.creditCost, plan: true }]);
     } catch (e) {
@@ -404,7 +422,7 @@ export default function LaunchIDE() {
     thinkingBufRef.current = ""; setStreamThinking("");
     const uploadP = attachments.length ? uploadAttachmentsToProject(session.id) : Promise.resolve([]);
     api.codeStream({
-      id: session.id, prompt: p + attachmentNote(), modelId: resolveModel(modelId), mode: "react", imageModel, history: buildHistory(chat), ...streamHandlers(),
+      id: session.id, prompt: p + attachmentNote(), modelId: resolveModel(modelId, builderModel), mode: "react", imageModel, history: buildHistory(chat), ...streamHandlers(),
       onDone: async (sess) => {
         setSession(sess);
         if (sess.creditsLeft != null) setCredits(sess.creditsLeft);
@@ -674,7 +692,7 @@ export default function LaunchIDE() {
     setChat((c) => [...c, { role: "assistant", text: "Erreur détectée — correction automatique…" }]);
     api.codeStream({
       id: session.id, prompt: `L'app a une erreur (compilation/runtime). Corrige-la précisément, sans rien casser d'autre.\n\nErreur:\n${errLines}`,
-      modelId: resolveModel(modelId), mode: "react",
+      modelId: resolveModel(modelId, builderModel), mode: "react",
       onStatus: () => {}, onAction: () => {}, onFile: () => {},
       onDone: async (sess) => {
         try {
@@ -723,7 +741,7 @@ export default function LaunchIDE() {
   const runEdit = (prompt) => new Promise((resolve) => {
     if (!session?.id) return resolve();
     api.codeStream({
-      id: session.id, prompt, modelId: resolveModel(modelId), mode: "react",
+      id: session.id, prompt, modelId: resolveModel(modelId, builderModel), mode: "react",
       onStatus: () => {}, onAction: () => {}, onFile: () => {},
       onDone: async (sess) => {
         try {
@@ -902,7 +920,7 @@ export default function LaunchIDE() {
               <div className="flex items-center justify-between gap-2 mt-1.5 px-1">
                 <div className="flex items-center gap-2">
                   {attachButton}
-                  <ProfileMenu value={modelId} selected={selectedProfile} onChange={setModelId} />
+                  <ProfileMenu value={modelId} selected={selectedProfile} onChange={setModelId} builderModel={builderModel} onBuilderModelChange={chooseBuilderModel} />
                   <ImageModelMenu models={imageModels} value={imageModel} onChange={setImageModel} />
                   <CreditsBadge credits={credits} compact />
                 </div>
@@ -1003,7 +1021,7 @@ export default function LaunchIDE() {
               )}
             </button>
           )}
-          <ProfileMenu value={modelId} selected={selectedProfile} onChange={setModelId} />
+          <ProfileMenu value={modelId} selected={selectedProfile} onChange={setModelId} builderModel={builderModel} onBuilderModelChange={chooseBuilderModel} />
           <span className="hidden md:contents"><CreditsBadge credits={credits} compact /></span>
           <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] text-delt-muted">
             <span className={`w-2 h-2 rounded-full ${wcStatus === "ready" ? "bg-emerald-500" : wcStatus === "error" ? "bg-red-500" : "bg-amber-400 animate-pulse"}`} />
@@ -1854,7 +1872,7 @@ function ProfileIcon({ profile, size = 16 }) {
   );
 }
 
-function ProfileMenu({ value, selected, onChange }) {
+function ProfileMenu({ value, selected, onChange, builderModel, onBuilderModelChange }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -1873,7 +1891,10 @@ function ProfileMenu({ value, selected, onChange }) {
         <span className="w-4 h-4 rounded-md flex items-center justify-center flex-shrink-0" style={{ background: `${sel.color}1f` }}>
           <ProfileIcon profile={sel} size={11} />
         </span>
-        <span className="truncate max-w-[120px]">{sel.name}</span>
+        <span className="truncate max-w-[120px]">
+          {sel.name}
+          {sel.id === "builder" && ` · ${BUILDER_CHOICES.find((c) => c.id === builderModel)?.name || "Kimi K3"}`}
+        </span>
         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="text-delt-muted">
           <polyline points="6 9 12 15 18 9" />
         </svg>
@@ -1882,22 +1903,39 @@ function ProfileMenu({ value, selected, onChange }) {
       {open && (
         <div className="absolute right-0 z-30 mt-2 w-64 rounded-2xl glass-strong shadow-xl border border-delt-border/60 p-1.5">
           {LAUNCH_PROFILES.map((p) => (
-            <button key={p.id} onClick={() => { onChange(p.id); setOpen(false); }}
-              className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-xl text-left transition-colors ${value === p.id ? "bg-delt-surface" : "hover:bg-delt-surface/60"}`}>
-              <span className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${p.color}1f` }}>
-                <ProfileIcon profile={p} size={16} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-1.5">
-                  <span className="text-[13px] font-semibold truncate" style={{ color: value === p.id ? p.color : undefined }}>{p.name}</span>
-                  {p.models.length > 1 && <span className="text-[8px] font-bold uppercase tracking-wide px-1 py-px rounded text-white flex-shrink-0" style={{ background: p.color }}>Auto</span>}
+            <div key={p.id}>
+              <button onClick={() => { onChange(p.id); if (p.id !== "builder") setOpen(false); }}
+                className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-xl text-left transition-colors ${value === p.id ? "bg-delt-surface" : "hover:bg-delt-surface/60"}`}>
+                <span className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${p.color}1f` }}>
+                  <ProfileIcon profile={p} size={16} />
                 </span>
-                <span className="block text-[10px] text-delt-muted truncate">{p.tagline}</span>
-              </span>
-              {value === p.id && (
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke={p.color} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0"><polyline points="20 6 9 17 4 12" /></svg>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-[13px] font-semibold truncate" style={{ color: value === p.id ? p.color : undefined }}>{p.name}</span>
+                    {p.id !== "builder" && p.models.length > 1 && <span className="text-[8px] font-bold uppercase tracking-wide px-1 py-px rounded text-white flex-shrink-0" style={{ background: p.color }}>Auto</span>}
+                  </span>
+                  <span className="block text-[10px] text-delt-muted truncate">{p.tagline}</span>
+                </span>
+                {value === p.id && (
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke={p.color} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0"><polyline points="20 6 9 17 4 12" /></svg>
+                )}
+              </button>
+              {/* Builder = choix explicite, jamais de fallback silencieux */}
+              {p.id === "builder" && value === "builder" && (
+                <div className="ml-8 mb-1 space-y-0.5">
+                  {BUILDER_CHOICES.map((c) => (
+                    <button key={c.id} onClick={() => { onBuilderModelChange(c.id); setOpen(false); }}
+                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left transition-colors ${builderModel === c.id ? "bg-indigo-50" : "hover:bg-delt-surface/60"}`}>
+                      <span className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${builderModel === c.id ? "border-indigo-500 bg-indigo-500" : "border-delt-border"}`} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[11px] font-semibold text-delt-text truncate">{c.name}</span>
+                        <span className="block text-[9.5px] text-delt-muted truncate">{c.tagline}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
               )}
-            </button>
+            </div>
           ))}
         </div>
       )}

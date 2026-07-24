@@ -19,7 +19,7 @@ export const PICKER = [
   { brand: "Anthropic", label: "Claude", models: [
     { id: "anthropic/claude-haiku-4.5",  label: "Haiku 4.5",  kind: "fast"  },
     { id: "anthropic/claude-sonnet-5", label: "Sonnet 5", kind: "chat"  },
-    { id: "anthropic/claude-opus-4.8",   label: "Opus 4.8",   kind: "think" },
+    { id: "anthropic/claude-opus-5",   label: "Opus 5",   kind: "think" },
     { id: "anthropic/claude-fable-5",    label: "Fable 5",    kind: "think" }
   ]},
   { brand: "Google", label: "Gemini", models: [
