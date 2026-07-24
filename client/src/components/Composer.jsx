@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 import { useT } from "../lib/i18n.jsx";
 import { BRAND_LOGO, INTEG_BRAND_COLORS, INTEG_COLOR_LOGOS } from "../lib/brands.js";
+import VoiceChat from "./VoiceChat.jsx";
 
 const BRAND_LOGOS = BRAND_LOGO;
 
@@ -40,6 +41,7 @@ export default function Composer({
   const recorderRef = useRef(null);
   const chunksRef = useRef([]);
   const [recording, setRecording] = useState(false);
+  const [voiceChatOpen, setVoiceChatOpen] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [recError, setRecError] = useState(null);
@@ -144,6 +146,7 @@ export default function Composer({
   };
 
   return (
+    <>
     <div data-tour="composer" className="w-full rounded-2xl sm:rounded-3xl glass-strong border border-slate-900/85 px-3 sm:px-4 pt-3 pb-2 transition-all duration-200 focus-within:shadow-[0_8px_32px_-8px_rgba(15,23,42,0.25)] focus-within:border-slate-900">
       {/* Pièces jointes */}
       {attachments.length > 0 && (
@@ -348,7 +351,7 @@ export default function Composer({
               <div className="relative" ref={modesRef}>
                 <button type="button" onClick={() => setModesOpen((o) => !o)}
                   className={`flex items-center gap-1.5 h-9 px-2.5 sm:px-3 rounded-full border transition-colors text-xs sm:text-sm ${activeCount > 0 ? "border-transparent text-white shadow-sm" : "border-delt-border text-delt-muted hover:text-delt-text hover:bg-delt-surface"}`}
-                  style={activeCount > 0 ? { background: "linear-gradient(135deg, #6366f1, #06b6d4)" } : {}}
+                  style={activeCount > 0 ? { background: "#0f172a" } : {}}
                   title="Modes">
                   <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="12" r="2" fill="currentColor"/><circle cx="9" cy="18" r="2" fill="currentColor"/></svg>
                   <span className="font-medium">{activeLabel}</span>
@@ -374,6 +377,17 @@ export default function Composer({
         </div>
 
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setVoiceChatOpen(true)}
+            className="w-9 h-9 rounded-full flex items-center justify-center text-delt-muted hover:bg-delt-surface transition-colors"
+            aria-label="Voice chat"
+            title="Voice chat — parle avec DeltAI en direct"
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+            </svg>
+          </button>
           <button
             type="button"
             onClick={toggleMic}
@@ -428,6 +442,8 @@ export default function Composer({
         <div className="text-[11px] text-red-600 mt-1.5 px-1">{uploadError}</div>
       )}
     </div>
+    {voiceChatOpen && <VoiceChat onClose={() => setVoiceChatOpen(false)} />}
+    </>
   );
 }
 

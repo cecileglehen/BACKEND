@@ -458,6 +458,44 @@ export const api = {
   },
 
   // Transcription (Groq Whisper)
+  // Voice Chat GPT (gpt-audio-mini) — SSE : texte + audio en streaming.
+  voiceChatStream: ({ text, history, voice, onDelta, onAudio, onDone, onError }) => {
+    const ctrl = new AbortController();
+    fetch(u("/api/voicechat"), {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ text, history, voice }),
+      signal: ctrl.signal
+    }).then(async (res) => {
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        onError?.(new Error(data.error || res.statusText));
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const msg = JSON.parse(line.slice(6));
+            if (msg.type === "delta") onDelta?.(msg.text || "");
+            else if (msg.type === "audio") onAudio?.(msg.data, msg.format);
+            else if (msg.type === "done") onDone?.(msg);
+            else if (msg.type === "error") onError?.(new Error(msg.error));
+          } catch { /* ignore */ }
+        }
+      }
+    }).catch((e) => { if (e.name !== "AbortError") onError?.(e); });
+    return () => ctrl.abort();
+  },
+
   transcribe: (audioBlob) => {
     const form = new FormData();
     form.append("audio", audioBlob, "voice.webm");

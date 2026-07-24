@@ -2938,6 +2938,52 @@ app.post("/api/voice", requireAuth, async (req, res) => {
   }
 });
 
+// ─── Voice Chat GPT (openai/gpt-audio-mini) — SSE, audio en streaming ────────
+// Le texte arrive DÉJÀ transcrit par le client (Whisper large-v3-turbo via
+// Groq, /api/transcribe — c'est déjà le chemin le plus rapide dispo). Ici on
+// relaie le texte + l'audio de la réponse chunk par chunk dès qu'ils arrivent
+// d'OpenRouter, pour une lecture progressive côté client (latence minimale).
+const VOICECHAT_COST_CR = 8;
+app.post("/api/voicechat", requireAuth, async (req, res) => {
+  try {
+    const text = String(req.body?.text || "").trim().slice(0, 2000);
+    if (!text) return res.status(400).json({ error: "text requis" });
+    const history = Array.isArray(req.body?.history) ? req.body.history.slice(-8) : [];
+
+    const vcWindow = await getWindow(req.user.id, req.user.plan);
+    if (vcWindow.remaining < VOICECHAT_COST_CR) {
+      const reset = new Date(vcWindow.resetAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+      return res.status(402).json({ error: `Quota épuisé pour le voice chat (${VOICECHAT_COST_CR} Cr requis). Renouvellement à ${reset}.` });
+    }
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+    const heartbeat = setInterval(() => { try { res.write(": ping\n\n"); } catch {} }, 15000);
+    res.on("close", () => clearInterval(heartbeat));
+
+    const { streamVoiceChat, VOICECHAT_MODEL } = await import("./lib/voicechat.js");
+    await streamVoiceChat({
+      text, history, voice: req.body?.voice,
+      emit: (ev) => { try { res.write(`data: ${JSON.stringify(ev)}\n\n`); } catch {} }
+    });
+
+    try {
+      await consumeWindow(req.user.id, VOICECHAT_COST_CR);
+      logUsage({ userId: req.user.id, modelId: VOICECHAT_MODEL, tier: "VOICECHAT", tokensIn: 0, tokensOut: 0, costCr: VOICECHAT_COST_CR, source: "voicechat" });
+    } catch { /* ignore */ }
+
+    clearInterval(heartbeat);
+    res.end();
+  } catch (e) {
+    console.error("[voicechat]", e);
+    try { res.write(`data: ${JSON.stringify({ type: "error", error: e.message })}\n\n`); } catch {}
+    res.end();
+  }
+});
+
 // ─── Intégrations Composio (Gmail, Drive, Notion, …) ────────────────────────
 
 app.get("/api/integrations", requireAuth, async (req, res) => {
