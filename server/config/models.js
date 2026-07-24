@@ -190,6 +190,7 @@ export const CREATIVE = {
     label: "Image",
     // Liste complète des modèles d'image (provider + cost en Cr + tagline)
     models: [
+      { id: "fal-ai/fast-lightning-sdxl",             brand: "SDXL",   display: "Lightning SDXL",  provider: "fal",        cost: 0,   tagline: "Illimité — même en FREE, brouillons instantanés", unlimited: true },
       { id: "fal-ai/fast-sdxl",                      brand: "SDXL",   display: "Fast SDXL",       provider: "fal",        cost: 1,   tagline: "Le moins cher — brouillons rapides" },
       { id: "google/gemini-3.1-flash-lite-image",    brand: "Google", display: "Gemini Flash Lite", provider: "openrouter", cost: 5,  tagline: "Rapide & quotidien — éco" },
       { id: "fal-ai/bytedance/seedream/v5/lite/edit", brand: "ByteDance", display: "Seedream 5 Edit", provider: "fal",     cost: 15, type: "edit", tagline: "Édition image-à-image (à partir de pièces jointes)" },

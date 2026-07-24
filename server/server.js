@@ -2694,11 +2694,15 @@ app.post("/api/image", requireAuth, async (req, res) => {
 
     if (!url) return res.status(502).json({ error: "Réponse provider invalide" });
 
-    // Conso synchronisée sur la barre de quota 3h (pas de crédits).
-    try {
-      await consumeWindow(req.user.id, cost);
-      logUsage({ userId: req.user.id, modelId: chosenModel.id, tier: "IMAGE", tokensIn: 0, tokensOut: 0, costCr: cost, source: "image" });
-    } catch { /* ignore */ }
+    // Conso synchronisée sur la barre de quota 3h (pas de crédits) — modèles
+    // "unlimited" (ex: Lightning SDXL, coût réel négligeable) : cost=0, ne
+    // consomme jamais le quota, disponible même en FREE.
+    if (cost > 0) {
+      try {
+        await consumeWindow(req.user.id, cost);
+        logUsage({ userId: req.user.id, modelId: chosenModel.id, tier: "IMAGE", tokensIn: 0, tokensOut: 0, costCr: cost, source: "image" });
+      } catch { /* ignore */ }
+    }
 
     // Indexe l'image pour la recherche sémantique + les futures suggestions de
     // réutilisation (fire-and-forget, ne retarde jamais la réponse).

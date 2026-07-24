@@ -87,7 +87,11 @@ function BrandModelPicker({ models, modelId, onChange }) {
             >
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-bold text-delt-text truncate">{m.display}</span>
-                {m.cost != null && <span className="text-[10px] font-bold text-delt-accent flex-shrink-0 ml-1">{m.cost} Cr</span>}
+                {m.unlimited ? (
+                  <span className="text-[10px] font-bold text-emerald-600 flex-shrink-0 ml-1">Illimité</span>
+                ) : m.cost != null && (
+                  <span className="text-[10px] font-bold text-delt-accent flex-shrink-0 ml-1">{m.cost} Cr</span>
+                )}
               </div>
               <div className="text-[10px] text-delt-muted truncate">{m.tagline}</div>
             </button>
@@ -332,7 +336,7 @@ function ImageTab({ catalog, onCreditsUsed }) {
             Génération…
           </>
         ) : (
-          `Générer l'image · ${selectedModel?.cost || 5} Cr`
+          `Générer l'image · ${selectedModel?.unlimited ? "Illimité" : `${selectedModel?.cost ?? 5} Cr`}`
         )}
       </button>
 
