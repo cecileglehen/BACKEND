@@ -103,9 +103,9 @@ export default function LaunchIDE() {
   const [agentLog, setAgentLog] = useState([]);       // [{ kind, text }]
   const agentTodosRef = useRef([]);
   const agentLogRef = useRef([]);
-  const pushLog = (kind, text) => {
+  const pushLog = (kind, text, detail) => {
     if (agentLogRef.current.some((l) => l.text === text)) return; // dédoublonne
-    agentLogRef.current = [...agentLogRef.current, { kind, text }];
+    agentLogRef.current = [...agentLogRef.current, { kind, text, detail }];
     setAgentLog(agentLogRef.current);
   };
   const resetTimeline = () => {
@@ -118,6 +118,7 @@ export default function LaunchIDE() {
   });  // "Écriture de src/App.jsx…"
   const [streamThinking, setStreamThinking] = useState(""); // « réflexion » live du modèle
   const [streamFiles, setStreamFiles] = useState([]);    // fichiers touchés pendant le stream
+  const streamFilesRef = useRef([]);                      // miroir non-stale (lu par onDone → vérification)
   const [diffs, setDiffs] = useState({});                // path → { added, removed, op }
 
   const { credits, setCredits, refreshQuota, user, logout } = useAuth();
@@ -221,8 +222,30 @@ export default function LaunchIDE() {
     window.addEventListener("mouseup", onUp);
   };
 
+  // Vérification réelle (pas simulée) : après mount, on exécute un vrai script
+  // shell dans le WebContainer qui contrôle que chaque fichier touché par cette
+  // génération existe et n'est pas vide — vraie commande, vraie sortie, vrai
+  // exit code, affichés dans la timeline (façon « Verify… → Script »).
+  const runVerification = async (wc, touchedPaths) => {
+    if (!touchedPaths?.length) return;
+    const quote = (p) => `'${String(p).replace(/'/g, "'\\''")}'`;
+    const script = touchedPaths.map((p) =>
+      `if [ -s ${quote(p)} ]; then echo "OK   ${p} ($(wc -c < ${quote(p)} | tr -d ' ') octets)"; else echo "FAIL ${p} manquant ou vide"; fi`
+    ).join("\n");
+    const command = `test -s <fichier> pour chacun des ${touchedPaths.length} fichier(s) touché(s)`;
+    let output = "";
+    try {
+      const proc = await wc.spawn("sh", ["-c", script]);
+      pipeOutput(proc.output, (chunk) => { output += chunk; });
+      const exitCode = await proc.exit;
+      pushLog("verify", `Vérification : ${touchedPaths.length} fichier(s) contrôlé(s)`, { command: script, output, exitCode });
+    } catch (e) {
+      pushLog("verify", `Vérification : ${touchedPaths.length} fichier(s) contrôlé(s)`, { command, output: output || e.message, exitCode: 1 });
+    }
+  };
+
   // ─── Lance le projet dans WebContainer (mount → install → dev) ──────────────
-  const runProject = useCallback(async (flatFiles) => {
+  const runProject = useCallback(async (flatFiles, touchedPaths = null) => {
     try {
       setPreviewUrl("");
       setWcStatus("booting");
@@ -238,6 +261,7 @@ export default function LaunchIDE() {
       // Injecte le script Visual Edits dans la preview (pas dans le build persisté)
       const mountFiles = flatFiles.map((f) => (f.path === "index.html" ? { ...f, content: injectVisual(f.content) } : f));
       await wc.mount(filesToTree(mountFiles));
+      await runVerification(wc, touchedPaths);
 
       // server-ready : on récupère l'URL de preview
       wc.on("server-ready", (_port, url) => {
@@ -296,6 +320,7 @@ export default function LaunchIDE() {
       setStreamStatus(`Écriture de ${path}…`);
       pushLog("write", `Écriture de ${path}`);
       setStreamFiles((s) => (s.includes(path) ? s : [...s, path]));
+      if (!streamFilesRef.current.includes(path)) streamFilesRef.current = [...streamFilesRef.current, path];
     },
     onFile: (f) => setDiffs((d) => ({ ...d, [f.path]: { added: f.added, removed: f.removed, op: f.op } })),
     onError: (e, info) => {
@@ -314,7 +339,7 @@ export default function LaunchIDE() {
     setPhase("working");
     setChat([{ role: "user", text: p }, { role: "assistant", text: "Parfait, je vais te construire ça ! 🚀 Je mets en place la structure du projet et les composants…", thinking: true }]);
     setTerminal([]); setPreviewUrl(""); setTab("preview"); setShowPreview(false);
-    setDiffs({}); resetTimeline(); setStreamFiles([]); setStreamStatus("Démarrage…");
+    setDiffs({}); resetTimeline(); setStreamFiles([]); streamFilesRef.current = []; setStreamStatus("Démarrage…");
     thinkingBufRef.current = ""; setStreamThinking("");
     api.codeStream({
       prompt: p + attachmentNote(), modelId: resolveModel(modelId), mode: "react", imageModel, history: buildHistory(chat), ...streamHandlers(),
@@ -332,7 +357,7 @@ export default function LaunchIDE() {
           setFiles(merged);
           setSelected(merged.find((f) => f.path === "src/App.jsx")?.path || merged[0]?.path || null);
           setAttachments([]);
-          runProject(merged);
+          runProject(merged, streamFilesRef.current);
         } catch (e) { setError(e.message); }
         setBusy(false);
       }
@@ -375,7 +400,7 @@ export default function LaunchIDE() {
     setBusy(true); setError(null);
     setChat((c) => [...c, { role: "user", text: p }, { role: "assistant", text: "D'accord, je m'en occupe ! J'applique les modifications…", thinking: true }]);
     setEditPrompt("");
-    setDiffs({}); resetTimeline(); setStreamFiles([]); setStreamStatus("Démarrage…");
+    setDiffs({}); resetTimeline(); setStreamFiles([]); streamFilesRef.current = []; setStreamStatus("Démarrage…");
     thinkingBufRef.current = ""; setStreamThinking("");
     const uploadP = attachments.length ? uploadAttachmentsToProject(session.id) : Promise.resolve([]);
     api.codeStream({
@@ -405,12 +430,13 @@ export default function LaunchIDE() {
               } catch (werr) { ko++; log(`✖ écriture ${f.path}: ${werr.message}`); }
             }
             log(`✎ ${ok} fichier(s) appliqué(s) au projet${ko ? `, ${ko} échec(s)` : ""}`);
+            await runVerification(wc, streamFilesRef.current);
             await ensureVisualScript(wc);
             // Recharge la preview pour refléter les changements (au cas où le HMR ne suit pas)
             setTab("preview");
             setTimeout(() => setPreviewNonce((n) => n + 1), 1200);
           } else {
-            runProject(full);
+            runProject(full, streamFilesRef.current);
           }
         } catch (e) { setError(e.message); }
         setBusy(false);
@@ -817,7 +843,7 @@ export default function LaunchIDE() {
     setPhase("empty"); setSession(null); setFiles([]); setSelected(null);
     setChat([]); setPrompt(""); setEditPrompt(""); setError(null);
     setPreviewUrl(""); setTerminal([]); setWcStatus("idle");
-    setDiffs({}); resetTimeline(); setStreamFiles([]); setStreamStatus(""); setShowPreview(false);
+    setDiffs({}); resetTimeline(); setStreamFiles([]); streamFilesRef.current = []; setStreamStatus(""); setShowPreview(false);
     setProjectUrl(null);
   };
 
@@ -1347,6 +1373,39 @@ function VisualPanel({ sel, setSel, applyLive, onApply, onClose, busy }) {
   );
 }
 
+// Ligne de log « vérification » : commande + sortie réelles, repliées par défaut
+// (clique pour dérouler) — même principe que « Created a file, executed a
+// command » chez les concurrents, mais avec un VRAI exit code de WebContainer.
+function VerifyLogEntry({ text, detail }) {
+  const [open, setOpen] = useState(false);
+  const ok = detail?.exitCode === 0 && !/FAIL/.test(detail?.output || "");
+  return (
+    <div className="rounded-lg border border-delt-border/60 overflow-hidden">
+      <button type="button" onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center gap-1.5 px-1.5 py-1 text-left hover:bg-delt-surface/60 transition-colors">
+        <span className={`flex-shrink-0 ${ok ? "text-emerald-600" : "text-red-500"}`}>
+          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><polyline points="4 12 9 17 20 6"/></svg>
+        </span>
+        <span className="truncate text-delt-muted flex-1">{text}</span>
+        <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-delt-muted flex-shrink-0 transition-transform ${open ? "rotate-180" : ""}`}><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      {open && detail && (
+        <div className="border-t border-delt-border/60">
+          <div className="px-2.5 py-1.5 bg-[#0f172a] text-[10px] font-mono text-slate-300 whitespace-pre-wrap max-h-32 overflow-y-auto">
+            <div className="text-slate-500 mb-1">bash</div>
+            {detail.command}
+          </div>
+          <div className="px-2.5 py-1.5 bg-delt-surface text-[10px] font-mono text-delt-text whitespace-pre-wrap max-h-32 overflow-y-auto">
+            <div className="text-delt-muted mb-1">Output</div>
+            {detail.output || "(vide)"}
+            <div className={`mt-1 font-bold ${ok ? "text-emerald-600" : "text-red-500"}`}>exit_code: {detail.exitCode}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Timeline agent : todolist à cases + journal de chaque action ─────────────
 function AgentTimeline({ todos = [], log = [], live = false }) {
   if (!todos.length && !log.length) return null;
@@ -1377,7 +1436,9 @@ function AgentTimeline({ todos = [], log = [], live = false }) {
       )}
       {log.length > 0 && (
         <div className="px-3 py-1.5 max-h-44 overflow-y-auto space-y-0.5">
-          {log.map((l, i) => (
+          {log.map((l, i) => l.kind === "verify" ? (
+            <VerifyLogEntry key={i} text={l.text} detail={l.detail} />
+          ) : (
             <div key={i} className={`flex items-start gap-1.5 ${l.kind === "skill" ? "text-indigo-600" : "text-delt-muted"}`}>
               <span className="mt-[3px] flex-shrink-0">{iconFor(l.kind)}</span>
               <span className="truncate">{l.text}</span>
