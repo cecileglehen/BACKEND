@@ -5,6 +5,10 @@
 const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
 export const VOICECHAT_MODEL = "openai/gpt-audio-mini";
 const DEFAULT_VOICE = "alloy";
+// En streaming, l'API n'accepte QUE du PCM16 brut (mp3/autres formats encodés
+// renvoient 400 "Unsupported value: audio.format does not support 'mp3' when
+// stream=true"). 24kHz mono, comme l'API Realtime d'OpenAI.
+export const PCM_SAMPLE_RATE = 24000;
 
 // emit({ type: "delta"|"audio"|"done"|"error", ... })
 export async function streamVoiceChat({ text, history = [], voice, emit }) {
@@ -30,7 +34,7 @@ export async function streamVoiceChat({ text, history = [], voice, emit }) {
       messages,
       stream: true,
       modalities: ["text", "audio"],
-      audio: { voice: voice || DEFAULT_VOICE, format: "mp3" }
+      audio: { voice: voice || DEFAULT_VOICE, format: "pcm16" }
     })
   });
 
@@ -41,7 +45,7 @@ export async function streamVoiceChat({ text, history = [], voice, emit }) {
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
-  let buf = "", fullText = "", audioFormat = "mp3", usage = null;
+  let buf = "", fullText = "", audioFormat = "pcm16", usage = null;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -64,13 +68,13 @@ export async function streamVoiceChat({ text, history = [], voice, emit }) {
       const audio = delta.audio;
       if (audio?.data) {
         if (audio.format) audioFormat = audio.format;
-        emit?.({ type: "audio", data: audio.data, format: audioFormat });
+        emit?.({ type: "audio", data: audio.data, format: audioFormat, sampleRate: PCM_SAMPLE_RATE });
       }
       // Certains providers ne streament pas l'audio et le livrent d'un bloc
       // dans le message final (non-delta) — filet de sécurité.
       const finalAudio = obj.choices?.[0]?.message?.audio;
       if (finalAudio?.data) {
-        emit?.({ type: "audio", data: finalAudio.data, format: finalAudio.format || audioFormat });
+        emit?.({ type: "audio", data: finalAudio.data, format: finalAudio.format || audioFormat, sampleRate: PCM_SAMPLE_RATE });
       }
     }
   }

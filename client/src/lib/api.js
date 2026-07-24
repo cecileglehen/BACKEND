@@ -486,7 +486,7 @@ export const api = {
           try {
             const msg = JSON.parse(line.slice(6));
             if (msg.type === "delta") onDelta?.(msg.text || "");
-            else if (msg.type === "audio") onAudio?.(msg.data, msg.format);
+            else if (msg.type === "audio") onAudio?.(msg.data, msg.format, msg.sampleRate);
             else if (msg.type === "done") onDone?.(msg);
             else if (msg.type === "error") onError?.(new Error(msg.error));
           } catch { /* ignore */ }

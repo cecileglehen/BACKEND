@@ -145,8 +145,11 @@ export default function Composer({
     onAttachmentsChange(attachments.filter((a) => a._id !== id));
   };
 
+  // Voice chat actif : remplace le composer par la barre d'appel, on reste sur
+  // la page de chat (pas de plein écran) — juste la barre du bas qui change.
+  if (voiceChatOpen) return <VoiceChat onClose={() => setVoiceChatOpen(false)} />;
+
   return (
-    <>
     <div data-tour="composer" className="w-full rounded-2xl sm:rounded-3xl glass-strong border border-slate-900/85 px-3 sm:px-4 pt-3 pb-2 transition-all duration-200 focus-within:shadow-[0_8px_32px_-8px_rgba(15,23,42,0.25)] focus-within:border-slate-900">
       {/* Pièces jointes */}
       {attachments.length > 0 && (
@@ -442,8 +445,6 @@ export default function Composer({
         <div className="text-[11px] text-red-600 mt-1.5 px-1">{uploadError}</div>
       )}
     </div>
-    {voiceChatOpen && <VoiceChat onClose={() => setVoiceChatOpen(false)} />}
-    </>
   );
 }
 
