@@ -321,6 +321,15 @@ export const api = {
 
   vortexList: () => fetch(u("/api/vortex/items"), { headers: authHeaders() }).then(json),
   vortexAdd: (item) => fetch(u("/api/vortex/items"), { method: "POST", headers: authHeaders(), body: JSON.stringify(item) }).then(json),
+  // Dépôt d'un fichier : le serveur extrait le CONTENU (PDF, docx, code…) avant
+  // d'indexer — indispensable pour retrouver une info à l'intérieur du document.
+  vortexUpload: (file) => {
+    const form = new FormData();
+    form.append("file", file);
+    const headers = {};
+    if (_token) headers["Authorization"] = `Bearer ${_token}`;
+    return fetch(u("/api/vortex/upload"), { method: "POST", headers, body: form }).then(json);
+  },
   vortexDelete: (id) => fetch(u(`/api/vortex/items/${id}`), { method: "DELETE", headers: authHeaders() }).then(json),
   vortexCleanup: () => fetch(u("/api/vortex/cleanup"), { headers: authHeaders() }).then(json),
   video: (prompt, modelId) =>

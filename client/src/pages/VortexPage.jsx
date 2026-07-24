@@ -219,20 +219,13 @@ export default function VortexPage() {
     if (!files.length) return;
     setSucking(true);
     for (const f of files) {
-      const isImage = /image\//.test(f.type);
-      const isText = /^text\//.test(f.type) || /\.(txt|md|csv|json|log|yml|yaml)$/i.test(f.name);
       try {
-        if (isImage) {
-          const dataUrl = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => res(null); r.readAsDataURL(f); });
-          const result = await api.vortexAdd({ kind: "image", name: f.name, imageUrl: dataUrl, mimeType: f.type });
-          if (result.duplicate) flashToast(`« ${f.name} » ressemble déjà à quelque chose dans ton Vortex — pas ajouté en double.`);
-        } else {
-          const text = isText
-            ? await new Promise((res) => { const r = new FileReader(); r.onload = () => res(String(r.result || "").slice(0, 6000)); r.onerror = () => res(null); r.readAsText(f); })
-            : f.name; // binaire non-texte : indexé par nom (recherche par titre seulement)
-          const result = await api.vortexAdd({ kind: "file", name: f.name, text, mimeType: f.type });
-          if (result.duplicate) flashToast(`« ${f.name} » ressemble déjà à quelque chose dans ton Vortex — pas ajouté en double.`);
-        }
+        // Tout passe par le serveur : c'est lui qui sait extraire le contenu
+        // (PDF, docx, code…) et légender les images. Indexer côté navigateur ne
+        // permettait que le nom du fichier pour les formats binaires.
+        const result = await api.vortexUpload(f);
+        if (result.duplicate) flashToast(`« ${f.name} » ressemble déjà à quelque chose dans ton Vortex — pas ajouté en double.`);
+        else if (result.pageCount) flashToast(`« ${f.name} » ajouté — ${result.pageCount} page(s) lues et indexées.`);
       } catch (e) { flashToast(e.message); }
     }
     await refresh();

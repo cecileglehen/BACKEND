@@ -2850,6 +2850,36 @@ app.post("/api/upload", requireAuth, uploadAttachment.single("file"), async (req
   }
 });
 
+// Dépôt de fichier dans le Vortex : on réutilise le MÊME parser que les pièces
+// jointes du chat (PDF, docx, code…) pour indexer le CONTENU et pas seulement
+// le nom du fichier — sans ça, un PDF déposé était introuvable par son contenu
+// (« mon SIREN » ne remontait rien alors que le document l'était).
+// Déclaré ici car `uploadAttachment` (multer) n'existe pas plus haut dans le fichier.
+app.post("/api/vortex/upload", requireAuth, uploadAttachment.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "Fichier requis" });
+    const user = await refreshUser(req.user.id, req.user);
+    const { parseAttachment } = await import("./lib/attachments.js");
+    const parsed = await parseAttachment(req.file.buffer, req.file, user.plan);
+    const { addItem } = await import("./lib/vortex.js");
+
+    // Image → indexée via légende vision (géré dans addItem) ; tout le reste →
+    // texte extrait par le parser.
+    const isImage = parsed.type === "image";
+    const item = await addItem(req.user.id, {
+      kind: isImage ? "image" : "file",
+      name: req.file.originalname || parsed.name || "fichier",
+      text: isImage ? undefined : (parsed.text || ""),
+      imageUrl: isImage ? parsed.dataUrl : undefined,
+      mimeType: parsed.mime || req.file.mimetype
+    });
+    res.json({ ...item, extracted: isImage ? null : (parsed.text || "").length, pageCount: parsed.pageCount });
+  } catch (e) {
+    console.error("[vortex/upload]", e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // ─── Fichiers de connaissances d'un agent (RAG) ──────────────────────────────
 app.get("/api/agents/:id/files", requireAuth, async (req, res) => {
   try {

@@ -49,10 +49,19 @@ export async function parseAttachment(buffer, file, plan = "FREE") {
   }
 
   // ─── PDF ────────────────────────────────────────────────────
+  // pdf-parse v2 expose une classe `PDFParse` ; l'ancien export par défaut
+  // (fonction) n'existe plus — d'où un « pdfParse is not a function » qui
+  // faisait échouer TOUTE lecture de PDF (pièces jointes du chat comprises).
   if (mime === PDF_MIME || name.toLowerCase().endsWith(".pdf")) {
-    const { default: pdfParse } = await import("pdf-parse");
-    const data = await pdfParse(buffer, { max: limits.pdfMaxPages });
-    const totalPages = data.numpages || 0;
+    const { PDFParse } = await import("pdf-parse");
+    const parser = new PDFParse({ data: buffer });
+    let data;
+    try {
+      data = await parser.getText({ last: limits.pdfMaxPages });
+    } finally {
+      await parser.destroy?.().catch?.(() => {});
+    }
+    const totalPages = data.total || data.pages?.length || 0;
     const readPages = Math.min(totalPages, limits.pdfMaxPages);
     let text = String(data.text || "").trim();
 
