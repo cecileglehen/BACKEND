@@ -143,6 +143,26 @@ function ImageTab({ catalog, onCreditsUsed }) {
   const [refs, setRefs]           = useState([]); // images de référence (image-à-image)
   const fileRef = useRef(null);
 
+  // Studio Recall (google/gemini-embedding-2) : recherche sémantique dans
+  // l'historique + suggestion de réutilisation gratuite avant de payer.
+  const [galleryQuery, setGalleryQuery] = useState("");
+  const [searchResults, setSearchResults] = useState(null); // null = pas de recherche active
+  const [searching, setSearching] = useState(false);
+  const [reuseSuggestion, setReuseSuggestion] = useState(null);
+  const searchTimer = useRef(null);
+
+  useEffect(() => {
+    clearTimeout(searchTimer.current);
+    if (!galleryQuery.trim()) { setSearchResults(null); return; }
+    searchTimer.current = setTimeout(async () => {
+      setSearching(true);
+      try { const r = await api.studioSearch(galleryQuery.trim()); setSearchResults(r.results || []); }
+      catch { setSearchResults([]); }
+      setSearching(false);
+    }, 400);
+    return () => clearTimeout(searchTimer.current);
+  }, [galleryQuery]);
+
   const imageModels = catalog?.creative?.IMAGE?.models || [];
   const selectedModel = imageModels.find((m) => m.id === modelId) || imageModels[0];
 
@@ -155,13 +175,19 @@ function ImageTab({ catalog, onCreditsUsed }) {
   };
   const removeRef = (id) => setRefs((p) => p.filter((x) => x.id !== id));
 
-  const generate = async () => {
+  const generate = async (opts) => {
     if (!prompt.trim() || busy) return;
-    setBusy(true); setError(null);
+    setBusy(true); setError(null); setReuseSuggestion(null);
     const stylePrompt = STYLE_PRESETS.find((s) => s.label === style)?.prompt || "";
     const fullPrompt = prompt + stylePrompt + (aspect !== "1:1" ? `, aspect ratio ${aspect}` : "");
     try {
-      const result = await api.image(fullPrompt, modelId, refs.map((r) => r.url));
+      const result = await api.image(fullPrompt, modelId, refs.map((r) => r.url), opts);
+      if (result.reused) {
+        // Trouvé dans l'historique : on propose, l'utilisateur choisit.
+        setReuseSuggestion({ url: result.url, similarity: result.similarity, prompt: result.prompt });
+        setBusy(false);
+        return;
+      }
       setHistory((prev) => [{
         id: Date.now(),
         url: result.url,
@@ -169,7 +195,8 @@ function ImageTab({ catalog, onCreditsUsed }) {
         model: selectedModel,
         style,
         aspect,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        reused: !!result.reused
       }, ...prev].slice(0, 24));
       onCreditsUsed?.();
     } catch (e) {
@@ -268,9 +295,31 @@ function ImageTab({ catalog, onCreditsUsed }) {
         </div>
       </div>
 
+      {/* Suggestion de réutilisation (Studio Recall) — trouvé dans l'historique,
+          gratuit, avant de dépenser des crédits pour une quasi-copie. */}
+      {reuseSuggestion && (
+        <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-3 flex items-center gap-3">
+          <img src={reuseSuggestion.url} alt="" className="w-14 h-14 rounded-xl object-cover flex-shrink-0" />
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-bold text-emerald-800">Déjà généré, {Math.round(reuseSuggestion.similarity * 100)}% similaire</div>
+            <div className="text-[11px] text-emerald-700/80 truncate">« {reuseSuggestion.prompt} »</div>
+          </div>
+          <button type="button" onClick={() => {
+            setHistory((prev) => [{ id: Date.now(), url: reuseSuggestion.url, prompt, model: selectedModel, style, aspect, timestamp: Date.now(), reused: true }, ...prev].slice(0, 24));
+            setReuseSuggestion(null);
+          }} className="px-3 py-1.5 rounded-full text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 flex-shrink-0">
+            Réutiliser — gratuit
+          </button>
+          <button type="button" onClick={() => { setReuseSuggestion(null); generate({ allowReuse: false }); }}
+            className="px-3 py-1.5 rounded-full text-xs font-semibold text-emerald-700 hover:bg-emerald-100 flex-shrink-0">
+            Générer quand même
+          </button>
+        </div>
+      )}
+
       {/* CTA */}
       <button
-        onClick={generate}
+        onClick={() => generate()}
         disabled={busy || !prompt.trim()}
         className="w-full py-3 rounded-2xl font-bold text-white text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         style={{ background: prompt.trim() && !busy ? "#0f172a" : "#94a3b8" }}
@@ -291,14 +340,47 @@ function ImageTab({ catalog, onCreditsUsed }) {
         <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">{error}</div>
       )}
 
-      {/* History */}
-      {history.length > 0 && (
+      {/* Galerie — recherche sémantique (Studio Recall) : retrouve une image
+          par sa description même si le prompt d'origine était différent. */}
+      {(history.length > 0 || searchResults !== null) && (
         <div>
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold uppercase tracking-wider text-delt-muted">Galerie</span>
-            <button type="button" onClick={() => { if (confirm("Vider la galerie ?")) setHistory([]); }}
-              className="text-[10px] text-delt-muted hover:text-red-500 transition-colors">Vider</button>
+          <div className="flex items-center justify-between mb-3 gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-delt-muted flex-shrink-0">Galerie</span>
+            <div className="relative flex-1 max-w-[220px]">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-2.5 top-1/2 -translate-y-1/2 text-delt-muted"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input value={galleryQuery} onChange={(e) => setGalleryQuery(e.target.value)}
+                placeholder="Chercher (ex: chat avec un chapeau)…"
+                className="w-full text-[11px] rounded-full border border-delt-border pl-7 pr-2.5 py-1.5 outline-none focus:border-indigo-300 bg-white" />
+            </div>
+            {!searchResults && (
+              <button type="button" onClick={() => { if (confirm("Vider la galerie ?")) setHistory([]); }}
+                className="text-[10px] text-delt-muted hover:text-red-500 transition-colors flex-shrink-0">Vider</button>
+            )}
           </div>
+          {searchResults !== null ? (
+            searching ? (
+              <div className="text-center text-xs text-delt-muted py-6">Recherche…</div>
+            ) : searchResults.length === 0 ? (
+              <div className="text-center text-xs text-delt-muted py-6">Aucune image ne correspond à « {galleryQuery} ».</div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {searchResults.map((item) => (
+                  <div key={item.url} className="group relative rounded-xl overflow-hidden bg-delt-surface border border-delt-border">
+                    <img src={item.url} alt={item.prompt} className="w-full aspect-square object-cover" />
+                    <div className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded-full bg-black/60 text-white text-[9px] font-bold">{Math.round(item.score * 100)}%</div>
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-end opacity-0 group-hover:opacity-100">
+                      <div className="p-2 w-full flex items-center justify-between gap-2">
+                        <span className="text-[10px] text-white truncate">{item.prompt}</span>
+                        <button type="button" onClick={() => downloadMedia(item.url, "png")} className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white flex-shrink-0">
+                          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {history.map((item) => (
               <div key={item.id} className="group relative rounded-xl overflow-hidden bg-delt-surface border border-delt-border">
@@ -307,6 +389,9 @@ function ImageTab({ catalog, onCreditsUsed }) {
                   alt={item.prompt}
                   className="w-full aspect-square object-cover"
                 />
+                {item.reused && (
+                  <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-full bg-emerald-500 text-white text-[9px] font-bold">Réutilisé</div>
+                )}
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-end opacity-0 group-hover:opacity-100">
                   <div className="p-2 w-full flex items-center justify-between gap-2">
                     <span className="text-[10px] font-bold text-white truncate">{item.model?.display}</span>
@@ -327,6 +412,7 @@ function ImageTab({ catalog, onCreditsUsed }) {
               </div>
             ))}
           </div>
+          )}
         </div>
       )}
     </div>

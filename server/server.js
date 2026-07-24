@@ -1331,6 +1331,22 @@ app.post("/api/launch/:projectId/pay/checkout", async (req, res) => {
   } catch (e) { res.status(e.status || 400).json({ error: e.message }); }
 });
 
+// Recherche sémantique dans l'historique d'images du user (Studio Recall,
+// google/gemini-embedding-2) — retrouve une image par sa description même si
+// le prompt d'origine était formulé différemment.
+app.get("/api/studio/search", requireAuth, async (req, res) => {
+  try {
+    const q = String(req.query?.q || "").trim().slice(0, 500);
+    if (!q) return res.json({ results: [] });
+    const { searchGallery } = await import("./lib/studioRecall.js");
+    const results = await searchGallery(req.user.id, q, Number(req.query?.limit) || 24);
+    res.json({ results });
+  } catch (e) {
+    console.error("[studio/search]", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Génération d'images Flux Schnell embeddable (sans token) pour les apps Launch.
 // <img src="…/api/launch/img?prompt=…"> → redirige vers l'image (CDN fal).
 // Cache par prompt (dédoublonne) + rate-limit par IP (anti-abus).
@@ -2613,6 +2629,23 @@ app.post("/api/image", requireAuth, async (req, res) => {
     const chosenModel = imageModels.find((m) => m.id === requestedModelId) || imageModels[0];
     const cost = chosenModel.cost ?? 8;
 
+    // ── Studio Recall (google/gemini-embedding-2) : avant de payer, on cherche
+    // si CET utilisateur a déjà généré une image très proche de ce prompt —
+    // texte et image partagent le même espace vectoriel. Si oui, on lui
+    // propose de la réutiliser GRATUITEMENT plutôt que payer une quasi-copie.
+    // Jamais bloquant : sauté silencieusement si indispo, et exclu pour
+    // l'image-à-image (imageUrls) où chaque résultat est par nature unique.
+    if (!imageUrls.length && chosenModel.type !== "edit" && req.body?.allowReuse !== false) {
+      const { findReusableImage } = await import("./lib/studioRecall.js");
+      const reuse = await findReusableImage(req.user.id, prompt).catch(() => null);
+      if (reuse) {
+        return res.json({
+          reused: true, url: reuse.url, prompt: reuse.prompt, similarity: reuse.similarity,
+          model: imageModels.find((m) => m.id === reuse.modelId) || chosenModel, cost: 0
+        });
+      }
+    }
+
     // Studio = quota glissant 3h UNIQUEMENT (barre de conso). Pas de crédits top-up ici.
     const imgWindow = await getWindow(req.user.id, req.user.plan);
     if (imgWindow.remaining < cost) {
@@ -2666,6 +2699,14 @@ app.post("/api/image", requireAuth, async (req, res) => {
       await consumeWindow(req.user.id, cost);
       logUsage({ userId: req.user.id, modelId: chosenModel.id, tier: "IMAGE", tokensIn: 0, tokensOut: 0, costCr: cost, source: "image" });
     } catch { /* ignore */ }
+
+    // Indexe l'image pour la recherche sémantique + les futures suggestions de
+    // réutilisation (fire-and-forget, ne retarde jamais la réponse).
+    if (!imageUrls.length && chosenModel.type !== "edit") {
+      import("./lib/studioRecall.js")
+        .then(({ indexGeneratedImage }) => indexGeneratedImage(req.user.id, { url, prompt, modelId: chosenModel.id }))
+        .catch(() => {});
+    }
 
     res.json({
       provider: chosenModel.provider,

@@ -311,8 +311,10 @@ export const api = {
   ageVerify: () =>
     fetch(u("/api/age-verify"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ confirmed: true }) }).then(json),
 
-  image: (prompt, modelId, imageUrls) =>
-    fetch(u("/api/image"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ prompt, modelId, imageUrls }) }).then(json),
+  image: (prompt, modelId, imageUrls, opts) =>
+    fetch(u("/api/image"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ prompt, modelId, imageUrls, ...opts }) }).then(json),
+  studioSearch: (q) =>
+    fetch(u(`/api/studio/search?q=${encodeURIComponent(q)}`), { headers: authHeaders() }).then(json),
   video: (prompt, modelId) =>
     fetch(u("/api/video"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ prompt, modelId }) }).then(json),
 
