@@ -32,6 +32,11 @@ export default function VoiceChat({ onClose, mode = "gpt", onAgeGate }) {
   useEffect(() => { stateRef.current = state; }, [state]);
 
   const isGrok = mode === "grok";
+  // Qualité du modèle vocal GPT : « mini » par défaut (rapide, économe),
+  // « pro » = openai/gpt-audio, bien meilleur mais nettement plus coûteux.
+  const [quality, setQuality] = useState("mini");
+  const qualityRef = useRef("mini");
+  useEffect(() => { qualityRef.current = quality; }, [quality]);
   const historyRef = useRef([]);
   const streamRef = useRef(null);
   const recorderRef = useRef(null);
@@ -127,6 +132,7 @@ export default function VoiceChat({ onClose, mode = "gpt", onAgeGate }) {
       text, history: historyRef.current,
       voice: isGrok ? "rex" : "alloy",
       mode: isGrok ? "grok" : undefined,
+      quality: isGrok ? undefined : qualityRef.current,
       onDelta: (t) => setCaption((c) => c + t),
       onAudio: (data, format, sampleRate) => {
         if (stateRef.current === "thinking") setState("speaking");
@@ -235,6 +241,21 @@ export default function VoiceChat({ onClose, mode = "gpt", onAgeGate }) {
         <div className="text-[11px] font-semibold text-delt-muted">{label}</div>
         <div className="text-sm text-delt-text truncate">{caption || (userText && `« ${userText} »`) || "Voice chat — parle librement, DeltAI détecte quand tu as fini"}</div>
       </div>
+      {!isGrok && (
+        <button
+          onClick={() => setQuality((q) => (q === "mini" ? "pro" : "mini"))}
+          title={quality === "pro"
+            ? "Meilleur modèle actif (gpt-audio) — qualité supérieure, consomme davantage"
+            : "Passer au meilleur modèle (gpt-audio) — voix plus naturelle, plus coûteux"}
+          className={`px-2.5 py-1.5 rounded-full text-[10px] font-bold flex-shrink-0 border transition-colors ${
+            quality === "pro"
+              ? "bg-amber-50 text-amber-700 border-amber-200"
+              : "text-delt-muted border-delt-border hover:bg-delt-surface"
+          }`}
+        >
+          {quality === "pro" ? "Meilleur modèle" : "Rapide"}
+        </button>
+      )}
       <button onClick={toggleMute} title={state === "muted" ? "Réactiver le micro" : "Couper le micro"}
         className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
           state === "muted" ? "bg-slate-200 text-slate-600" : "text-delt-muted hover:bg-delt-surface"}`}>

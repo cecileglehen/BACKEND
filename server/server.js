@@ -3130,7 +3130,8 @@ app.post("/api/voice", requireAuth, async (req, res) => {
 // Groq, /api/transcribe — c'est déjà le chemin le plus rapide dispo). Ici on
 // relaie le texte + l'audio de la réponse chunk par chunk dès qu'ils arrivent
 // d'OpenRouter, pour une lecture progressive côté client (latence minimale).
-const VOICECHAT_COST_CR = 8;
+// Coût par échange, selon la qualité choisie (voir VOICECHAT_QUALITIES).
+const VOICECHAT_COST_CR = 8; // conservé pour le mode Grok
 app.post("/api/voicechat", requireAuth, async (req, res) => {
   try {
     const text = String(req.body?.text || "").trim().slice(0, 2000);
@@ -3148,10 +3149,14 @@ app.post("/api/voicechat", requireAuth, async (req, res) => {
       }
     }
 
+    const { voicechatQuality } = await import("./lib/voicechat.js");
+    const qual = voicechatQuality(req.body?.quality);
+    const cost = grokMode ? VOICECHAT_COST_CR : qual.costCr;
+
     const vcWindow = await getWindow(req.user.id, req.user.plan);
-    if (vcWindow.remaining < VOICECHAT_COST_CR) {
+    if (vcWindow.remaining < cost) {
       const reset = new Date(vcWindow.resetAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-      return res.status(402).json({ error: `Quota épuisé pour le voice chat (${VOICECHAT_COST_CR} Cr requis). Renouvellement à ${reset}.` });
+      return res.status(402).json({ error: `Quota épuisé pour le voice chat (${cost} Cr requis). Renouvellement à ${reset}.` });
     }
 
     res.setHeader("Content-Type", "text/event-stream");
@@ -3164,16 +3169,16 @@ app.post("/api/voicechat", requireAuth, async (req, res) => {
 
     const emit = (ev) => { try { res.write(`data: ${JSON.stringify(ev)}\n\n`); } catch {} };
     const vc = await import("./lib/voicechat.js");
-    const usedModel = grokMode ? vc.GROK_TEXT_MODEL : vc.VOICECHAT_MODEL;
+    const usedModel = grokMode ? vc.GROK_TEXT_MODEL : qual.id;
     if (grokMode) {
       await vc.streamGrokVoiceChat({ text, history, voice: req.body?.voice, emit });
     } else {
-      await vc.streamVoiceChat({ text, history, voice: req.body?.voice, emit });
+      await vc.streamVoiceChat({ text, history, voice: req.body?.voice, quality: req.body?.quality, emit });
     }
 
     try {
-      await consumeWindow(req.user.id, VOICECHAT_COST_CR);
-      logUsage({ userId: req.user.id, modelId: usedModel, tier: "VOICECHAT", tokensIn: 0, tokensOut: 0, costCr: VOICECHAT_COST_CR, source: "voicechat" });
+      await consumeWindow(req.user.id, cost);
+      logUsage({ userId: req.user.id, modelId: usedModel, tier: "VOICECHAT", tokensIn: 0, tokensOut: 0, costCr: cost, source: "voicechat" });
     } catch { /* ignore */ }
 
     clearInterval(heartbeat);

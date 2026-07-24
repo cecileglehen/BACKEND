@@ -4,6 +4,16 @@
 // (lecture progressive côté client via MediaSource — latence minimale).
 const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
 export const VOICECHAT_MODEL = "openai/gpt-audio-mini";
+// Deux qualités : le mini par défaut, gpt-audio à la demande (« meilleur
+// modèle »). L'écart de prix est brutal — l'audio de gpt-audio est ~53× celui
+// du mini ($32 vs $0,60 / M tokens) — d'où un coût en Cr nettement supérieur.
+export const VOICECHAT_QUALITIES = {
+  mini: { id: "openai/gpt-audio-mini", label: "Rapide", costCr: 8 },
+  pro:  { id: "openai/gpt-audio",      label: "Meilleur modèle", costCr: 40 }
+};
+export function voicechatQuality(q) {
+  return VOICECHAT_QUALITIES[q] || VOICECHAT_QUALITIES.mini;
+}
 const DEFAULT_VOICE = "alloy";
 // En streaming, l'API n'accepte QUE du PCM16 brut (mp3/autres formats encodés
 // renvoient 400 "Unsupported value: audio.format does not support 'mp3' when
@@ -11,7 +21,7 @@ const DEFAULT_VOICE = "alloy";
 export const PCM_SAMPLE_RATE = 24000;
 
 // emit({ type: "delta"|"audio"|"done"|"error", ... })
-export async function streamVoiceChat({ text, history = [], voice, emit }) {
+export async function streamVoiceChat({ text, history = [], voice, quality, emit }) {
   const key = (process.env.OPENROUTER_API_KEY || "").trim();
   if (!key) throw new Error("OPENROUTER_API_KEY manquante");
 
@@ -30,7 +40,7 @@ export async function streamVoiceChat({ text, history = [], voice, emit }) {
       "X-Title": "DELT AI Voice"
     },
     body: JSON.stringify({
-      model: VOICECHAT_MODEL,
+      model: voicechatQuality(quality).id,
       messages,
       stream: true,
       modalities: ["text", "audio"],
@@ -62,7 +72,11 @@ export async function streamVoiceChat({ text, history = [], voice, emit }) {
       try { obj = JSON.parse(payload); } catch { continue; }
       if (obj.usage) usage = obj.usage;
       const delta = obj.choices?.[0]?.delta || {};
-      if (delta.content) { fullText += delta.content; emit?.({ type: "delta", text: delta.content }); }
+      // Les modèles audio-natifs renvoient le texte parlé dans
+      // `delta.audio.transcript`, pas dans `delta.content` (qui reste vide) —
+      // sans ça, aucun sous-titre ne s'affichait pendant que l'IA parle.
+      const spoken = delta.content || delta.audio?.transcript || "";
+      if (spoken) { fullText += spoken; emit?.({ type: "delta", text: spoken }); }
       // Audio : selon le provider, arrive en un ou plusieurs chunks base64 —
       // on relaie CHAQUE fragment immédiatement, le client les assemble.
       const audio = delta.audio;
