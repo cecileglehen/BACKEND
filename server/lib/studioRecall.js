@@ -114,39 +114,87 @@ export async function findReusableImage(userId, prompt, signal) {
 }
 
 // Après une génération réussie : indexe l'image (fire-and-forget, jamais
-// bloquant pour la réponse utilisateur).
+// bloquant pour la réponse utilisateur). Sert aussi au backfill des galeries
+// déjà constituées (l'historique Studio vit côté navigateur : sans ce rattrapage
+// l'index resterait vide et la recherche ne trouverait jamais rien).
+// Idempotent : une même image déjà indexée n'est pas ré-insérée.
 export async function indexGeneratedImage(userId, { url, prompt, modelId }) {
-  if (!(await ensureTable())) return;
+  if (!(await ensureTable())) return { ok: false };
+  if (!url || !String(prompt || "").trim()) return { ok: false };
   try {
+    const db = getDb();
+    const { rows: exists } = await db.query(
+      `SELECT 1 FROM studio_image_embeddings WHERE user_id=$1 AND image_url=$2 LIMIT 1`,
+      [userId, url]
+    );
+    if (exists.length) return { ok: true, already: true };
+
     const vec = await embed(prompt); // indexe le prompt, pas les octets de l'image
-    if (!vec) return;
-    await getDb().query(
+    if (!vec) return { ok: false };
+    await db.query(
       `INSERT INTO studio_image_embeddings (user_id, image_url, prompt, model_id, embedding)
        VALUES ($1, $2, $3, $4, $5::vector)`,
       [userId, url, String(prompt || "").slice(0, 2000), modelId || null, `[${vec.join(",")}]`]
     );
+    return { ok: true };
   } catch (e) {
     console.warn("[studioRecall] indexGeneratedImage:", e.message);
+    return { ok: false, error: e.message };
   }
 }
 
-// Recherche sémantique dans la galerie d'un utilisateur ("mon chat avec un
-// chapeau" retrouve l'image même si le prompt d'origine était différent).
+// Rattrapage groupé d'une galerie existante (max 40 par appel pour borner le coût).
+export async function backfillGallery(userId, items = []) {
+  let indexed = 0, skipped = 0;
+  for (const it of items.slice(0, 40)) {
+    const r = await indexGeneratedImage(userId, { url: it.url, prompt: it.prompt, modelId: it.modelId });
+    if (r?.already) skipped++;
+    else if (r?.ok) indexed++;
+  }
+  return { indexed, skipped };
+}
+
+// Normalise pour la comparaison lexicale : minuscules, sans accents.
+function norm(s) {
+  return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+// Recherche HYBRIDE : sémantique (cross-langue — « noir » retrouve « a black
+// cat ») + lexicale (le mot exact tapé pèse lourd). Le pur vectoriel décroche
+// sur les requêtes d'un seul mot : les scores se tassent (0.55-0.64) et un
+// prompt sans rapport peut passer devant celui qui contient littéralement le
+// terme. Le boost lexical rend ces cas déterministes.
 export async function searchGallery(userId, query, limit = 24) {
   if (!(await ensureTable())) return [];
   try {
     const qVec = await embed(query);
     if (!qVec) return [];
     const db = getDb();
+    // On élargit le pool avant de re-scorer (sinon un bon match lexical
+    // pourrait être coupé par le tri purement vectoriel).
     const { rows } = await db.query(
       `SELECT image_url, prompt, model_id, created_at, 1 - (embedding <=> $2::vector) AS score
          FROM studio_image_embeddings
         WHERE user_id = $1
         ORDER BY embedding <=> $2::vector
         LIMIT $3`,
-      [userId, `[${qVec.join(",")}]`, limit]
+      [userId, `[${qVec.join(",")}]`, Math.max(limit * 3, 60)]
     );
-    return rows.map((r) => ({ url: r.image_url, prompt: r.prompt, modelId: r.model_id, createdAt: r.created_at, score: Number(r.score) }));
+
+    const terms = norm(query).split(/\s+/).filter((t) => t.length >= 3);
+    const scored = rows.map((r) => {
+      const semantic = Number(r.score);
+      const p = norm(r.prompt);
+      // Part des mots de la requête réellement présents dans le prompt.
+      const hits = terms.length ? terms.filter((t) => p.includes(t)).length / terms.length : 0;
+      return {
+        url: r.image_url, prompt: r.prompt, modelId: r.model_id, createdAt: r.created_at,
+        score: Math.min(1, semantic + hits * 0.3),
+        semantic, lexical: hits
+      };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, limit);
   } catch (e) {
     console.warn("[studioRecall] searchGallery:", e.message);
     return [];

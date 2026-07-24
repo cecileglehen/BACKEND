@@ -154,6 +154,41 @@ function ImageTab({ catalog, onCreditsUsed }) {
   const [searching, setSearching] = useState(false);
   const [reuseSuggestion, setReuseSuggestion] = useState(null);
   const searchTimer = useRef(null);
+  const backfilledRef = useRef(false);
+
+  // Rattrapage d'index au premier montage : la galerie vit dans le navigateur,
+  // le serveur n'a donc jamais vu les images générées avant l'arrivée de la
+  // recherche. Sans ça, taper « noir » ne remonte rien. Idempotent côté serveur,
+  // et une seule fois par session.
+  // Envoi par lots bornés en TAILLE (pas en nombre) : une image Gemini est une
+  // data URL de ~200 Ko, et le body parser plafonne à 2 Mo — un envoi groupé
+  // partirait en 413 et échouerait en silence.
+  useEffect(() => {
+    if (backfilledRef.current || history.length === 0) return;
+    backfilledRef.current = true;
+    const items = history
+      .filter((h) => h.url && h.prompt)
+      .slice(0, 40)
+      .map((h) => ({ url: h.url, prompt: h.prompt, modelId: h.model?.id }));
+    if (!items.length) return;
+
+    (async () => {
+      const MAX_BATCH_BYTES = 1_200_000;
+      let batch = [], size = 0;
+      const flush = async () => {
+        if (!batch.length) return;
+        try { await api.studioBackfill(batch); } catch { /* rattrapage best-effort */ }
+        batch = []; size = 0;
+      };
+      for (const it of items) {
+        const itemSize = (it.url?.length || 0) + (it.prompt?.length || 0);
+        if (itemSize > MAX_BATCH_BYTES) continue;       // image seule trop lourde → ignorée
+        if (size + itemSize > MAX_BATCH_BYTES) await flush();
+        batch.push(it); size += itemSize;
+      }
+      await flush();
+    })();
+  }, [history]);
 
   useEffect(() => {
     clearTimeout(searchTimer.current);

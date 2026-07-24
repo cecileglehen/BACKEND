@@ -316,6 +316,8 @@ export const api = {
     fetch(u("/api/image"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ prompt, modelId, imageUrls, ...opts }) }).then(json),
   studioSearch: (q) =>
     fetch(u(`/api/studio/search?q=${encodeURIComponent(q)}`), { headers: authHeaders() }).then(json),
+  studioBackfill: (items) =>
+    fetch(u("/api/studio/backfill"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ items }) }).then(json),
 
   vortexList: () => fetch(u("/api/vortex/items"), { headers: authHeaders() }).then(json),
   vortexAdd: (item) => fetch(u("/api/vortex/items"), { method: "POST", headers: authHeaders(), body: JSON.stringify(item) }).then(json),

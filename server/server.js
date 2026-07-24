@@ -1347,6 +1347,21 @@ app.get("/api/studio/search", requireAuth, async (req, res) => {
   }
 });
 
+// Rattrapage d'index pour les galeries déjà constituées côté navigateur :
+// sans ça, la recherche Studio ne trouve rien tant que l'utilisateur n'a pas
+// regénéré d'images après l'activation de la fonctionnalité.
+app.post("/api/studio/backfill", requireAuth, async (req, res) => {
+  try {
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (!items.length) return res.json({ indexed: 0, skipped: 0 });
+    const { backfillGallery } = await import("./lib/studioRecall.js");
+    res.json(await backfillGallery(req.user.id, items));
+  } catch (e) {
+    console.error("[studio/backfill]", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── Vortex — mémoire personnelle chiffrée, cross-modèle (google/gemini-embedding-2) ──
 app.get("/api/vortex/items", requireAuth, async (req, res) => {
   try {
