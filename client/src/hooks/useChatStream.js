@@ -11,7 +11,7 @@ const stripForLLM = (list) => list.map(({ role, content, attachments: a }) => {
  * Centralise toute la logique de streaming chat / image / video / merge / remake / parallel.
  * Retourne l'API consommée par ChatPage.
  */
-export function useChatStream({ projectId, agentId, enabledTools, onCreditsUsed, onQuota, onAgeGate }) {
+export function useChatStream({ projectId, agentId, enabledTools, useVortex, onCreditsUsed, onQuota, onAgeGate }) {
   const [messages, setMessages] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -73,6 +73,10 @@ export function useChatStream({ projectId, agentId, enabledTools, onCreditsUsed,
       projectId: projectId ?? undefined,
       agentId: agentId ?? undefined,
       enabledTools: enabledTools ? [...enabledTools] : undefined,
+      useVortex: !!useVortex,
+      // Transparence : on attache au message les éléments du Vortex réellement
+      // transmis au fournisseur pour CETTE réponse (affiché sous la réponse).
+      onVortex: (info) => applyUpdate((m) => ({ ...m, vortexItems: info.items || [] })),
       onMeta: (meta) => { if (meta.quota) onQuota?.(meta.quota); applyUpdate((m) => ({ ...m, tier: meta.tier, model: meta.model, modelSwap: meta.modelSwap || m.modelSwap })); },
       onThinking: (delta) => applyUpdate((m) => ({ ...m, reasoning: (m.reasoning || "") + delta, thinking: true })),
       onWebsearch: (info) => applyUpdate((m) => ({
@@ -84,6 +88,10 @@ export function useChatStream({ projectId, agentId, enabledTools, onCreditsUsed,
       onArtifact: (a) => applyUpdate((m) => ({
         ...m,
         artifacts: [...(m.artifacts || []), { filename: a.filename, content: a.content, mime: a.mime, ext: a.ext }]
+      })),
+      onSkill: (s) => applyUpdate((m) => ({
+        ...m,
+        skills: [...(m.skills || []), { name: s.name, file: s.file }]
       })),
       onTool: (info) => applyUpdate((m) => {
         const next = { ...m, toolCalls: [...(m.toolCalls || [])] };
@@ -130,7 +138,7 @@ export function useChatStream({ projectId, agentId, enabledTools, onCreditsUsed,
         setRouterInfo(null);
       }
     });
-  }, [projectId, agentId, enabledTools, onCreditsUsed, onAgeGate]);
+  }, [projectId, agentId, enabledTools, useVortex, onCreditsUsed, onAgeGate]);
 
   // Image
   const generateImage = useCallback(async (prompt, model) => {

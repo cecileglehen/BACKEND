@@ -29,6 +29,8 @@ export default function Composer({
   onOpenDebate,
   deepActive = false,
   onToggleDeep,
+  vortexActive = false,
+  onToggleVortex,
   searchActive = false,
   onToggleSearch,
   onModesAuto
@@ -335,6 +337,29 @@ export default function Composer({
               enabledIntegrations={enabledIntegrations}
               onToggle={onToggleIntegration}
             />
+          )}
+
+          {/* Vortex : opt-in de contexte personnel — cumulable avec tous les
+              modes, donc hors du menu MODES (qui est exclusif). Visible en
+              permanence : c'est un choix de confidentialité, pas un réglage. */}
+          {onToggleVortex && (
+            <button
+              type="button"
+              onClick={onToggleVortex}
+              title={vortexActive
+                ? "Vortex actif — les extraits pertinents de ta mémoire sont envoyés au modèle choisi"
+                : "Vortex inactif — rien de ta mémoire personnelle n'est transmis"}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-semibold border transition-colors ${
+                vortexActive
+                  ? "bg-violet-50 text-violet-700 border-violet-200"
+                  : "text-delt-muted border-transparent hover:bg-delt-surface"
+              }`}
+            >
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>
+              </svg>
+              Vortex
+            </button>
           )}
 
           {/* Dropdown MODES : Recherche · Deep Search · Débat · Comparaison */}

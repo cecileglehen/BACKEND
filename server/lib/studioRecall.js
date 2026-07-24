@@ -58,16 +58,17 @@ function headers() {
   };
 }
 
-// input multimodal : { text } ou { imageUrl } — même espace vectoriel.
-async function embed(input, signal) {
-  const content = input.imageUrl
-    ? [{ type: "image_url", image_url: { url: input.imageUrl } }]
-    : [{ type: "text", text: String(input.text || "").slice(0, 8000) }];
+// L'endpoint /embeddings n'accepte que du TEXTE (`input` = string). Passer une
+// data URL d'image embedde la chaîne base64, pas l'image (deux images opposées
+// ressortent à 96 % de similarité — vérifié). Ici c'est sans conséquence : on
+// indexe le PROMPT de génération, qui décrit exactement l'image produite — donc
+// prompt↔prompt, un espace cohérent et gratuit (pas d'appel vision).
+async function embed(text, signal) {
   const res = await fetch(OR_URL, {
     method: "POST",
     signal,
     headers: headers(),
-    body: JSON.stringify({ model: MODEL, input: content, dimensions: DIM })
+    body: JSON.stringify({ model: MODEL, input: String(text || "").slice(0, 8000), dimensions: DIM })
   });
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
@@ -92,7 +93,7 @@ function cosine(a, b) {
 export async function findReusableImage(userId, prompt, signal) {
   if (!(await ensureTable())) return null;
   try {
-    const qVec = await embed({ text: prompt }, signal);
+    const qVec = await embed(prompt, signal);
     if (!qVec) return null;
     const db = getDb();
     const { rows } = await db.query(
@@ -117,7 +118,7 @@ export async function findReusableImage(userId, prompt, signal) {
 export async function indexGeneratedImage(userId, { url, prompt, modelId }) {
   if (!(await ensureTable())) return;
   try {
-    const vec = await embed({ imageUrl: url });
+    const vec = await embed(prompt); // indexe le prompt, pas les octets de l'image
     if (!vec) return;
     await getDb().query(
       `INSERT INTO studio_image_embeddings (user_id, image_url, prompt, model_id, embedding)
@@ -134,7 +135,7 @@ export async function indexGeneratedImage(userId, { url, prompt, modelId }) {
 export async function searchGallery(userId, query, limit = 24) {
   if (!(await ensureTable())) return [];
   try {
-    const qVec = await embed({ text: query });
+    const qVec = await embed(query);
     if (!qVec) return [];
     const db = getDb();
     const { rows } = await db.query(

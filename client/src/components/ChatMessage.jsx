@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import MessageRenderer from "./MessageRenderer.jsx";
 import { BRAND_LOGO } from "../lib/brands.js";
+import Icon from "../lib/icons.jsx";
 
 // Dérive la marque + le label depuis l'id OpenRouter du modèle.
 // Permet d'afficher le logo même si le catalog n'a pas la version complète.
@@ -38,6 +39,43 @@ function deriveBrandFromId(id) {
 // Les blocs deviennent des cartes interactives ailleurs dans l'UI.
 // Pendant le streaming, un bloc peut être incomplet (pas encore de %%end) — on
 // coupe alors tout depuis le marqueur d'ouverture pour éviter de l'afficher.
+// Parse EN DIRECT les blocs %%write_file du texte streamé : blocs terminés +
+// bloc en cours d'écriture (pas encore de %%end). Permet d'afficher la carte
+// fichier dès le début de sa création, avec les lignes qui s'ajoutent en live.
+export function parseLiveArtifacts(content) {
+  if (!content || !content.includes("%%write_file:")) return [];
+  const artifacts = [];
+  const closedRe = /%%write_file:([^\n\r]+)\r?\n([\s\S]*?)%%end/g;
+  let m;
+  let lastEnd = 0;
+  while ((m = closedRe.exec(content)) !== null) {
+    const filename = m[1].trim();
+    artifacts.push({
+      filename,
+      content: m[2].replace(/\n$/, ""),
+      ext: (filename.split(".").pop() || "txt").toLowerCase(),
+      writing: false
+    });
+    lastEnd = closedRe.lastIndex;
+  }
+  // Bloc encore ouvert en fin de stream → fichier en cours d'écriture
+  const tail = content.slice(lastEnd);
+  const open = tail.match(/%%write_file:([^\n\r]+)\r?\n?([\s\S]*)$/);
+  if (open) {
+    const filename = open[1].trim();
+    if (filename) {
+      artifacts.push({
+        filename,
+        // retire un éventuel "%%en"/"%%" partiel en fin de chunk
+        content: open[2].replace(/%{1,2}e?n?d?$/, ""),
+        ext: (filename.split(".").pop() || "txt").toLowerCase(),
+        writing: true
+      });
+    }
+  }
+  return artifacts;
+}
+
 function stripSkillBlocks(content) {
   if (!content) return content;
   return content
@@ -173,8 +211,8 @@ function DeepSearchBlock({ data, streaming }) {
             <div className="text-xs font-bold text-teal-900 truncate flex items-center gap-2">
               {data.title || "DELT Deep Search Beta"}
               {confChip}
-              {velocity === "fast" && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700">⚡ Sujet rapide</span>}
-              {velocity === "slow" && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">🐢 Sujet stable</span>}
+              {velocity === "fast" && <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700"><Icon name="zap" size={10} strokeWidth={2.2} />Sujet rapide</span>}
+              {velocity === "slow" && <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700"><Icon name="clock" size={10} strokeWidth={2.2} />Sujet stable</span>}
             </div>
             <div className="text-[11px] text-teal-700 truncate">
               {streaming ? (active || "Recherche en cours") : `${sources.length} source${sources.length > 1 ? "s" : ""} analysée${sources.length > 1 ? "s" : ""}`}
@@ -202,7 +240,7 @@ function DeepSearchBlock({ data, streaming }) {
                       ? "bg-white text-teal-700 border border-teal-300"
                       : "bg-white/70 text-teal-300 border border-teal-100"
                   }`}>
-                    {isReflect ? "💭" : step.status === "done" ? "✓" : i + 1}
+                    {isReflect ? <Icon name="brain" size={10} strokeWidth={2} /> : step.status === "done" ? <Icon name="check" size={10} strokeWidth={2.6} /> : i + 1}
                   </span>
                   <span className={step.status === "pending" ? "text-teal-400" : "text-teal-800"}>
                     {step.label}
@@ -246,7 +284,7 @@ function DeepSearchBlock({ data, streaming }) {
             <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${showReasoning ? "rotate-90" : ""}`}>
               <polyline points="9 18 15 12 9 6"/>
             </svg>
-            🧠 Comment ça pense
+            <Icon name="brain" size={12} strokeWidth={2} /> Comment ça pense
             <span className="font-normal text-teal-600">
               ({reasoning.supports?.length || 0} info{(reasoning.supports?.length || 0) > 1 ? "s" : ""}
               {reasoning.contradictions?.length > 0 && ` · ${reasoning.contradictions.length} désaccord${reasoning.contradictions.length > 1 ? "s" : ""}`})
@@ -274,7 +312,7 @@ function DeepSearchBlock({ data, streaming }) {
               })}
               {reasoning.contradictions?.slice(0, 4).map((c, i) => (
                 <div key={`c-${i}`} className="flex items-start gap-2 p-2 rounded bg-rose-50 border border-rose-200">
-                  <span className="flex-shrink-0 text-[10px] font-bold text-rose-700">⚠</span>
+                  <span className="flex-shrink-0 text-rose-700"><Icon name="warn" size={11} strokeWidth={2.2} /></span>
                   <div className="flex-1 text-rose-900">
                     <strong>Désaccord entre sources</strong> : {c.note}
                     <div className="text-rose-600 text-[10px] mt-0.5">
@@ -323,9 +361,16 @@ function ArtifactCard({ artifact, onOpen }) {
       <div className="flex-1 min-w-0 px-3 py-2.5">
         <div className="font-semibold text-sm text-delt-text truncate">{filename}</div>
         <div className="text-[11px] text-delt-muted mt-0.5">{lines} lignes · {sizeLabel}</div>
-        <div className="inline-flex items-center gap-1 text-[10px] text-white bg-blue-600 group-hover:bg-blue-700 font-bold mt-1.5 uppercase tracking-wider px-2 py-0.5 rounded-full transition-colors">
-          {isPreviewable ? "▶ Ouvrir l'aperçu" : "▶ Voir le code"}
-        </div>
+        {artifact.writing ? (
+          <div className="inline-flex items-center gap-1.5 text-[10px] text-white bg-indigo-600 font-bold mt-1.5 uppercase tracking-wider px-2 py-0.5 rounded-full">
+            <span className="inline-block w-2.5 h-2.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+            Écriture en cours…
+          </div>
+        ) : (
+          <div className="inline-flex items-center gap-1 text-[10px] text-white bg-blue-600 group-hover:bg-blue-700 font-bold mt-1.5 uppercase tracking-wider px-2 py-0.5 rounded-full transition-colors">
+            {isPreviewable ? "▶ Ouvrir l'aperçu" : "▶ Voir le code"}
+          </div>
+        )}
       </div>
       <div className="flex-shrink-0 px-3 flex items-center text-delt-muted group-hover:text-blue-600 transition-colors">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -528,7 +573,7 @@ export default function ChatMessage({ msg, models = [], onRemake, onRemakeWith, 
               type="button"
               onClick={onMerge}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white shadow-md hover:shadow-lg transition-all"
-              style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}
+              style={{ background: "#0f172a" }}
             >
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
@@ -588,6 +633,26 @@ export default function ChatMessage({ msg, models = [], onRemake, onRemakeWith, 
           <DeepSearchBlock data={msg.deepSearch} streaming={msg.streaming} />
         )}
 
+        {/* Transparence Vortex : ce qui a RÉELLEMENT été transmis au modèle
+            pour cette réponse (jamais tout le Vortex — seulement ces extraits). */}
+        {!isUser && msg.vortexItems?.length > 0 && (
+          <div className="mb-2 rounded-xl border border-violet-200 bg-violet-50/60 px-3 py-2">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-violet-700 mb-1">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>
+              </svg>
+              {msg.vortexItems.length} élément{msg.vortexItems.length > 1 ? "s" : ""} de ton Vortex utilisé{msg.vortexItems.length > 1 ? "s" : ""}
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {msg.vortexItems.map((it, i) => (
+                <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-white border border-violet-200 text-violet-700">
+                  {it.name} <span className="text-violet-400">{Math.round((it.score || 0) * 100)}%</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Thinking block */}
         {!isUser && (msg.reasoning || msg.thinking) && (
           <ThinkingBlock reasoning={msg.reasoning} thinking={msg.thinking} streaming={msg.streaming} />
@@ -614,7 +679,7 @@ export default function ChatMessage({ msg, models = [], onRemake, onRemakeWith, 
             </div>
           ) : (
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-[12px] text-amber-800">
-              <span>⚡</span>
+              <span className="flex-shrink-0"><Icon name="zap" size={13} strokeWidth={2.2} /></span>
               <span>
                 Quota atteint — passé de <b>{msg.modelSwap.from}</b> à <b>{msg.modelSwap.to}</b>
                 {msg.modelSwap.free ? " (modèle gratuit)" : " (modèle plus léger)"} pour continuer sans interruption.
@@ -662,9 +727,9 @@ export default function ChatMessage({ msg, models = [], onRemake, onRemakeWith, 
                       <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
                     </svg>
                   ) : isError ? (
-                    <span>⚠</span>
+                    <span><Icon name="warn" size={12} strokeWidth={2.2} /></span>
                   ) : (
-                    <span>✓</span>
+                    <span><Icon name="check" size={12} strokeWidth={2.6} /></span>
                   )}
                   <span className="font-semibold capitalize">{friendly}</span>
                   <span className="text-[10px] opacity-80">· {action}</span>
@@ -677,14 +742,36 @@ export default function ChatMessage({ msg, models = [], onRemake, onRemakeWith, 
           </div>
         )}
 
-        {/* Artifacts (fichiers générés via %%write_file) */}
-        {!isUser && msg.artifacts?.length > 0 && (
-          <div className="flex flex-wrap gap-2 px-1">
-            {msg.artifacts.map((a, i) => (
-              <ArtifactCard key={i} artifact={a} onOpen={onOpenArtifact} />
+        {/* Skills lus (façon Claude Code) — « Je lis le skill css/SKILL.md » */}
+        {!isUser && msg.skills?.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 px-1">
+            {msg.skills.map((s, i) => (
+              <span key={s.name || i}
+                className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-full bg-delt-surface border border-delt-border text-delt-muted">
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                {msg.streaming
+                  ? <>Je lis le skill <span className="font-mono font-semibold text-delt-text">{s.file || s.name}</span></>
+                  : <>Skill <span className="font-mono font-semibold text-delt-text">{s.name}</span> appliqué</>}
+              </span>
             ))}
           </div>
         )}
+
+        {/* Artifacts (fichiers générés via %%write_file) — visibles EN DIRECT
+            pendant le streaming (carte dès le début, lignes qui s'ajoutent). */}
+        {!isUser && (() => {
+          const live = msg.streaming ? parseLiveArtifacts(msg.content) : [];
+          const serverNames = new Set((msg.artifacts || []).map((a) => a.filename));
+          const display = [...(msg.artifacts || []), ...live.filter((a) => !serverNames.has(a.filename))];
+          if (!display.length) return null;
+          return (
+            <div className="flex flex-wrap gap-2 px-1">
+              {display.map((a, i) => (
+                <ArtifactCard key={a.filename || i} artifact={a} onOpen={onOpenArtifact} />
+              ))}
+            </div>
+          );
+        })()}
 
         {/* Images générées via %%generate_image — barre de progression → image */}
         {!isUser && msg.imagePending && (
@@ -913,10 +1000,10 @@ export default function ChatMessage({ msg, models = [], onRemake, onRemakeWith, 
 }
 
 const ROLE_INFO = {
-  propose:    { label: "Propose",    color: "#2563eb", emoji: "💡" },
-  critique:   { label: "Critique",   color: "#f59e0b", emoji: "🔍" },
-  optimize:   { label: "Optimise",   color: "#10b981", emoji: "⚙️" },
-  synthesize: { label: "Synthétise", color: "#a855f7", emoji: "✨" }
+  propose:    { label: "Propose",    color: "#2563eb", icon: "bulb" },
+  critique:   { label: "Critique",   color: "#f59e0b", icon: "search" },
+  optimize:   { label: "Optimise",   color: "#10b981", icon: "tool" },
+  synthesize: { label: "Synthétise", color: "#a855f7", icon: "sparkle" }
 };
 
 function DebateView({ msg }) {
@@ -926,7 +1013,7 @@ function DebateView({ msg }) {
   return (
     <div className="flex flex-col gap-3 animate-fadeIn">
       <div className="flex items-center gap-2 pl-10 text-[10px] uppercase tracking-widest text-delt-muted font-semibold">
-        🎭 Débat IA · {agents.length} agents
+        <Icon name="chat" size={12} strokeWidth={2} /> Débat IA · {agents.length} agents
         {!done && (
           <span className="flex items-center gap-1 text-delt-accent">
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-delt-accent animate-pulse" />
@@ -938,7 +1025,7 @@ function DebateView({ msg }) {
       <div className="flex gap-2 sm:gap-3">
         {/* Avatar global */}
         <div className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center bg-delt-panel border border-delt-border mt-0.5">
-          🎭
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17 8h2a2 2 0 0 1 2 2v9l-3-2h-6a2 2 0 0 1-2-2v-1"/><path d="M14 3H5a2 2 0 0 0-2 2v8l3-2h8a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/></svg>
         </div>
 
         <div className="flex-1 min-w-0 space-y-3">
@@ -969,7 +1056,7 @@ function DebateView({ msg }) {
                     {/* En-tête agent */}
                     <div className="flex items-center gap-2 flex-wrap mb-1.5">
                       <span className="text-xs font-bold text-delt-text flex items-center gap-1">
-                        <span>{role.emoji}</span>
+                        <span><Icon name={role.icon} size={12} strokeWidth={2} /></span>
                         {role.label}
                       </span>
                       {agent.model && BRAND_LOGO[agent.model.brand] && (

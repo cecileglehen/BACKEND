@@ -81,14 +81,17 @@ function headers() {
   };
 }
 
-async function embed({ text, imageUrl }) {
-  const content = imageUrl
-    ? [{ type: "image_url", image_url: { url: imageUrl } }]
-    : [{ type: "text", text: String(text || "").slice(0, 8000) }];
+// L'endpoint /embeddings n'accepte QUE du texte (`input` doit être une string).
+// Lui passer une data URL d'image "marche" mais embedde la chaîne base64, pas
+// l'image : deux images visuellement opposées ressortent à 96 % de similarité
+// (vérifié). On passe donc par une légende générée par un modèle vision, puis
+// on embedde CETTE légende — vrai cross-modal, et la légende est réutilisable
+// (affichable, chiffrable, lisible par l'IA dans le contexte).
+async function embed(text) {
   const res = await fetch(OR_URL, {
     method: "POST",
     headers: headers(),
-    body: JSON.stringify({ model: MODEL, input: content, dimensions: DIM })
+    body: JSON.stringify({ model: MODEL, input: String(text || "").slice(0, 8000), dimensions: DIM })
   });
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
@@ -96,6 +99,26 @@ async function embed({ text, imageUrl }) {
   }
   const data = await res.json();
   return data?.data?.[0]?.embedding || null;
+}
+
+// Légende d'image via un modèle vision bon marché (une seule fois, à l'ajout).
+export async function captionImage(imageUrl, fileName = "") {
+  try {
+    const r = await chatWithFallback({
+      modelId: "google/gemini-3.5-flash-lite",
+      manual: true,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: "Décris cette image en 1-2 phrases factuelles : sujet, objets, couleurs, texte visible s'il y en a. Réponds uniquement par la description." },
+          { type: "image_url", image_url: { url: imageUrl } }
+        ]
+      }]
+    });
+    return (r.content || "").trim() || fileName;
+  } catch {
+    return fileName; // vision indispo → on retombe sur le nom du fichier
+  }
 }
 
 // Modèle NANO quasi gratuit : classe l'item dans une catégorie fixe pour
@@ -128,7 +151,11 @@ export async function addItem(userId, { kind, name, text, imageUrl, mimeType }) 
     throw new Error(`Limite de ${MAX_ITEMS_PER_USER} éléments atteinte — fais du ménage (bouton Nettoyer) avant d'en ajouter.`);
   }
 
-  const vec = await embed(kind === "image" ? { imageUrl } : { text });
+  // Image → légende vision d'abord (l'embedding direct d'une data URL n'encode
+  // que la chaîne base64, pas le contenu visuel). La légende devient le texte
+  // indexé ET le contenu chiffré consultable.
+  const indexedText = kind === "image" ? await captionImage(imageUrl, name) : text;
+  const vec = await embed(indexedText);
   if (!vec) throw new Error("Échec de l'indexation");
 
   // Dédoublonnage strict : une quasi-copie existe déjà → on ne stocke rien de
@@ -146,8 +173,10 @@ export async function addItem(userId, { kind, name, text, imageUrl, mimeType }) 
   }
 
   const userKey = await getUserDataKey(userId);
-  const contentEnc = kind !== "image" ? encryptForUser(text, userKey) : null;
-  const tag = await autoTag(name, text || "photo importée");
+  // La légende d'image est chiffrée comme le reste : c'est du contenu dérivé
+  // de la photo de l'utilisateur, donc sensible au même titre.
+  const contentEnc = indexedText ? encryptForUser(indexedText, userKey) : null;
+  const tag = await autoTag(name, indexedText || "photo importée");
 
   const { rows } = await db.query(
     `INSERT INTO vortex_items (user_id, kind, name, content_enc, image_url, mime_type, tag, embedding)
@@ -159,10 +188,12 @@ export async function addItem(userId, { kind, name, text, imageUrl, mimeType }) 
 
 // ─── Recherche RAG — SEULE fonction utilisée par le chat. Ne renvoie jamais
 // tout le Vortex, seulement les extraits pertinents (transparence + coût). ──
-export async function searchRelevant(userId, query, { limit = 4, minScore = 0.5 } = {}) {
+// minScore volontairement haut : mieux vaut n'envoyer AUCUN extrait au
+// fournisseur qu'un extrait hors-sujet (confidentialité + bruit dans le prompt).
+export async function searchRelevant(userId, query, { limit = 4, minScore = 0.68 } = {}) {
   if (!(await ensureTable())) return [];
   try {
-    const vec = await embed({ text: query });
+    const vec = await embed(query);
     if (!vec) return [];
     const db = getDb();
     const { rows } = await db.query(
