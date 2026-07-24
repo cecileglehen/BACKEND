@@ -167,7 +167,11 @@ function OrbitingItem({ item, index, total, onOpen, onRemove }) {
                 title={item.name}
                 className="rounded-xl bg-white/95 backdrop-blur border border-white/60 shadow-lg shadow-black/30 flex items-center gap-1.5 px-2 py-1.5 hover:scale-110 hover:z-10 transition-transform group"
               >
-                <FileIcon label={meta.label} color={meta.color} />
+                {item.dataUrl ? (
+                  <img src={item.dataUrl} alt="" className="w-8 h-8 rounded-md object-cover flex-shrink-0" />
+                ) : (
+                  <FileIcon label={meta.label} color={meta.color} />
+                )}
                 <span className="text-[10px] font-semibold text-slate-700 max-w-[80px] truncate">{item.name}</span>
                 <span
                   onClick={(e) => { e.stopPropagation(); onRemove(item.id); }}
@@ -199,10 +203,15 @@ export default function VortexPage() {
     setSucking(true);
     const next = [];
     for (const f of files) {
-      const dataUrl = /image\//.test(f.type)
+      const isImage = /image\//.test(f.type);
+      const isText = /^text\//.test(f.type) || /\.(txt|md|csv|json|log|yml|yaml)$/i.test(f.name);
+      const dataUrl = isImage
         ? await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => res(null); r.readAsDataURL(f); })
         : null;
-      next.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, name: f.name, size: f.size, addedAt: Date.now(), dataUrl });
+      const textPreview = isText
+        ? await new Promise((res) => { const r = new FileReader(); r.onload = () => res(String(r.result || "").slice(0, 4000)); r.onerror = () => res(null); r.readAsText(f); })
+        : null;
+      next.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, name: f.name, size: f.size, addedAt: Date.now(), dataUrl, textPreview });
     }
     setItems((prev) => [...prev, ...next].slice(-MAX_ITEMS));
     setTimeout(() => setSucking(false), 700);
@@ -318,7 +327,10 @@ export default function VortexPage() {
             </div>
             {preview.dataUrl && <img src={preview.dataUrl} alt="" className="w-full rounded-xl object-contain max-h-72" />}
             {preview.isNote && <p className="text-sm text-slate-600 whitespace-pre-wrap">{preview.note}</p>}
-            {!preview.dataUrl && !preview.isNote && (
+            {!preview.isNote && preview.textPreview && (
+              <pre className="text-xs text-slate-600 whitespace-pre-wrap font-mono bg-slate-50 rounded-xl p-3 max-h-72 overflow-y-auto">{preview.textPreview}{preview.textPreview.length >= 4000 ? "…" : ""}</pre>
+            )}
+            {!preview.dataUrl && !preview.isNote && !preview.textPreview && (
               <p className="text-xs text-slate-400">{preview.size ? `${Math.round(preview.size / 1024)} Ko` : ""} — aperçu non disponible pour ce type de fichier.</p>
             )}
             <button onClick={() => { removeItem(preview.id); setPreview(null); }}
