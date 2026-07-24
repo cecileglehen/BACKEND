@@ -164,12 +164,12 @@ export const api = {
   },
 
   // Chat streaming SSE
-  chatStream: ({ messages, tier, modelId, manual, projectId, agentId, enabledTools, useVortex, onDelta, onThinking, onMeta, onDone, onError, onWebsearch, onArtifact, onImage, onTool, onSkill, onVortex }) => {
+  chatStream: ({ messages, tier, modelId, manual, projectId, agentId, enabledTools, useVortex, brandLock, onDelta, onThinking, onMeta, onDone, onError, onWebsearch, onArtifact, onImage, onTool, onSkill, onVortex }) => {
     const ctrl = new AbortController();
     fetch(u("/api/chat/stream"), {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ messages, tier, modelId, manual, ...(projectId && { projectId }), ...(agentId && { agentId }), ...(enabledTools && { enabledTools }), ...(useVortex && { useVortex: true }) }),
+      body: JSON.stringify({ messages, tier, modelId, manual, ...(projectId && { projectId }), ...(agentId && { agentId }), ...(enabledTools && { enabledTools }), ...(useVortex && { useVortex: true }), ...(brandLock && { brandLock }) }),
       signal: ctrl.signal
     }).then(async (res) => {
       if (!res.ok) {

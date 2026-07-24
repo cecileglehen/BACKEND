@@ -1978,6 +1978,17 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
 
     // En mode auto (pas de modelId), regarde la préférence user pour ce tier
     let modelInfo = selectedModel?.model || null;
+
+    // Verrou de marque : en mode auto, le routeur change de tier à chaque
+    // message ; sans ce garde-fou on retombait sur le modèle par défaut du
+    // NOUVEAU tier, toutes marques confondues — d'où des sauts visibles du
+    // type Gemini → Mistral en pleine conversation. Le verrou prime sur la
+    // préférence de tier : c'est un choix propre à CETTE conversation.
+    if (!modelInfo && req.body?.brandLock) {
+      const locked = findModelForBrand(req.body.brandLock, inTier);
+      if (locked?.model) modelInfo = locked.model;
+    }
+
     if (!modelInfo) {
       const prefs = user?.model_preferences || {};
       const preferredId = prefs[inTier];

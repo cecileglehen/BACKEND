@@ -34,7 +34,7 @@ export function useChatStream({ projectId, agentId, enabledTools, useVortex, onC
   }, []);
 
   // Stream sur un message principal OU sur une variante précise
-  const sendWithTier = useCallback((tier, history, model = null, target = null) => {
+  const sendWithTier = useCallback((tier, history, model = null, target = null, brandLock = null) => {
     setBusy(true);
     setError(null);
 
@@ -74,6 +74,7 @@ export function useChatStream({ projectId, agentId, enabledTools, useVortex, onC
       agentId: agentId ?? undefined,
       enabledTools: enabledTools ? [...enabledTools] : undefined,
       useVortex: !!useVortex,
+      brandLock: brandLock || undefined,
       // Transparence : on attache au message les éléments du Vortex réellement
       // transmis au fournisseur pour CETTE réponse (affiché sous la réponse).
       onVortex: (info) => applyUpdate((m) => ({ ...m, vortexItems: info.items || [] })),

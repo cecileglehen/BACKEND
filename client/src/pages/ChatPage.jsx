@@ -643,7 +643,14 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
           setExpertOpen(true);
           return;
         }
-        chat.sendWithTier(r.tier, history, isBrandFamily(selectedManualModel) ? selectedManualModel : null);
+        // La marque verrouillée suit la conversation même quand le routeur
+        // change de tier (sinon : saut de modèle visible en plein échange).
+        chat.sendWithTier(
+          r.tier, history,
+          isBrandFamily(selectedManualModel) ? selectedManualModel : null,
+          null,
+          selectedManualModel?.brand || null
+        );
       } catch (e) {
         chat.setError(e.message);
         toast.error(e.message);
