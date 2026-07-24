@@ -633,6 +633,16 @@ export default function ChatMessage({ msg, models = [], onRemake, onRemakeWith, 
           <DeepSearchBlock data={msg.deepSearch} streaming={msg.streaming} />
         )}
 
+        {/* Message issu du mode vocal (dit à l'oral, pas tapé) */}
+        {msg.voice && (
+          <div className="flex items-center gap-1 mb-1 text-[10px] font-semibold text-delt-muted">
+            <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="9" y="3" width="6" height="12" rx="3"/><path d="M19 11a7 7 0 0 1-14 0M12 19v3"/>
+            </svg>
+            Vocal
+          </div>
+        )}
+
         {/* Transparence Vortex : ce qui a RÉELLEMENT été transmis au modèle
             pour cette réponse (jamais tout le Vortex — seulement ces extraits). */}
         {!isUser && msg.vortexItems?.length > 0 && (

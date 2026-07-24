@@ -142,6 +142,19 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
   const [vortexMode, setVortexMode] = useState(() => {
     try { return localStorage.getItem("delt-vortex-chat") === "1"; } catch { return false; }
   });
+  // Les échanges du mode vocal atterrissent dans le fil de discussion, au même
+  // titre qu'un échange écrit (persistés avec la conversation).
+  const handleVoiceExchange = (question, answer) => {
+    const model = selectedManualModel
+      ? { id: selectedManualModel.id, display: selectedManualModel.display, brand: selectedManualModel.brand }
+      : undefined;
+    chat.setMessages((prev) => [
+      ...prev,
+      { role: "user", content: question, voice: true },
+      { role: "assistant", content: answer, voice: true, model }
+    ]);
+  };
+
   const toggleVortex = () => setVortexMode((v) => {
     const next = !v;
     try { localStorage.setItem("delt-vortex-chat", next ? "1" : "0"); } catch {}
@@ -858,6 +871,8 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
                   vortexActive={vortexMode}
                   onToggleVortex={toggleVortex}
                   onAgeGate={() => setAgeGateOpen(true)}
+                  voiceChatModel={selectedManualModel}
+                  onVoiceExchange={handleVoiceExchange}
                   searchActive={searchMode}
                   onToggleSearch={modeSearch}
                   onModesAuto={clearModes}
@@ -991,6 +1006,8 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
                   vortexActive={vortexMode}
                   onToggleVortex={toggleVortex}
                   onAgeGate={() => setAgeGateOpen(true)}
+                  voiceChatModel={selectedManualModel}
+                  onVoiceExchange={handleVoiceExchange}
                   searchActive={searchMode}
                   onToggleSearch={modeSearch}
                   onModesAuto={clearModes}

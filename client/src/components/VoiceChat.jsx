@@ -23,7 +23,7 @@ function b64ToInt16(b64) {
 const VAD_THRESHOLD = 14;   // amplitude RMS mini pour considérer que ça parle
 const VAD_SILENCE_MS = 900; // silence après avoir parlé → fin de phrase
 
-export default function VoiceChat({ onClose, mode = "gpt", onAgeGate }) {
+export default function VoiceChat({ onClose, mode = "gpt", onAgeGate, chatModelId, chatModelLabel, onExchange }) {
   const [state, setState] = useState("listening"); // listening | thinking | speaking | muted | error
   const [caption, setCaption] = useState("");
   const [userText, setUserText] = useState("");
@@ -130,9 +130,12 @@ export default function VoiceChat({ onClose, mode = "gpt", onAgeGate }) {
     setState("thinking"); setCaption(""); setError(null);
     api.voiceChatStream({
       text, history: historyRef.current,
-      voice: isGrok ? "rex" : "alloy",
+      voice: isGrok ? "rex" : undefined,
       mode: isGrok ? "grok" : undefined,
-      quality: isGrok ? undefined : qualityRef.current,
+      // Mode « conversation » : on garde le modèle du chat courant (pas de GPT
+      // parachuté dans un chat Gemini). Sinon, GPT audio natif.
+      chatModelId: !isGrok && chatModelId ? chatModelId : undefined,
+      quality: isGrok || chatModelId ? undefined : qualityRef.current,
       onDelta: (t) => setCaption((c) => c + t),
       onAudio: (data, format, sampleRate) => {
         if (stateRef.current === "thinking") setState("speaking");
@@ -140,7 +143,10 @@ export default function VoiceChat({ onClose, mode = "gpt", onAgeGate }) {
         else playPcmChunk(data, sampleRate || 24000);
       },
       onDone: (msg) => {
-        historyRef.current = [...historyRef.current, { role: "user", text }, { role: "assistant", text: msg.text || caption }];
+        const answer = msg.text || caption;
+        historyRef.current = [...historyRef.current, { role: "user", text }, { role: "assistant", text: answer }];
+        // Reporte l'échange dans le fil de conversation, comme un échange écrit.
+        if (answer) onExchange?.(text, answer);
         // Si aucun audio n'est jamais arrivé (edge case), on relance l'écoute direct.
         if (stateRef.current === "thinking") startListening();
       },
@@ -239,9 +245,9 @@ export default function VoiceChat({ onClose, mode = "gpt", onAgeGate }) {
       <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dot}`} />
       <div className="min-w-0 flex-1">
         <div className="text-[11px] font-semibold text-delt-muted">{label}</div>
-        <div className="text-sm text-delt-text truncate">{caption || (userText && `« ${userText} »`) || "Voice chat — parle librement, DeltAI détecte quand tu as fini"}</div>
+        <div className="text-sm text-delt-text truncate">{caption || (userText && `« ${userText} »`) || `Appel avec ${chatModelLabel || (isGrok ? "Grok" : "DeltAI")} — parle, la fin de phrase est détectée`}</div>
       </div>
-      {!isGrok && (
+      {!isGrok && !chatModelId && (
         <button
           onClick={() => setQuality((q) => (q === "mini" ? "pro" : "mini"))}
           title={quality === "pro"

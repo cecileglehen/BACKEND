@@ -32,6 +32,8 @@ export default function Composer({
   vortexActive = false,
   onToggleVortex,
   onAgeGate,
+  voiceChatModel,      // modèle de la conversation courante (marque verrouillée)
+  onVoiceExchange,     // (question, réponse) → écrit dans le fil de discussion
   searchActive = false,
   onToggleSearch,
   onModesAuto
@@ -152,7 +154,16 @@ export default function Composer({
 
   // Voice chat actif : remplace le composer par la barre d'appel, on reste sur
   // la page de chat (pas de plein écran) — juste la barre du bas qui change.
-  if (voiceChatOpen) return <VoiceChat mode={voiceMode} onClose={() => setVoiceChatOpen(false)} onAgeGate={onAgeGate} />;
+  if (voiceChatOpen) return (
+    <VoiceChat
+      mode={voiceMode}
+      chatModelId={voiceMode === "chat" ? voiceChatModel?.id : undefined}
+      chatModelLabel={voiceMode === "chat" ? (voiceChatModel?.display || voiceChatModel?.brand) : undefined}
+      onExchange={onVoiceExchange}
+      onClose={() => setVoiceChatOpen(false)}
+      onAgeGate={onAgeGate}
+    />
+  );
 
   return (
     <div data-tour="composer" className="w-full rounded-2xl sm:rounded-3xl glass-strong border border-slate-900/85 px-3 sm:px-4 pt-3 pb-2 transition-all duration-200 focus-within:shadow-[0_8px_32px_-8px_rgba(15,23,42,0.25)] focus-within:border-slate-900">
@@ -422,6 +433,21 @@ export default function Composer({
             </button>
             {voiceMenuOpen && (
               <div className="absolute bottom-full mb-2 right-0 z-50 w-60 rounded-2xl glass-strong shadow-xl border border-delt-border/60 p-1.5 animate-popIn">
+                {voiceChatModel?.id && (
+                  <button type="button"
+                    onClick={() => { setVoiceMode("chat"); setVoiceMenuOpen(false); setVoiceChatOpen(true); }}
+                    className="w-full flex items-start gap-2.5 px-2 py-2 rounded-xl text-left hover:bg-delt-surface/60 transition-colors">
+                    <span className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#4f46e5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-[12px] font-semibold text-delt-text truncate">
+                        Appeler {voiceChatModel.display || voiceChatModel.brand}
+                      </span>
+                      <span className="block text-[10px] text-delt-muted">Garde le modèle de cette conversation</span>
+                    </span>
+                  </button>
+                )}
                 <button type="button"
                   onClick={() => { setVoiceMode("gpt"); setVoiceMenuOpen(false); setVoiceChatOpen(true); }}
                   className="w-full flex items-start gap-2.5 px-2 py-2 rounded-xl text-left hover:bg-delt-surface/60 transition-colors">

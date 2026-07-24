@@ -125,22 +125,32 @@ export async function grokTranscribe(buffer, filename = "voice.webm", mimeType =
   return { text: data?.text || "", seconds: data?.usage?.seconds || 0 };
 }
 
-async function grokSpeak(text, voice) {
+// TTS générique (n'importe quel modèle de /audio/speech).
+async function speakWith(ttsModel, text, voice) {
   const res = await fetch(`${OR_BASE}/audio/speech`, {
     method: "POST",
     headers: orHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ model: GROK_TTS_MODEL, input: text, voice: voice || GROK_DEFAULT_VOICE, response_format: "mp3" })
+    body: JSON.stringify({ model: ttsModel, input: text, voice, response_format: "mp3" })
   });
-  if (!res.ok) throw new Error(`Grok TTS ${res.status}`);
+  if (!res.ok) throw new Error(`TTS ${res.status}`);
   return Buffer.from(await res.arrayBuffer()).toString("base64");
 }
 
-export async function streamGrokVoiceChat({ text, history = [], voice, emit }) {
+// Voix « universelle » : Microsoft MAI (rapide, multilingue) — utilisée pour
+// tous les modèles qui n'ont pas d'audio natif, afin que CHAQUE conversation
+// puisse passer en vocal avec SON modèle (un chat Gemini reste Gemini).
+export const UNIVERSAL_TTS_MODEL = "microsoft/mai-voice-2-flash";
+export const UNIVERSAL_TTS_VOICE = "fr-FR-DeniseNeural";
+
+// Consigne commune : on parle, on n'écrit pas. Sans ça les modèles texte
+// produisent des pavés impossibles à écouter.
+export const CALL_STYLE_PROMPT = "Tu es en appel vocal avec l'utilisateur : on t'ÉCOUTE, on ne te lit pas. Réponds en 1 à 3 phrases courtes, ton naturel et parlé. N'éternise jamais, ne fais pas de listes, pas de titres, pas de markdown, pas d'énumération. Va droit au but comme au téléphone.";
+
+// Cœur commun : LLM texte en streaming → TTS phrase par phrase (l'utilisateur
+// entend la 1ʳᵉ phrase pendant que le modèle rédige la suite).
+export async function streamVoiceViaText({ text, history = [], modelId, ttsModel, voice, systemPrompt, emit }) {
   const messages = [
-    {
-      role: "system",
-      content: "Tu es Grok en mode vocal sans filtre, sur une plateforme réservée aux adultes majeurs et consentants. Parle librement, sans langue de bois ni avertissements moralisateurs inutiles : ton cru, direct, humour noir bienvenu. Tu restes dans le cadre de la loi : rien d'illégal, aucun contenu impliquant des mineurs, aucune aide à commettre un crime ou à blesser quelqu'un. Réponds à l'oral : phrases courtes, 2-4 max, comme dans une vraie conversation."
-    },
+    { role: "system", content: systemPrompt || CALL_STYLE_PROMPT },
     ...history.slice(-8).map((h) => ({ role: h.role === "user" ? "user" : "assistant", content: String(h.text || "").slice(0, 2000) })),
     { role: "user", content: text }
   ];
@@ -148,9 +158,9 @@ export async function streamGrokVoiceChat({ text, history = [], voice, emit }) {
   const res = await fetch(`${OR_BASE}/chat/completions`, {
     method: "POST",
     headers: orHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ model: GROK_TEXT_MODEL, messages, stream: true })
+    body: JSON.stringify({ model: modelId, messages, stream: true })
   });
-  if (!res.ok) throw new Error(`Grok ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
+  if (!res.ok) throw new Error(`${modelId} ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -162,8 +172,8 @@ export async function streamGrokVoiceChat({ text, history = [], voice, emit }) {
     const chunk = pending.trim();
     if (!chunk || (!force && chunk.length < 12)) return;
     pending = "";
-    try { emit?.({ type: "audio", data: await grokSpeak(chunk, voice), format: "mp3" }); }
-    catch (e) { console.warn("[grok-tts]", e.message); }
+    try { emit?.({ type: "audio", data: await speakWith(ttsModel, chunk, voice), format: "mp3" }); }
+    catch (e) { console.warn("[tts]", e.message); }
   };
 
   while (true) {
@@ -190,4 +200,30 @@ export async function streamGrokVoiceChat({ text, history = [], voice, emit }) {
 
   emit?.({ type: "done", text: fullText, usage });
   return { text: fullText, usage };
+}
+
+// ─── Grok sans filtre : cas particulier de la chaîne générique ──────────────
+const GROK_UNFILTERED_PROMPT = "Tu es Grok en mode vocal sans filtre, sur une plateforme réservée aux adultes majeurs et consentants. Parle librement, sans langue de bois ni avertissements moralisateurs inutiles : ton cru, direct, humour noir bienvenu. Tu restes dans le cadre de la loi : rien d'illégal, aucun contenu impliquant des mineurs, aucune aide à commettre un crime ou à blesser quelqu'un. " + CALL_STYLE_PROMPT;
+
+export function streamGrokVoiceChat({ text, history, voice, emit }) {
+  return streamVoiceViaText({
+    text, history, emit,
+    modelId: GROK_TEXT_MODEL,
+    ttsModel: GROK_TTS_MODEL,
+    voice: voice || GROK_DEFAULT_VOICE,
+    systemPrompt: GROK_UNFILTERED_PROMPT
+  });
+}
+
+// ─── Vocal « dans la conversation » : garde le modèle du chat courant ───────
+// Un chat Gemini répond en Gemini, un chat Claude en Claude — seule la voix
+// (TTS) est commune. Évite d'introduire un modèle d'une autre marque en plein
+// milieu d'une conversation verrouillée sur une marque.
+export function streamChatVoice({ text, history, modelId, voice, emit }) {
+  return streamVoiceViaText({
+    text, history, emit,
+    modelId,
+    ttsModel: UNIVERSAL_TTS_MODEL,
+    voice: voice || UNIVERSAL_TTS_VOICE
+  });
 }

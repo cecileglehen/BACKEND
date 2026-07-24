@@ -3151,7 +3151,7 @@ app.post("/api/voicechat", requireAuth, async (req, res) => {
 
     const { voicechatQuality } = await import("./lib/voicechat.js");
     const qual = voicechatQuality(req.body?.quality);
-    const cost = grokMode ? VOICECHAT_COST_CR : qual.costCr;
+    const cost = (grokMode || req.body?.chatModelId) ? VOICECHAT_COST_CR : qual.costCr;
 
     const vcWindow = await getWindow(req.user.id, req.user.plan);
     if (vcWindow.remaining < cost) {
@@ -3169,9 +3169,16 @@ app.post("/api/voicechat", requireAuth, async (req, res) => {
 
     const emit = (ev) => { try { res.write(`data: ${JSON.stringify(ev)}\n\n`); } catch {} };
     const vc = await import("./lib/voicechat.js");
-    const usedModel = grokMode ? vc.GROK_TEXT_MODEL : qual.id;
+    // 3 modes :
+    //  • grok      → chaîne xAI sans filtre (+18)
+    //  • chatModel → le modèle DE LA CONVERSATION (un chat Gemini reste Gemini)
+    //  • défaut    → GPT audio natif (mini / pro)
+    const chatModelId = String(req.body?.chatModelId || "").trim();
+    const usedModel = grokMode ? vc.GROK_TEXT_MODEL : (chatModelId || qual.id);
     if (grokMode) {
       await vc.streamGrokVoiceChat({ text, history, voice: req.body?.voice, emit });
+    } else if (chatModelId) {
+      await vc.streamChatVoice({ text, history, modelId: chatModelId, voice: req.body?.voice, emit });
     } else {
       await vc.streamVoiceChat({ text, history, voice: req.body?.voice, quality: req.body?.quality, emit });
     }
