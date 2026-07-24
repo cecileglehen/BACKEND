@@ -5,12 +5,20 @@ import { useAuth } from "../contexts/AuthContext.jsx";
 import CreditMeter from "./CreditMeter.jsx";
 import { useT } from "../lib/i18n.jsx";
 
+// L'onglet Code envoie vers le produit Launch sur son sous-domaine
+// (launch.deltai.fr en prod, launch.lvh.me:5173 en dev) — même schéma/port.
+function launchUrl() {
+  const { protocol, host } = window.location;
+  return `${protocol}//launch.${host.replace(/^(www|launch)\./i, "")}`;
+}
+
 function buildTabs(t) {
   return [
     { to: "/",        label: t("navbar.chat") },
     { to: "/agents",  label: t("navbar.agents") },
-    { to: "/code",    label: t("navbar.code") },
+    { href: launchUrl(), label: t("navbar.code") },
     { to: "/studio",  label: t("navbar.studio") },
+    { to: "/vortex",  label: "Vortex" },
     { to: "/billing", label: t("navbar.pricing") },
     { to: "/notre-modele", label: t("navbar.our_model"), highlight: "blue" }
   ];
@@ -56,7 +64,12 @@ export default function Navbar() {
         <Logo />
 
         <nav className="flex items-center gap-0.5 overflow-x-auto min-w-0 max-w-[58vw] sm:max-w-none">
-          {TABS.map(({ to, label, highlight }) => (
+          {TABS.map(({ to, href, label, highlight }) => href ? (
+            <a key={href} href={href}
+              className="px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all whitespace-nowrap text-delt-muted hover:text-delt-text hover:bg-white/50">
+              {label}
+            </a>
+          ) : (
             <NavLink
               key={to}
               to={to}
