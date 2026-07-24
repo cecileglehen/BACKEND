@@ -31,6 +31,7 @@ export default function Composer({
   onToggleDeep,
   vortexActive = false,
   onToggleVortex,
+  onAgeGate,
   searchActive = false,
   onToggleSearch,
   onModesAuto
@@ -44,6 +45,8 @@ export default function Composer({
   const chunksRef = useRef([]);
   const [recording, setRecording] = useState(false);
   const [voiceChatOpen, setVoiceChatOpen] = useState(false);
+  const [voiceMode, setVoiceMode] = useState("gpt"); // "gpt" | "grok" (sans filtre, +18)
+  const [voiceMenuOpen, setVoiceMenuOpen] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [recError, setRecError] = useState(null);
@@ -149,7 +152,7 @@ export default function Composer({
 
   // Voice chat actif : remplace le composer par la barre d'appel, on reste sur
   // la page de chat (pas de plein écran) — juste la barre du bas qui change.
-  if (voiceChatOpen) return <VoiceChat onClose={() => setVoiceChatOpen(false)} />;
+  if (voiceChatOpen) return <VoiceChat mode={voiceMode} onClose={() => setVoiceChatOpen(false)} onAgeGate={onAgeGate} />;
 
   return (
     <div data-tour="composer" className="w-full rounded-2xl sm:rounded-3xl glass-strong border border-slate-900/85 px-3 sm:px-4 pt-3 pb-2 transition-all duration-200 focus-within:shadow-[0_8px_32px_-8px_rgba(15,23,42,0.25)] focus-within:border-slate-900">
@@ -405,17 +408,48 @@ export default function Composer({
         </div>
 
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setVoiceChatOpen(true)}
-            className="w-9 h-9 rounded-full flex items-center justify-center text-delt-muted hover:bg-delt-surface transition-colors"
-            aria-label="Voice chat"
-            title="Voice chat — parle avec DeltAI en direct"
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
-            </svg>
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setVoiceMenuOpen((o) => !o)}
+              className="w-9 h-9 rounded-full flex items-center justify-center text-delt-muted hover:bg-delt-surface transition-colors"
+              aria-label="Voice chat"
+              title="Voice chat — parle avec DeltAI en direct"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+              </svg>
+            </button>
+            {voiceMenuOpen && (
+              <div className="absolute bottom-full mb-2 right-0 z-50 w-60 rounded-2xl glass-strong shadow-xl border border-delt-border/60 p-1.5 animate-popIn">
+                <button type="button"
+                  onClick={() => { setVoiceMode("gpt"); setVoiceMenuOpen(false); setVoiceChatOpen(true); }}
+                  className="w-full flex items-start gap-2.5 px-2 py-2 rounded-xl text-left hover:bg-delt-surface/60 transition-colors">
+                  <span className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#059669" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M19 11a7 7 0 0 1-14 0M12 19v3"/></svg>
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-[12px] font-semibold text-delt-text">Voix standard</span>
+                    <span className="block text-[10px] text-delt-muted">Conversation naturelle, tout public</span>
+                  </span>
+                </button>
+                <button type="button"
+                  onClick={() => { setVoiceMode("grok"); setVoiceMenuOpen(false); setVoiceChatOpen(true); }}
+                  className="w-full flex items-start gap-2.5 px-2 py-2 rounded-xl text-left hover:bg-delt-surface/60 transition-colors">
+                  <span className="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+                  </span>
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-[12px] font-semibold text-delt-text">Grok sans filtre</span>
+                      <span className="text-[8px] font-bold px-1 py-px rounded bg-red-500 text-white">+18</span>
+                    </span>
+                    <span className="block text-[10px] text-delt-muted">Ton cru, voix Rex — âge vérifié requis</span>
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
           <button
             type="button"
             onClick={toggleMic}

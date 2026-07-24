@@ -6,17 +6,24 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api.js";
 
-function b64ToInt16(b64) {
+function b64ToBytes(b64) {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return new Int16Array(bytes.buffer);
+  return bytes;
+}
+// PCM16 : nécessite un nombre PAIR d'octets (2 par échantillon) — on tronque
+// l'octet orphelin d'un chunk partiel plutôt que de lever une RangeError.
+function b64ToInt16(b64) {
+  const bytes = b64ToBytes(b64);
+  const even = bytes.length - (bytes.length % 2);
+  return new Int16Array(bytes.buffer, 0, even / 2);
 }
 
 const VAD_THRESHOLD = 14;   // amplitude RMS mini pour considérer que ça parle
 const VAD_SILENCE_MS = 900; // silence après avoir parlé → fin de phrase
 
-export default function VoiceChat({ onClose }) {
+export default function VoiceChat({ onClose, mode = "gpt", onAgeGate }) {
   const [state, setState] = useState("listening"); // listening | thinking | speaking | muted | error
   const [caption, setCaption] = useState("");
   const [userText, setUserText] = useState("");
@@ -24,6 +31,7 @@ export default function VoiceChat({ onClose }) {
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
 
+  const isGrok = mode === "grok";
   const historyRef = useRef([]);
   const streamRef = useRef(null);
   const recorderRef = useRef(null);
@@ -93,21 +101,52 @@ export default function VoiceChat({ onClose }) {
     return { stop: () => { cancelAnimationFrame(raf); try { ctx.close(); } catch {} } };
   };
 
+  // Le mode Grok renvoie des segments MP3 (une phrase = un segment), là où
+  // gpt-audio-mini streame du PCM brut. On décode chaque MP3 et on l'enchaîne
+  // sur la même horloge audio pour éviter les blancs entre les phrases.
+  const playMp3Chunk = async (b64) => {
+    const ctx = ensureAudioCtx(48000);
+    // MP3 = octets bruts à décoder (surtout pas d'interprétation PCM ici).
+    const bytes = b64ToBytes(b64);
+    const buffer = await ctx.decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(ctx.destination);
+    const startAt = Math.max(ctx.currentTime, nextStartRef.current);
+    src.start(startAt);
+    nextStartRef.current = startAt + buffer.duration;
+    clearTimeout(endTimerRef.current);
+    endTimerRef.current = setTimeout(() => {
+      if (!closedRef.current && stateRef.current === "speaking") startListening();
+    }, Math.max(0, (nextStartRef.current - ctx.currentTime) * 1000) + 60);
+  };
+
   const speak = async (text) => {
     setState("thinking"); setCaption(""); setError(null);
     api.voiceChatStream({
-      text, history: historyRef.current, voice: "alloy",
+      text, history: historyRef.current,
+      voice: isGrok ? "rex" : "alloy",
+      mode: isGrok ? "grok" : undefined,
       onDelta: (t) => setCaption((c) => c + t),
       onAudio: (data, format, sampleRate) => {
         if (stateRef.current === "thinking") setState("speaking");
-        playPcmChunk(data, sampleRate || 24000);
+        if (format === "mp3") playMp3Chunk(data).catch(() => {});
+        else playPcmChunk(data, sampleRate || 24000);
       },
       onDone: (msg) => {
         historyRef.current = [...historyRef.current, { role: "user", text }, { role: "assistant", text: msg.text || caption }];
         // Si aucun audio n'est jamais arrivé (edge case), on relance l'écoute direct.
         if (stateRef.current === "thinking") startListening();
       },
-      onError: (e) => { setError(e.message); setState("error"); setTimeout(startListening, 1500); }
+      onError: (e) => {
+        if (String(e.message || "").includes("age_gate") || String(e.message || "").includes("+18")) {
+          setError("Mode sans filtre réservé aux +18 ans.");
+          setState("error");
+          onAgeGate?.();
+          return;
+        }
+        setError(e.message); setState("error"); setTimeout(startListening, 1500);
+      }
     });
   };
 
@@ -130,7 +169,7 @@ export default function VoiceChat({ onClose }) {
         if (blob.size < 1000 || closedRef.current) { if (!closedRef.current) startListening(); return; }
         setState("thinking");
         try {
-          const result = await api.transcribe(blob);
+          const result = await api.transcribe(blob, isGrok ? "grok" : undefined);
           const text = (result.text || "").trim();
           if (!text) { startListening(); return; }
           setUserText(text);

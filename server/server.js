@@ -2938,7 +2938,20 @@ app.post("/api/transcribe", requireAuth, upload.single("audio"), async (req, res
       });
     }
 
-    const result = await transcribeAudio(req.file.buffer, req.file.mimetype, req.file.originalname);
+    // Mode Grok : transcription par x-ai/grok-stt-1.0 (facturé à la seconde
+    // d'audio) pour rester bout-en-bout sur la chaîne xAI. Repli silencieux
+    // sur Whisper si xAI est indisponible — mieux vaut transcrire que rien.
+    let result;
+    if (req.body?.mode === "grok") {
+      try {
+        const { grokTranscribe } = await import("./lib/voicechat.js");
+        const g = await grokTranscribe(req.file.buffer, req.file.originalname || "voice.webm", req.file.mimetype);
+        result = { text: g.text, duration: g.seconds, language: null };
+      } catch (e) {
+        console.warn("[transcribe] grok indisponible, repli Whisper:", e.message);
+      }
+    }
+    if (!result) result = await transcribeAudio(req.file.buffer, req.file.mimetype, req.file.originalname);
 
     if (user.plan === "FREE") {
       await addTranscriptionUsage(user.id, result.duration || 0);
@@ -3074,8 +3087,10 @@ app.post("/api/voice", requireAuth, async (req, res) => {
 
     const key = (process.env.OPENROUTER_API_KEY || "").trim();
     if (!key) return res.status(500).json({ error: "OPENROUTER_API_KEY manquante" });
+    // La TTS passe par /audio/speech (compatible OpenAI) et renvoie un flux
+    // d'octets audio — PAS par /chat/completions, qui refuse ces modèles.
     const voiceId = String(req.body?.voiceId || voiceModel.voices?.[0]?.id || "").trim();
-    const orRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const orRes = await fetch("https://openrouter.ai/api/v1/audio/speech", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -3085,21 +3100,18 @@ app.post("/api/voice", requireAuth, async (req, res) => {
       },
       body: JSON.stringify({
         model: voiceModel.id,
-        messages: [{ role: "user", content: text }],
-        modalities: ["text", "audio"],
-        audio: { format: "mp3", ...(voiceId && { voice: voiceId }) }
+        input: text,
+        ...(voiceId && { voice: voiceId }),
+        response_format: "mp3"
       })
     });
     if (!orRes.ok) {
       const txt = await orRes.text().catch(() => "");
       return res.status(orRes.status).json({ error: `OpenRouter ${orRes.status}: ${txt.slice(0, 300)}` });
     }
-    const data = await orRes.json();
-    const audio = data?.choices?.[0]?.message?.audio;
-    const url = audio?.data
-      ? `data:audio/${audio.format || "mp3"};base64,${audio.data}`
-      : audio?.url ?? null;
-    if (!url) return res.status(502).json({ error: "Réponse provider invalide" });
+    const audioBuf = Buffer.from(await orRes.arrayBuffer());
+    if (!audioBuf.length) return res.status(502).json({ error: "Réponse provider vide" });
+    const url = `data:audio/mpeg;base64,${audioBuf.toString("base64")}`;
 
     try {
       await consumeWindow(req.user.id, cost);
@@ -3125,6 +3137,17 @@ app.post("/api/voicechat", requireAuth, async (req, res) => {
     if (!text) return res.status(400).json({ error: "text requis" });
     const history = Array.isArray(req.body?.history) ? req.body.history.slice(-8) : [];
 
+    // Mode Grok sans filtre : réservé aux comptes ayant confirmé leur majorité
+    // (même garde-fou que le tier UNCENSORED du chat texte).
+    const grokMode = req.body?.mode === "grok";
+    if (grokMode) {
+      const { getDb } = await import("./lib/db.js");
+      const { rows } = await getDb().query(`SELECT age_verified FROM users WHERE id=$1`, [req.user.id]);
+      if (!rows[0]?.age_verified) {
+        return res.status(403).json({ error: "age_gate", message: "Mode sans filtre réservé aux +18 ans. Confirme ton âge pour continuer." });
+      }
+    }
+
     const vcWindow = await getWindow(req.user.id, req.user.plan);
     if (vcWindow.remaining < VOICECHAT_COST_CR) {
       const reset = new Date(vcWindow.resetAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
@@ -3139,15 +3162,18 @@ app.post("/api/voicechat", requireAuth, async (req, res) => {
     const heartbeat = setInterval(() => { try { res.write(": ping\n\n"); } catch {} }, 15000);
     res.on("close", () => clearInterval(heartbeat));
 
-    const { streamVoiceChat, VOICECHAT_MODEL } = await import("./lib/voicechat.js");
-    await streamVoiceChat({
-      text, history, voice: req.body?.voice,
-      emit: (ev) => { try { res.write(`data: ${JSON.stringify(ev)}\n\n`); } catch {} }
-    });
+    const emit = (ev) => { try { res.write(`data: ${JSON.stringify(ev)}\n\n`); } catch {} };
+    const vc = await import("./lib/voicechat.js");
+    const usedModel = grokMode ? vc.GROK_TEXT_MODEL : vc.VOICECHAT_MODEL;
+    if (grokMode) {
+      await vc.streamGrokVoiceChat({ text, history, voice: req.body?.voice, emit });
+    } else {
+      await vc.streamVoiceChat({ text, history, voice: req.body?.voice, emit });
+    }
 
     try {
       await consumeWindow(req.user.id, VOICECHAT_COST_CR);
-      logUsage({ userId: req.user.id, modelId: VOICECHAT_MODEL, tier: "VOICECHAT", tokensIn: 0, tokensOut: 0, costCr: VOICECHAT_COST_CR, source: "voicechat" });
+      logUsage({ userId: req.user.id, modelId: usedModel, tier: "VOICECHAT", tokensIn: 0, tokensOut: 0, costCr: VOICECHAT_COST_CR, source: "voicechat" });
     } catch { /* ignore */ }
 
     clearInterval(heartbeat);

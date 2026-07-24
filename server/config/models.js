@@ -254,19 +254,39 @@ export const CREATIVE = {
       return Math.max(1, Math.ceil((Math.max(0, n) / 1000) * this.crPer1kChars));
     },
     models: [
+      // NB : ces modèles s'appellent via POST /api/v1/audio/speech (compatible
+      // OpenAI), PAS via /chat/completions — et chaque famille a ses propres
+      // identifiants de voix, vérifiés un à un contre l'API.
+      {
+        id: "x-ai/grok-voice-tts-1.0",
+        brand: "xAI",
+        display: "Grok Voice TTS",
+        provider: "openrouter",
+        tagline: "20+ langues, 5 voix expressives",
+        voices: [
+          { id: "rex", label: "Rex" }, { id: "eve", label: "Eve" }, { id: "ara", label: "Ara" },
+          { id: "sal", label: "Sal" }, { id: "leo", label: "Leo" }
+        ]
+      },
       {
         id: "minimax/speech-2.8-turbo",
         brand: "MiniMax",
         display: "Speech 2.8 Turbo",
         provider: "openrouter",
-        tagline: "Rapide & naturel — usage quotidien"
+        tagline: "Rapide & naturel — usage quotidien",
+        voices: [
+          { id: "alloy", label: "Neutre" }, { id: "female-shaonv", label: "Femme" }, { id: "male-qn-qingse", label: "Homme" }
+        ]
       },
       {
         id: "minimax/speech-2.8-hd",
         brand: "MiniMax",
         display: "Speech 2.8 HD",
         provider: "openrouter",
-        tagline: "Qualité studio — rendu premium"
+        tagline: "Qualité studio — rendu premium",
+        voices: [
+          { id: "alloy", label: "Neutre" }, { id: "female-shaonv", label: "Femme" }, { id: "male-qn-qingse", label: "Homme" }
+        ]
       },
       {
         id: "qwen/qwen-audio-3.0-tts-plus",
@@ -284,7 +304,13 @@ export const CREATIVE = {
         brand: "Microsoft",
         display: "MAI Voice 2 Flash",
         provider: "openrouter",
-        tagline: "Le plus rapide — voix courtes"
+        tagline: "Le plus rapide — voix courtes",
+        // Format Azure obligatoire (« alloy » et consorts sont refusés).
+        voices: [
+          { id: "fr-FR-DeniseNeural", label: "Denise (FR)" },
+          { id: "fr-FR-HenriNeural",  label: "Henri (FR)" },
+          { id: "en-US-AvaNeural",    label: "Ava (EN)" }
+        ]
       }
     ],
     get model() { return this.models[0]; }

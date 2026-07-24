@@ -857,6 +857,7 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
                   onToggleDeep={modeDeep}
                   vortexActive={vortexMode}
                   onToggleVortex={toggleVortex}
+                  onAgeGate={() => setAgeGateOpen(true)}
                   searchActive={searchMode}
                   onToggleSearch={modeSearch}
                   onModesAuto={clearModes}
@@ -989,6 +990,7 @@ export default function ChatPage({ agentIdOverride = null, onExitAgent = null })
                   onToggleDeep={modeDeep}
                   vortexActive={vortexMode}
                   onToggleVortex={toggleVortex}
+                  onAgeGate={() => setAgeGateOpen(true)}
                   searchActive={searchMode}
                   onToggleSearch={modeSearch}
                   onModesAuto={clearModes}

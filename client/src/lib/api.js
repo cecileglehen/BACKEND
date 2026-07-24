@@ -478,12 +478,12 @@ export const api = {
 
   // Transcription (Groq Whisper)
   // Voice Chat GPT (gpt-audio-mini) — SSE : texte + audio en streaming.
-  voiceChatStream: ({ text, history, voice, onDelta, onAudio, onDone, onError }) => {
+  voiceChatStream: ({ text, history, voice, mode, onDelta, onAudio, onDone, onError }) => {
     const ctrl = new AbortController();
     fetch(u("/api/voicechat"), {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ text, history, voice }),
+      body: JSON.stringify({ text, history, voice, ...(mode && { mode }) }),
       signal: ctrl.signal
     }).then(async (res) => {
       if (!res.ok) {
@@ -515,9 +515,10 @@ export const api = {
     return () => ctrl.abort();
   },
 
-  transcribe: (audioBlob) => {
+  transcribe: (audioBlob, mode) => {
     const form = new FormData();
     form.append("audio", audioBlob, "voice.webm");
+    if (mode) form.append("mode", mode);
     const headers = {};
     if (_token) headers["Authorization"] = `Bearer ${_token}`;
     return fetch(u("/api/transcribe"), { method: "POST", headers, body: form }).then(json);
