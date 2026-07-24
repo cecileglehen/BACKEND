@@ -118,13 +118,29 @@ function FileIcon({ label, color }) {
   );
 }
 
-// Un fichier en orbite : rayon + vitesse propres, animé en CSS (léger, fluide,
-// pas de re-render React par frame).
+// Hash déterministe id → [0,1) : pseudo-aléatoire stable (ne rebat pas les
+// paramètres d'orbite à chaque re-render), plusieurs valeurs via un "sel".
+function rand01(seed, salt) {
+  let h = 2166136261;
+  const s = seed + "#" + salt;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return ((h >>> 0) % 10000) / 10000;
+}
+
+// Un fichier en orbite : trajectoire elliptique, inclinée, avec un rayon et
+// une vitesse propres — pas un cercle parfait, chaque item a sa propre orbite
+// « sale » comme un vrai débris autour d'un trou noir. Structure en 3 couches :
+// plan incliné+aplati (statique) → révolution (rotation animée) → contre-
+// rotation (garde la carte du fichier bien droite et lisible).
 function OrbitingItem({ item, index, total, onOpen, onRemove }) {
   const ring = index % 4;
-  const radius = 130 + ring * 62;
-  const duration = 22 + ring * 9 + (index % 3) * 2.5;
-  const delay = -((index / Math.max(1, total)) * duration);
+  const baseRadius = 120 + ring * 58;
+  const radiusJitter = (rand01(item.id, "r") - 0.5) * 50; // ±25px
+  const radius = Math.max(70, baseRadius + radiusJitter);
+  const eccentricity = 0.45 + rand01(item.id, "e") * 0.45; // 0.45–0.9 → jamais un cercle
+  const tilt = (rand01(item.id, "t") - 0.5) * 70; // ±35° d'inclinaison du plan
+  const duration = 20 + ring * 8 + rand01(item.id, "d") * 14;
+  const delay = -(rand01(item.id, "p") * duration); // déphasage aléatoire, pas synchronisé
   const dir = ring % 2 === 0 ? "normal" : "reverse";
   const meta = metaFor(item.name, item.isNote);
   return (
@@ -132,23 +148,36 @@ function OrbitingItem({ item, index, total, onOpen, onRemove }) {
       className="absolute top-1/2 left-1/2 pointer-events-none"
       style={{
         width: radius * 2, height: radius * 2, marginLeft: -radius, marginTop: -radius,
-        animation: `vortex-spin ${duration}s linear ${delay}s infinite`,
-        animationDirection: dir
+        transform: `rotate(${tilt}deg) scaleY(${eccentricity})`
       }}
     >
-      <button
-        onClick={() => onOpen(item)}
-        title={item.name}
-        className="pointer-events-auto absolute rounded-xl bg-white/95 backdrop-blur border border-white/60 shadow-lg shadow-black/30 flex items-center gap-1.5 px-2 py-1.5 hover:scale-110 hover:z-10 transition-transform group"
-        style={{ top: 0, left: "50%", transform: "translate(-50%, -50%)" }}
+      {/* Révolution : SEULE l'animation touche le transform de cette couche */}
+      <div
+        className="absolute inset-0"
+        style={{ animation: `vortex-spin ${duration}s linear ${delay}s infinite`, animationDirection: dir }}
       >
-        <FileIcon label={meta.label} color={meta.color} />
-        <span className="text-[10px] font-semibold text-slate-700 max-w-[80px] truncate">{item.name}</span>
-        <span
-          onClick={(e) => { e.stopPropagation(); onRemove(item.id); }}
-          className="opacity-0 group-hover:opacity-100 transition-opacity w-4 h-4 rounded-full bg-slate-200 hover:bg-red-100 text-slate-500 hover:text-red-500 flex items-center justify-center text-[10px] flex-shrink-0"
-        >✕</span>
-      </button>
+        {/* Ancrage statique au sommet du cercle (avant déformation ellipse) */}
+        <div className="pointer-events-auto absolute" style={{ top: 0, left: "50%", transform: "translate(-50%, -50%)" }}>
+          {/* Contre-révolution : annule la rotation pour garder la carte droite */}
+          <div style={{ animation: `vortex-spin ${duration}s linear ${delay}s infinite`, animationDirection: dir === "normal" ? "reverse" : "normal" }}>
+            {/* Contre-déformation statique : annule le tilt + l'aplatissement ellipse */}
+            <div style={{ transform: `scaleY(${1 / eccentricity}) rotate(${-tilt}deg)` }}>
+              <button
+                onClick={() => onOpen(item)}
+                title={item.name}
+                className="rounded-xl bg-white/95 backdrop-blur border border-white/60 shadow-lg shadow-black/30 flex items-center gap-1.5 px-2 py-1.5 hover:scale-110 hover:z-10 transition-transform group"
+              >
+                <FileIcon label={meta.label} color={meta.color} />
+                <span className="text-[10px] font-semibold text-slate-700 max-w-[80px] truncate">{item.name}</span>
+                <span
+                  onClick={(e) => { e.stopPropagation(); onRemove(item.id); }}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity w-4 h-4 rounded-full bg-slate-200 hover:bg-red-100 text-slate-500 hover:text-red-500 flex items-center justify-center text-[10px] flex-shrink-0"
+                >✕</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
