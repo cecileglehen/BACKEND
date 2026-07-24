@@ -88,7 +88,16 @@ export async function getUserDataKey(userId, client = null) {
   const { rows } = await db.query(`SELECT secret_key FROM users WHERE id=$1`, [userId]);
   const existing = rows[0]?.secret_key;
   if (existing) {
-    const key = decryptDek(existing);
+    let key;
+    try {
+      key = decryptDek(existing);
+    } catch {
+      // DEK chiffrée avec une autre clé maîtresse (ex. env local ≠ prod) :
+      // clé factice dérivée → les champs chiffrés tomberont sur le placeholder
+      // de decryptForUser au lieu de faire planter l'endpoint entier.
+      console.warn(`[cryptoBox] DEK indéchiffrable pour user ${userId} (clé maîtresse différente ?)`);
+      key = crypto.createHash("sha256").update(`fallback:${userId}`).digest();
+    }
     cacheSet(userId, key);
     return key;
   }
@@ -110,6 +119,13 @@ export function encryptForUser(value, userKey) {
 
 export function decryptForUser(value, userKey) {
   if (!isEncrypted(value)) return value ?? "";
-  if (String(value).startsWith(USER_PREFIX)) return decryptWithKey(value, userKey, USER_PREFIX);
-  return decryptText(value);
+  // Tolérant : un contenu chiffré avec une AUTRE clé (ex. env local sans la
+  // MESSAGE_ENCRYPTION_KEY de prod) ne doit pas faire planter toute la liste
+  // de conversations — on renvoie un placeholder lisible à la place.
+  try {
+    if (String(value).startsWith(USER_PREFIX)) return decryptWithKey(value, userKey, USER_PREFIX);
+    return decryptText(value);
+  } catch {
+    return "[Contenu chiffré — clé de déchiffrement indisponible sur ce serveur]";
+  }
 }

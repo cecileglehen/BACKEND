@@ -32,7 +32,7 @@ Pick the BEST model based on these rules :
 0. "fal-ai/fast-sdxl" — CHEAPEST. Use for very quick drafts, throwaway sketches, ultra-simple
    subjects with no quality requirement. Pick it when the user wants "vite", "pas cher", "un brouillon".
 
-1. "fal-ai/flux-1/schnell" — Fast & cheap. Use for:
+1. "google/gemini-3.1-flash-lite-image" — Fast & cheap. Use for:
    - Simple subjects, generic illustrations, casual concepts
    - NO text needed in the image (or just 1-2 letters)
    - Quick tries, drafts, brainstorming
@@ -56,7 +56,7 @@ Pick the BEST model based on these rules :
 - Image contains text/words/numbers → "openai/gpt-5-image"
 - "haute qualité / pro / parfait" or detailed character / complex scene → "google/gemini-3.1-flash-image-preview"
 - Standard quality request → "google/gemini-2.5-flash-image"
-- Simple subject, no text → "fal-ai/flux-1/schnell" (default for image)
+- Simple subject, no text → "google/gemini-3.1-flash-lite-image" (default for image)
 
 Return ONLY the JSON, no other text.`;
 
@@ -104,7 +104,7 @@ export async function routeMessage(userMessage) {
   // volontairement exclus (réservés à l'Art Studio).
   const allowedImageModels = new Set([
     "fal-ai/fast-sdxl",
-    "fal-ai/flux-1/schnell",
+    "google/gemini-3.1-flash-lite-image",
     "google/gemini-2.5-flash-image",
     "openai/gpt-5-image-mini",
     "google/gemini-3.1-flash-image-preview",
@@ -120,7 +120,7 @@ export async function routeMessage(userMessage) {
   if (intent === "image" && typeof parsed.imageModel === "string" && allowedImageModels.has(parsed.imageModel)) {
     imageModel = parsed.imageModel;
   } else if (intent === "image") {
-    imageModel = "fal-ai/flux-1/schnell"; // défaut sûr
+    imageModel = "google/gemini-3.1-flash-lite-image"; // défaut sûr
   }
 
   return { level, intent, imageModel };

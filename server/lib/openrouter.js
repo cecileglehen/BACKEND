@@ -60,23 +60,48 @@ async function callDeltModel(modelId, messages, signal) {
   return res.json();
 }
 
+// 402 "requested up to X tokens, but can only afford Y" : le compte OpenRouter
+// ne couvre pas le max_tokens par défaut du modèle. On extrait Y pour retenter
+// avec un plafond réduit (~90 %) au lieu de faire échouer la requête.
+function affordableTokensFrom(txt) {
+  const m = String(txt || "").match(/can only afford (\d+)/i);
+  if (!m) return null;
+  const afford = Math.floor(Number(m[1]) * 0.9);
+  return afford >= 512 ? afford : null; // en-dessous, réponse inutilisable
+}
+
 async function callModel(modelId, messages, signal, extra = {}) {
   if (isDeltModel(modelId)) return callDeltModel(modelId, messages, signal);
 
   const key = (process.env.OPENROUTER_API_KEY || "").trim();
   if (!key) throw new Error("OPENROUTER_API_KEY manquante");
 
-  const body = { model: modelId, messages, usage: { include: true }, ...extra };
-
-  const res = await fetch(OR_URL, {
+  const doFetch = (maxTokens) => fetch(OR_URL, {
     method: "POST",
     signal,
     headers: headers(key),
-    body: JSON.stringify(body)
+    body: JSON.stringify({
+      model: modelId,
+      messages,
+      usage: { include: true },
+      ...(maxTokens ? { max_tokens: maxTokens } : {}),
+      ...extra
+    })
   });
+
+  let res = await doFetch(null);
 
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
+    // Crédits OpenRouter insuffisants pour le plafond du modèle → retry réduit
+    if (res.status === 402) {
+      const afford = affordableTokensFrom(txt);
+      if (afford) {
+        console.warn(`[openrouter] 402 sur ${modelId} — retry avec max_tokens=${afford}`);
+        res = await doFetch(afford);
+        if (res.ok) return res.json();
+      }
+    }
     const err = new Error(`OpenRouter ${res.status}: ${txt.slice(0, 200)}`);
     err.status = res.status;
     err.retryable = RETRYABLE.has(res.status);
@@ -178,14 +203,44 @@ export async function streamChat({ modelId, messages, res, onDone }) {
           stream_options: { include_usage: true },
           usage: { include: true },
           include_reasoning: true,
-          reasoning: { effort: "medium" }
+          reasoning: { effort: "medium" },
+          // Claude Fable 5 (et Anthropic 4.6+) : reasoning TOUJOURS actif en
+          // adaptatif — `reasoning.effort` est un no-op silencieux, le levier
+          // OpenRouter est `verbosity`.
+          ...(/anthropic\/claude-(fable|opus-4\.[89]|sonnet-5)/i.test(modelId) ? { verbosity: "medium" } : {})
         })
       });
 
-  if (!orRes.ok) {
-    res.off("close", onClientClose);
-    const txt = await orRes.text().catch(() => "");
-    throw new Error(`OpenRouter ${orRes.status}: ${txt.slice(0, 200)}`);
+  let streamRes = orRes;
+  if (!streamRes.ok) {
+    const txt = await streamRes.text().catch(() => "");
+    // 402 : crédits OpenRouter < max_tokens par défaut du modèle → retry
+    // avec un plafond réduit plutôt que planter la conversation.
+    const afford = !isDelt && streamRes.status === 402 ? affordableTokensFrom(txt) : null;
+    if (afford) {
+      console.warn(`[openrouter] 402 stream sur ${modelId} — retry avec max_tokens=${afford}`);
+      streamRes = await fetch(OR_URL, {
+        method: "POST",
+        headers: headers((process.env.OPENROUTER_API_KEY || "").trim()),
+        signal: upstreamCtrl.signal,
+        body: JSON.stringify({
+          model: modelId,
+          messages,
+          stream: true,
+          max_tokens: afford,
+          stream_options: { include_usage: true },
+          usage: { include: true },
+          include_reasoning: true,
+          reasoning: { effort: "medium" },
+          ...(/anthropic\/claude-(fable|opus-4\.[89]|sonnet-5)/i.test(modelId) ? { verbosity: "medium" } : {})
+        })
+      });
+    }
+    if (!streamRes.ok) {
+      res.off("close", onClientClose);
+      const txt2 = afford ? await streamRes.text().catch(() => "") : txt;
+      throw new Error(`OpenRouter ${streamRes.status}: ${txt2.slice(0, 200)}`);
+    }
   }
 
   // Notification : Sonar lance une recherche web
@@ -193,7 +248,7 @@ export async function streamChat({ modelId, messages, res, onDone }) {
     res.write(`data: ${JSON.stringify({ type: "websearch", status: "searching" })}\n\n`);
   }
 
-  const reader = orRes.body.getReader();
+  const reader = streamRes.body.getReader();
   const decoder = new TextDecoder();
   let rawContent = "";
   let fullContent = "";
@@ -223,7 +278,15 @@ export async function streamChat({ modelId, messages, res, onDone }) {
       try {
         const json = JSON.parse(data);
         const choice = json.choices?.[0];
-        const reasoning = choice?.delta?.reasoning ?? choice?.delta?.reasoning_content ?? "";
+        // Reasoning unifié (OpenAI-like) OU blocs Anthropic (Claude Fable 5 /
+        // Opus 4.8+) livrés dans delta.reasoning_details[] — types
+        // reasoning.text / reasoning.summary (on ignore reasoning.encrypted).
+        let reasoning = choice?.delta?.reasoning ?? choice?.delta?.reasoning_content ?? "";
+        if (!reasoning && Array.isArray(choice?.delta?.reasoning_details)) {
+          reasoning = choice.delta.reasoning_details
+            .map((d) => d?.text ?? d?.summary ?? "")
+            .join("");
+        }
         const delta = choice?.delta?.content ?? "";
 
         // Capture citations (Perplexity Sonar) — peut être top-level ou dans message

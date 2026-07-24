@@ -108,6 +108,23 @@ export async function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_agents_user ON agents(user_id, updated_at DESC);
 
+    -- Missions d'agent en arrière-plan (boucle Plan → Act → Observe → Verify)
+    CREATE TABLE IF NOT EXISTS agent_runs (
+      id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      agent_id      UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+      goal          TEXT NOT NULL,
+      status        TEXT NOT NULL DEFAULT 'running',
+      steps         JSONB NOT NULL DEFAULT '[]'::jsonb,
+      result        TEXT,
+      error         TEXT,
+      credit_cost   NUMERIC DEFAULT 0,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_runs_user ON agent_runs(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_agent_runs_agent ON agent_runs(agent_id, created_at DESC);
+
     CREATE TABLE IF NOT EXISTS usage_log (
       id          BIGSERIAL PRIMARY KEY,
       user_id     UUID NOT NULL,
@@ -219,6 +236,7 @@ export async function initSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_launch_payments_project
       ON launch_payments(project_id, created_at DESC);
+    ALTER TABLE launch_payments ADD COLUMN IF NOT EXISTS customer JSONB;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS secret_key TEXT;
     ALTER TABLE users ALTER COLUMN plan SET DEFAULT 'FREE';
     UPDATE users SET plan = 'FREE' WHERE plan = 'LITE';

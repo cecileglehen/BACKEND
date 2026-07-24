@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getDb } from "./db.js";
+import { skillBlockFor } from "./skillEngine.js";
 import { zipFiles } from "./zip.js";
 
 // Skills = instructions de codage externalisées (server/skills/*.md), éditables
@@ -28,7 +29,7 @@ const MAX_FILE_BYTES = 500_000;
 const MAX_TOTAL_BYTES = 2_000_000;
 const MAX_ACTIONS = 80;
 
-// URL publique du backend (pour les images Flux Schnell embeddables dans les apps).
+// URL publique du backend (pour les images IA embeddables dans les apps).
 const PUBLIC_API = (process.env.PUBLIC_API_URL || "https://deltai-backend.onrender.com").replace(/\/$/, "");
 
 // ─── Scaffold Vite + React (mode "react") ────────────────────────────────────
@@ -41,7 +42,7 @@ const REACT_SCAFFOLD = {
     version: "0.0.0",
     type: "module",
     scripts: { dev: "vite --host", build: "vite build", preview: "vite preview" },
-    dependencies: { react: "^18.3.1", "react-dom": "^18.3.1" },
+    dependencies: { react: "^18.3.1", "react-dom": "^18.3.1", "react-router-dom": "^6.28.0" },
     devDependencies: { "@vitejs/plugin-react": "^4.3.4", vite: "^5.4.10" }
   }, null, 2),
   "vite.config.js": `import { defineConfig } from "vite";
@@ -113,7 +114,7 @@ Règles:
 - Si tu crées plusieurs pages HTML comme pricing.html, relie-les depuis index.html avec des liens relatifs simples, par exemple href="pricing.html".
 - Pour HTML/CSS/JS, utilise des fichiers séparés quand c'est utile et des chemins relatifs qui fonctionnent en preview.
 - Garde le projet compact mais complet.
-- Images IA (Flux Schnell) : embarque-les directement, sans clé :
+- Images IA (Gemini Flash Lite) : embarque-les directement, sans clé :
   <img src="${PUBLIC_API}/api/launch/img?prompt=DESCRIPTION_ENCODE_EN_ANGLAIS" alt="..." />
   Idéal pour illustrations, héros, vignettes. Rapide et économique.
 - Réponds uniquement JSON.`;
@@ -231,7 +232,10 @@ async function streamModel({ prompt, modelId, systemPrompt, onPath, onThinking }
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: String(prompt || "").slice(0, 12000) }
+        // 150k chars ≈ 37k tokens : laisse passer les fichiers du projet et les
+        // read_file. (L'ancien cap 12k coupait les contenus lus APRÈS la limite
+        // → le modèle relisait le même fichier en boucle sans jamais le voir.)
+        { role: "user", content: String(prompt || "").slice(0, 150000) }
       ]
     })
   });
@@ -289,11 +293,85 @@ async function streamModel({ prompt, modelId, systemPrompt, onPath, onThinking }
   return { content, usage };
 }
 
+// Fichiers du projet inlinés dans un prompt (budget borné). Évite au modèle de
+// devoir read_file un par un : il voit directement l'état réel du code — c'est
+// la condition pour qu'il édite juste (classes CSS existantes, imports, etc.).
+const BINARY_EXT_RE = /\.(png|jpe?g|gif|webp|ico|woff2?|ttf|otf|mp3|mp4|pdf|zip)$/i;
+function projectFilesBlock(map, { maxFile = 12000, maxTotal = 90000 } = {}) {
+  if (!map?.size) return "";
+  let total = 0;
+  const parts = [];
+  for (const [p, c] of map) {
+    if (typeof c !== "string" || BINARY_EXT_RE.test(p)) { parts.push(`--- ${p} --- (binaire)`); continue; }
+    const body = c.length > maxFile ? `${c.slice(0, maxFile)}\n… (tronqué — ${c.length} caractères, read_file pour la suite)` : c;
+    if (total + body.length > maxTotal) { parts.push(`--- ${p} --- (${c.length} caractères — non inclus, fais read_file si besoin)`); continue; }
+    total += body.length;
+    parts.push(`--- ${p} ---\n${body}`);
+  }
+  return `\n\n═══ FICHIERS ACTUELS DU PROJET (état réel — fie-toi à ça, pas à ta mémoire) ═══\n${parts.join("\n\n")}`;
+}
+
+// Classes utilisées dans le JSX/HTML touché mais sans AUCUNE règle CSS dans le
+// projet → éléments ajoutés « nus », sans la DA du site. Sert de garde-fou :
+// si on en trouve, une passe corrective force le modèle à les styler.
+function orphanClassNames(map, touched) {
+  const css = [...map.entries()].filter(([p]) => p.endsWith(".css")).map(([, c]) => String(c)).join("\n");
+  const classes = new Set();
+  for (const p of touched || []) {
+    if (!/\.(jsx?|tsx?|html)$/.test(p)) continue;
+    const src = String(map.get(p) || "");
+    for (const m of src.matchAll(/class(?:Name)?=["']([^"']+)["']/g)) {
+      for (const c of m[1].split(/\s+/)) {
+        // Ignore les tokens dynamiques (template/ternaire) — indécidables statiquement.
+        if (c && /^[A-Za-z_][\w-]*$/.test(c)) classes.add(c);
+      }
+    }
+  }
+  return [...classes].filter((c) => !new RegExp(`\\.${c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`).test(css));
+}
+
+// Contexte Notion du projet : cible configurée + schéma réel de la base.
+// Injecté dans les prompts pour que l'IA ne demande JAMAIS l'ID à l'utilisateur
+// (il est déjà configuré via le bouton Notion de l'IDE) et code sur les VRAIES
+// colonnes. Silencieux si pas de cible ou si Notion ne répond pas.
+async function notionContextBlock(userId, projectId, { autoCreate = false, appName = "", emit } = {}) {
+  try {
+    const { getProjectNotion, fetchNotionSchema, autoProvisionNotion, notionUrl } = await import("./launchIntegrations.js");
+    const proj = await getProjectNotion(projectId);
+    let target = proj?.notion_target;
+    let createdUrl = null;
+    if (!target && autoCreate) {
+      // Full auto : l'IA crée la base elle-même (l'utilisateur n'a que l'OAuth
+      // à faire) et donnera le lien dans sa réponse.
+      emit?.({ type: "status", text: "Je crée ta base Notion « Commandes »…" });
+      const r = await autoProvisionNotion(userId, projectId, appName);
+      if (r.ok) {
+        target = r.target;
+        createdUrl = r.url;
+        emit?.({ type: "status", text: `Base Notion créée dans « ${r.parentTitle} »` });
+      } else if (r.notConnected) {
+        return `\n\n═══ INTÉGRATION NOTION ═══\nNotion n'est PAS ENCORE connecté. Ne demande aucun ID : dis simplement à l'utilisateur de cliquer sur le bouton Notion en haut de l'IDE pour lier son compte — ensuite la base sera créée automatiquement pour lui.`;
+      } else {
+        return `\n\n═══ INTÉGRATION NOTION ═══\nCréation automatique de la base impossible : ${r.error}\nTransmets ce message à l'utilisateur tel quel, ne demande pas d'ID.`;
+      }
+    }
+    if (!target) return "";
+    const schema = await fetchNotionSchema(userId, target);
+    const cols = schema?.length
+      ? `Base de données — colonnes réelles : ${schema.map((c) => `${c.name} (${c.type})`).join(", ")}. Utilise EXACTEMENT ces noms de colonnes.`
+      : "Cible = une page (pas une base) : LaunchIntegrations.notion.log(titre, markdown) y ajoute des sous-pages.";
+    const createdNote = createdUrl
+      ? `\nJe VIENS de créer cette base automatiquement — DONNE SON LIEN à l'utilisateur dans ton summary : ${createdUrl}`
+      : `\nLien de la cible (si l'utilisateur le demande) : ${notionUrl(target)}`;
+    return `\n\n═══ INTÉGRATION NOTION DU PROJET (déjà configurée) ═══\nUne cible Notion est DÉJÀ connectée à ce projet côté serveur — ne demande JAMAIS son ID à l'utilisateur.\n${cols}${createdNote}\nDans le code de l'app, LaunchIntegrations.notion.* utilise cette cible par défaut : passe null comme databaseId (ex: LaunchIntegrations.notion.insertRow(null, {...}), .listRows(null)) et le serveur route vers la base configurée.`;
+  } catch { return ""; }
+}
+
 // Stream → parse JSON → applique les actions sur une COPIE de baseMap, avec retry.
 // Si le JSON est invalide OU si un edit_file ne matche pas, on renvoie l'erreur au
 // modèle pour qu'il se corrige. L'usage est cumulé ; en échec final l'erreur le porte
 // (pour facturer les tokens consommés). Application transactionnelle (copie → commit).
-async function generatePlan({ prompt, modelId, systemPrompt, baseMap, onPath, onThinking, allowEmptyActions }) {
+async function generatePlan({ prompt, modelId, systemPrompt, baseMap, onPath, onThinking, allowEmptyActions, emit }) {
   const total = { tokensIn: 0, tokensOut: 0, costUsd: 0 };
   const add = (u) => {
     if (!u) return;
@@ -302,18 +380,56 @@ async function generatePlan({ prompt, modelId, systemPrompt, baseMap, onPath, on
     total.costUsd += Number(u.cost) || 0;
   };
   let lastErr = "";
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const p = attempt === 0 ? prompt
-      : `${prompt}\n\n⚠️ Erreur sur ta réponse précédente: ${lastErr}\nRenvoie UNIQUEMENT le JSON valide demandé. Pour edit_file, "search" doit être un extrait EXACT (copié caractère pour caractère) du fichier actuel.`;
+  let readBlock = "";        // contenus fournis suite aux read_file du modèle
+  let readRounds = 0;        // max 2 tours de lecture (anti-boucle)
+  const providedReads = new Set(); // chemins déjà fournis → jamais relus
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const p = (attempt === 0 || !lastErr ? prompt : `${prompt}\n\n⚠️ Erreur sur ta réponse précédente: ${lastErr}\nRenvoie UNIQUEMENT le JSON valide demandé. Pour edit_file, "search" doit être un extrait EXACT (copié caractère pour caractère) du fichier actuel.`)
+      + readBlock;
     const { content, usage } = await streamModel({ prompt: p, modelId, systemPrompt, onPath, onThinking });
     add(usage);
     try {
       const plan = parseJsonObject(content);
       const map = new Map(baseMap);               // copie : on ne commit qu'en cas de succès
-      const actions = Array.isArray(plan.actions) ? plan.actions : [];
+      let actions = Array.isArray(plan.actions) ? plan.actions : [];
+
+      // ── L'IA décide ELLE-MÊME de lire : action read_file en plein flux ──
+      // Dédup : un fichier déjà fourni n'est JAMAIS relu (anti-boucle « Je lis
+      // src/index.css » à l'infini quand le modèle redemande la même chose).
+      const reads = actions.filter((a) => a?.type === "read_file" && a.path);
+      const newReads = reads
+        .map((r) => cleanRelPath(String(r.path)))
+        .filter((p, i, arr) => arr.indexOf(p) === i && !providedReads.has(p));
+      if (newReads.length > 0 && readRounds < 2) {
+        readRounds++;
+        const parts = [];
+        for (const clean of newReads.slice(0, 5)) {
+          providedReads.add(clean);
+          const cur = baseMap.get(clean);
+          emit?.({ type: "status", text: `Je lis ${clean}` });
+          parts.push(`--- ${clean} ---\n${cur ?? "(fichier inexistant — fichiers du projet : " + [...baseMap.keys()].join(", ") + ")"}`);
+        }
+        readBlock += `\n\n═══ FICHIERS LUS (suite à tes read_file) ═══\n${parts.join("\n\n")}\n═══ Continue : renvoie maintenant le JSON complet avec tes write_file/edit_file. ═══`;
+        lastErr = "";
+        continue; // re-tour avec le contenu lu
+      }
+      if (reads.length > 0 && newReads.length === 0) {
+        // Que des re-lectures de fichiers déjà fournis → on ne reboucle pas.
+        lastErr = `Les fichiers ${reads.map((r) => cleanRelPath(String(r.path))).join(", ")} sont DÉJÀ fournis plus haut dans « FICHIERS LUS » ou « FICHIERS ACTUELS DU PROJET ». Ne les redemande pas : renvoie maintenant tes actions write_file/edit_file.`;
+        continue;
+      }
+      actions = actions.filter((a) => a?.type !== "read_file"); // reads épuisés/ignorés
+
       // Question/discussion : le modèle peut répondre sans code (actions vides).
       if (actions.length === 0 && allowEmptyActions) {
         return { plan, map, touched: [], usage: total };
+      }
+      // Garde-fou anti-esquive : demande actionnable + aucune action = refusé.
+      // (Le modèle répondait « Salut ! Dis-moi ce que tu veux » à de vraies
+      // demandes malgré le prompt — on le renvoie travailler.)
+      if (actions.length === 0) {
+        lastErr = "Tu n'as renvoyé AUCUNE action alors que le message de l'utilisateur est une demande de modification. Ce n'est PAS une salutation. EXÉCUTE la demande maintenant avec des actions write_file/edit_file (ou read_file si tu dois d'abord lire un fichier).";
+        continue;
       }
       const touched = applyActionsToMap(map, actions);
       return { plan, map, touched, usage: total };
@@ -409,6 +525,7 @@ export const LaunchPay = {
       amount, label,
       currency: opts.currency || "eur",
       quantity: opts.quantity || 1,
+      shipping: !!opts.shipping, // true = Stripe collecte l'adresse de LIVRAISON
       successUrl: opts.successUrl || window.location.href,
       cancelUrl: opts.cancelUrl || window.location.href
     }) });
@@ -841,7 +958,7 @@ async function touchProject(userId, id, { summary, run }) {
 export async function createCodeSession(userId, prompt, modelId = KIMI_MODEL, mode = "static") {
   const isReact = mode === "react";
   const map = isReact ? scaffoldMap() : new Map();
-  const { plan, raw } = await callRing(prompt, modelId, isReact ? loadSkill("launch-create") : SYSTEM_PROMPT);
+  const { plan, raw } = await callRing(prompt, modelId, withSkills(isReact ? loadSkill("launch-create") : SYSTEM_PROMPT, prompt, null, isReact ? ["react-vite", "design-ui"] : ["html-css-js", "design-ui"]));
   applyActionsToMap(map, plan.actions);
   const usage = extractUsage(raw, plan);
   const summary = String(plan.summary || "Projet généré par Kimi");
@@ -858,7 +975,7 @@ export async function editCodeSession(userId, sessionId, prompt, modelId = KIMI_
   const isReact = mode === "react" || proj.mode === "react";
   const map = await loadFilesMap(sessionId);
   const editPrompt = `Projet actuel:\n${projectContext(map)}\n\nModification demandée:\n${String(prompt || "").slice(0, 12000)}\n\nRéponds avec le même JSON d'actions. Modifie uniquement ce qui est nécessaire.`;
-  const { plan, raw } = await callRing(editPrompt, modelId, isReact ? loadSkill("launch-edit") : SYSTEM_PROMPT);
+  const { plan, raw } = await callRing(editPrompt, modelId, withSkills(isReact ? loadSkill("launch-edit") : SYSTEM_PROMPT, prompt, null, isReact ? ["react-vite"] : ["html-css-js"], 2));
   applyActionsToMap(map, plan.actions);
   const usage = extractUsage(raw, plan);
   const summary = String(plan.summary || "Projet modifié par Kimi");
@@ -880,24 +997,146 @@ function historyBlock(history) {
   return `═══ HISTORIQUE (CONTEXTE SEULEMENT) ═══\nCe rappel sert UNIQUEMENT à comprendre les références (« le bouton », « ça », « comme avant »). Les demandes passées sont DÉJÀ traitées : ne les refais PAS, ne repars PAS dessus. Exécute UNIQUEMENT la demande actuelle indiquée plus bas.\n${lines.join("\n")}\n═══ FIN HISTORIQUE ═══\n\n`;
 }
 
-// Ajoute le skill Notion au prompt système UNIQUEMENT si la demande le concerne
-// (on garde le prompt de base léger — pas d'instruction Notion permanente).
-function withNotionSkill(systemPrompt, request) {
-  return /\bnotion\b/i.test(String(request || "")) ? `${systemPrompt}\n\n${loadSkill("notion")}` : systemPrompt;
+// Skills façon Claude Code : matche la demande contre la librairie
+// (server/skills/library/*/SKILL.md), charge les corps à la demande et émet
+// un événement { type:"skill" } par skill lu → l'UI affiche
+// « Je lis le skill html-css-js/SKILL.md ». Le prompt de base reste léger.
+function withSkills(systemPrompt, request, emit, include = [], max = 3) {
+  // Budget serré (état de l'art : les perfs chutent au-delà de ~3k tokens de
+  // prompt) : création = 3 skills max, édition = 2 max.
+  const { block } = skillBlockFor(request, { max, emit, include });
+  return block ? `${systemPrompt}${block}` : systemPrompt;
+}
+
+// Décompose une demande en étapes de construction (boucle agentique).
+// 1 étape = demande simple → single-pass. 2-4 étapes = plan affiché + exécution
+// séquentielle avec relecture des fichiers entre chaque étape (re-think).
+async function planTodos(prompt, modelId) {
+  const sys = 'Tu décomposes une demande de création d\'app en étapes de CONSTRUCTION. Réponds en JSON strict : {"todos":["…"]} — 2 à 4 étapes maximum, chacune concrète et livrable (ex : "Structure, navigation et hero", "Boutique : cartes produits + panier", "CSS global, responsive et animations", "États de chargement et messages d\'erreur"). Si la demande est SIMPLE (un composant, une petite page), renvoie UNE seule étape. Rien d\'autre que le JSON.';
+  const empty = { tokensIn: 0, tokensOut: 0, costUsd: 0 };
+  try {
+    const data = await requestRing(prompt, true, modelId, sys);
+    const u = data?.usage || {};
+    const parsed = parseJsonObject(data?.choices?.[0]?.message?.content || "{}");
+    const todos = Array.isArray(parsed.todos)
+      ? parsed.todos.map((t) => String(t).trim()).filter(Boolean).slice(0, 4)
+      : [];
+    return { todos, usage: { tokensIn: Number(u.prompt_tokens) || 0, tokensOut: Number(u.completion_tokens) || 0, costUsd: Number(u.cost) || 0 } };
+  } catch { return { todos: [], usage: empty }; }
 }
 
 export async function createCodeSessionStream(userId, prompt, modelId, mode, emit, imageModel, history) {
   const isReact = mode === "react";
   const baseMap = isReact ? scaffoldMap() : new Map();
-  const oldMap = new Map(baseMap);
-  emit?.({ type: "status", text: "Génération du code…" });
-  const { plan, map, touched, usage: u } = await generatePlan({
-    prompt: historyBlock(history) + prompt, modelId, baseMap,
-    systemPrompt: withNotionSkill(isReact ? loadSkill("launch-create") : SYSTEM_PROMPT, prompt),
-    onPath: (p) => emit?.({ type: "action", path: p }),
-    onThinking: (delta) => emit?.({ type: "thinking", delta })
-  });
-  emitTouchedDiffs(touched, oldMap, map, emit);
+  const systemPrompt = withSkills(
+    isReact ? loadSkill("launch-create") : SYSTEM_PROMPT,
+    prompt, emit,
+    isReact ? ["react-vite", "design-ui"] : ["html-css-js", "design-ui"]
+  );
+
+  // ── Boucle agentique : plan → étape → re-think → étape… ──
+  emit?.({ type: "status", text: "Je planifie la construction…" });
+  const { todos, usage: planUsage } = await planTodos(prompt, modelId);
+  const totals = { ...planUsage };
+  const addUsage = (x) => { totals.tokensIn += x.tokensIn || 0; totals.tokensOut += x.tokensOut || 0; totals.costUsd += x.costUsd || 0; };
+
+  let plan, map, touched;
+  if (todos.length >= 2) {
+    // Todolist visuelle (cases à cocher côté IDE) — la vérification est une étape à part entière.
+    emit?.({ type: "todo_list", items: [
+      ...todos.map((t, i) => ({ id: i + 1, label: t })),
+      { id: "verify", label: "Vérification finale (imports, CSS, responsive)" }
+    ] });
+    map = new Map(baseMap);
+    const summaries = [];
+    let appName = null, run = null, questions = null;
+    touched = new Set();
+    for (let i = 0; i < todos.length; i++) {
+      emit?.({ type: "todo_state", id: i + 1, status: "running" });
+      emit?.({ type: "status", text: `Étape ${i + 1}/${todos.length} — ${todos[i]}` });
+      const stepMarks = todos.map((t, j) => `${j < i ? "[fait]" : j === i ? "[EN COURS]" : "[à venir]"} ${j + 1}. ${t}`).join("\n");
+      const stepPrompt = `${historyBlock(history)}DEMANDE GLOBALE :\n${prompt}\n\nPLAN DE CONSTRUCTION :\n${stepMarks}\n\nÉTAPE ACTUELLE (${i + 1}/${todos.length}) : ${todos[i]}\nLes fichiers du projet sont fournis ci-dessous : appuie-toi sur leur contenu RÉEL (classes CSS réellement stylées, imports valides), puis implémente UNIQUEMENT cette étape. Ne casse rien de ce qui existe : fichier existant → edit_file (jamais un write_file partiel qui effacerait le travail des étapes précédentes).\nSOIS COMPLET : du vrai contenu (jamais de lorem ipsum ni de placeholder « à compléter »), chaque section entièrement construite et stylée. Un site pro fait plusieurs centaines de lignes de CSS — livrer un squelette est un échec.${projectFilesBlock(map)}`;
+      const prevMap = new Map(map);
+      const r = await generatePlan({
+        prompt: stepPrompt, modelId, baseMap: map, systemPrompt,
+        onPath: (p) => emit?.({ type: "action", path: p }),
+        onThinking: (delta) => emit?.({ type: "thinking", delta }),
+        allowEmptyActions: true,
+        emit
+      });
+      map = r.map;
+      for (const t of r.touched || []) touched.add(t);
+      addUsage(r.usage || {});
+      if (r.plan?.summary) summaries.push(`Étape ${i + 1} — ${r.plan.summary}`);
+      appName = appName || r.plan?.appName || null;
+      run = r.plan?.run || run;
+      questions = r.plan?.questions || questions;
+      emitTouchedDiffs(r.touched, prevMap, map, emit);
+      emit?.({ type: "todo_state", id: i + 1, status: "done" });
+      emit?.({ type: "status", text: `Étape ${i + 1}/${todos.length} terminée — je relis avant d'enchaîner` });
+    }
+    // ── Phase VERIFY (façon Lovable) : relire tout, contrôler, se corriger ──
+    emit?.({ type: "todo_state", id: "verify", status: "running" });
+    emit?.({ type: "status", text: "Je vérifie mon travail (imports, CSS, responsive)…" });
+    try {
+      const reviewPrompt = `DEMANDE GLOBALE :\n${prompt}\n\nTu viens de terminer la construction — les fichiers du projet sont fournis ci-dessous, NE fais AUCUN read_file. PASSE DE VÉRIFICATION — contrôle chaque point :\n1. Chaque import pointe vers un fichier qui EXISTE (chemins/casse exacts).\n2. Chaque className utilisé dans le JSX a une règle dans le CSS (aucune classe orpheline).\n3. Aucun composant déclaré mais jamais rendu, aucun TODO/placeholder oublié.\n4. Responsive : la page tient sur mobile (grilles qui s'empilent).\n5. La demande globale est ENTIÈREMENT couverte.\nSi tu trouves des problèmes : corrige-les via des actions (edit_file/write_file) et liste-les dans summary. Si tout est bon : "actions": [] et summary = "Vérification OK".${projectFilesBlock(map)}`;
+      const prevMap = new Map(map);
+      const rv = await generatePlan({
+        prompt: reviewPrompt, modelId, baseMap: map, systemPrompt,
+        onPath: (p) => emit?.({ type: "action", path: p }),
+        onThinking: (delta) => emit?.({ type: "thinking", delta }),
+        allowEmptyActions: true,
+        emit
+      });
+      map = rv.map;
+      for (const t of rv.touched || []) touched.add(t);
+      addUsage(rv.usage || {});
+      emitTouchedDiffs(rv.touched, prevMap, map, emit);
+      const fixes = (rv.touched || []).length;
+      emit?.({ type: "todo_state", id: "verify", status: "done" });
+      emit?.({ type: "status", text: fixes ? `Vérification : ${fixes} correction(s) appliquée(s)` : "Vérification OK — rien à corriger" });
+      if (fixes && rv.plan?.summary) summaries.push(`Vérification — ${rv.plan.summary}`);
+    } catch { emit?.({ type: "status", text: "Vérification sautée (erreur non bloquante)" }); }
+
+    // ── Garde-fou DA (statique) : classes sans CSS après la vérification ──
+    const orphansC = orphanClassNames(map, [...touched]).slice(0, 12);
+    if (orphansC.length) {
+      emit?.({ type: "status", text: `J'applique la DA aux éléments non stylés (${orphansC.length} classe(s))…` });
+      try {
+        const prevMap = new Map(map);
+        const fix = await generatePlan({
+          prompt: `Ces classes utilisées dans le JSX/HTML n'ont AUCUNE règle CSS : ${orphansC.join(", ")}.\nAjoute leurs styles (edit_file sur le CSS) en respectant STRICTEMENT la DA du site (mêmes variables, couleurs, radius, espacements, typo). Si une classe est déjà couverte (sélecteur parent, style inline volontaire), ignore-la.${projectFilesBlock(map)}`,
+          modelId, baseMap: map, systemPrompt,
+          onPath: (p) => emit?.({ type: "action", path: p }),
+          onThinking: (delta) => emit?.({ type: "thinking", delta }),
+          allowEmptyActions: true, emit
+        });
+        map = fix.map;
+        for (const t of fix.touched || []) touched.add(t);
+        addUsage(fix.usage || {});
+        emitTouchedDiffs(fix.touched, prevMap, map, emit);
+      } catch { /* best-effort */ }
+    }
+
+    plan = {
+      summary: summaries.join("\n\n") || "Projet généré",
+      appName, run, questions
+    };
+  } else {
+    // Demande simple → single-pass (comportement historique)
+    emit?.({ type: "status", text: "Génération du code…" });
+    const oldMap = new Map(baseMap);
+    const r = await generatePlan({
+      prompt: historyBlock(history) + prompt, modelId, baseMap,
+      systemPrompt,
+      onPath: (p) => emit?.({ type: "action", path: p }),
+      onThinking: (delta) => emit?.({ type: "thinking", delta })
+    });
+    plan = r.plan; map = r.map; touched = r.touched;
+    addUsage(r.usage || {});
+    emitTouchedDiffs(touched, oldMap, map, emit);
+  }
+  const u = totals;
   const summary = String(plan.summary || "Projet généré");
   const { id, slug } = await insertProject(userId, { summary, prompt, mode, run: plan.run });
   setAppBranding(map, plan.appName || summary.split(/[\s,.:;—-]+/).slice(0, 2).join(" "));
@@ -913,7 +1152,7 @@ export async function createCodeSessionStream(userId, prompt, modelId, mode, emi
 // évite de noyer le contexte). Renvoie { files, usage }.
 async function pickFilesForEdit(request, fileList, modelId) {
   const usage = { tokensIn: 0, tokensOut: 0, costUsd: 0 };
-  const sys = `Tu es un routeur de fichiers pour un éditeur de code. Pour la tâche donnée, renvoie UNIQUEMENT un JSON {"files":["chemin/exact",...]} : la liste MINIMALE des fichiers existants à modifier et/ou des nouveaux fichiers à créer (souvent un seul). Base-toi UNIQUEMENT sur la tâche ci-dessous, PAS sur d'éventuelles demandes passées. Rien d'autre que le JSON.`;
+  const sys = `Tu es un routeur de fichiers pour un éditeur de code. Pour la tâche donnée, renvoie UNIQUEMENT un JSON {"files":["chemin/exact",...]} : la liste MINIMALE des fichiers existants à modifier et/ou des nouveaux fichiers à créer (souvent un seul). Si la tâche ne nécessite AUCUNE lecture de code (salutation, remerciement, question générale sans modification), renvoie {"files":[]}. Base-toi UNIQUEMENT sur la tâche ci-dessous, PAS sur d'éventuelles demandes passées. Rien d'autre que le JSON.`;
   const user = `Fichiers du projet :\n${fileList.join("\n")}\n\nTâche : ${request}`;
   try {
     const data = await requestRing(user, true, modelId, sys);
@@ -936,30 +1175,107 @@ export async function editCodeSessionStream(userId, sessionId, prompt, modelId, 
   const binaryPaths = await listBinaryPaths(sessionId);
   const fileList = [...baseMap.keys()];
 
-  // Étape 1 : sélection des fichiers concernés (focalise le contexte → fiable + économe)
-  emit?.({ type: "status", text: "Analyse du projet…" });
+  // ── Lecture agentique CONDITIONNELLE : le routeur décide s'il faut lire ──
   const { files: picked, usage: pickUsage } = await pickFilesForEdit(request, fileList, modelId);
   const targets = picked.filter((p) => fileList.includes(p) || /^[\w.-]+(\/[\w.-]+)*$/.test(p));
-  const ctxPaths = (targets.length ? targets : fileList).filter((p, i, a) => a.indexOf(p) === i).slice(0, 12);
-  const focus = ctxPaths.map((p) => `--- ${p} ---\n${baseMap.get(p) ?? "(nouveau fichier à créer)"}`).join("\n\n");
+  const needsRead = targets.length > 0;
+  emit?.({ type: "todo_list", items: [
+    ...(needsRead ? [{ id: "read", label: "Lire le projet (fichiers concernés + CSS)" }] : []),
+    { id: "apply", label: "Appliquer les modifications" }
+  ] });
+  if (needsRead) {
+    emit?.({ type: "todo_state", id: "read", status: "running" });
+    emit?.({ type: "status", text: `Je liste les fichiers du projet (${fileList.length})…` });
+  }
+  // Les CSS du projet sont TOUJOURS dans le contexte : sinon le modèle ne
+  // relit pas les styles existants et ajoute des éléments avec des classes
+  // orphelines (jamais stylées) ou des doublons de classes.
+  const cssFiles = fileList.filter((p) => p.endsWith(".css"));
+  let ctxPaths = needsRead
+    ? [...targets, ...cssFiles].filter((p, i, a) => a.indexOf(p) === i).slice(0, 14)
+    : [];
+  for (const p of ctxPaths) emit?.({ type: "status", text: `Je lis ${p}` });
+
+  // Re-think : avec ce qu'il vient de lire, le modèle peut réclamer d'AUTRES
+  // fichiers avant de modifier (max 1 tour — évite les boucles infinies).
+  const unread = fileList.filter((p) => !ctxPaths.includes(p));
+  if (needsRead && unread.length > 0) {
+    try {
+      const preview = ctxPaths.map((p) => `--- ${p} ---\n${String(baseMap.get(p) ?? "").slice(0, 1500)}`).join("\n\n");
+      const askSys = 'Tu prépares une modification de code. Réponds en JSON strict {"read":["chemin",...]} : la liste des fichiers SUPPLÉMENTAIRES qu\'il te faut lire pour faire la tâche proprement (souvent aucun → {"read":[]}). Maximum 4. Rien d\'autre.';
+      const askUser = `Tâche : ${request}\n\nDéjà lus :\n${preview}\n\nFichiers non lus disponibles :\n${unread.join("\n")}`;
+      const data = await requestRing(askUser, true, modelId, askSys);
+      const uu = data?.usage || {};
+      pickUsage.tokensIn += Number(uu.prompt_tokens) || 0;
+      pickUsage.tokensOut += Number(uu.completion_tokens) || 0;
+      pickUsage.costUsd += Number(uu.cost) || 0;
+      const more = (parseJsonObject(data?.choices?.[0]?.message?.content || "{}").read || [])
+        .map(String).filter((p) => unread.includes(p)).slice(0, 4);
+      for (const p of more) {
+        emit?.({ type: "status", text: `Je lis aussi ${p}` });
+        ctxPaths.push(p);
+      }
+    } catch { /* le tour de relecture est optionnel */ }
+  }
+  const focus = ctxPaths.length
+    ? ctxPaths.map((p) => `--- ${p} ---\n${baseMap.get(p) ?? "(nouveau fichier à créer)"}`).join("\n\n")
+    : `(Aucun fichier lu — tâche jugée conversationnelle. Fichiers du projet : ${fileList.join(", ")})`;
 
   // Note sur les images dispo (uploadées/générées) — référençables, non éditables.
   const imagesNote = binaryPaths.length
     ? `\n\nImages disponibles (réfère-les via leur URL racine, ex: <img src="/${binaryPaths[0].replace(/^public\//, "")}" />) : ${binaryPaths.map((p) => "/" + p.replace(/^public\//, "")).join(", ")}`
     : "";
 
+  // Contexte Notion (cible + schéma) si le projet en a une — l'IA ne doit
+  // jamais répondre « envoie-moi l'ID de ta base ».
+  const notionCtx = /notion|commande|order|sync/i.test(request)
+    ? await notionContextBlock(userId, sessionId, { autoCreate: /notion/i.test(request), appName: proj?.summary || "", emit })
+    : "";
+
   // Étape 2 : édition focalisée sur ces seuls fichiers
-  const editPrompt = `${historyBlock(history)}Fichier(s) du projet (pour contexte) :\n\n${focus}${imagesNote}\n\n════════ MESSAGE ACTUEL DE L'UTILISATEUR ════════\n${request}\n\nRéponds à CE message (ignore les demandes passées de l'historique, déjà traitées).\n• Si c'est une vraie demande de MODIFICATION/ajout → applique-la (edit_file pour un fichier existant, write_file pour un nouveau), ne touche à rien d'autre.\n• Si c'est une salutation, une question, un merci, une discussion → réponds NATURELLEMENT et utilement dans "summary", avec "actions": []. (Ex : « salut » → « Salut ! Tu veux qu'on bosse sur quoi ? »). Ne dis pas « tu ne m'as pas demandé de modification ».`;
+  const editPrompt = `${historyBlock(history)}Fichier(s) du projet (pour contexte) :\n\n${focus}${imagesNote}${notionCtx}\n\n════════ MESSAGE ACTUEL DE L'UTILISATEUR ════════\n${request}\n\nRéponds à CE message (ignore les demandes passées de l'historique, déjà traitées).\n• RÈGLE PAR DÉFAUT : ce message EST une demande de modification → EXÉCUTE-la immédiatement (edit_file pour un fichier existant, write_file pour un nouveau), sans toucher au reste. Même court ou elliptique (« Ajouter la connexion », « corrige le footer », un choix parmi des options que TU as proposées), c'est un ORDRE : agis, ne redemande JAMAIS « dis-moi ce que tu veux » — il vient de te le dire.\n• SEULE exception (rare) : message sans AUCUN contenu actionnable — pur bonjour/merci/question de curiosité (« salut », « merci ! », « c'est fait avec quoi ? »). Alors réponds naturellement dans "summary" avec "actions": []. En cas de doute → AGIS.`;
+  if (needsRead) emit?.({ type: "todo_state", id: "read", status: "done" });
+  emit?.({ type: "todo_state", id: "apply", status: "running" });
   emit?.({ type: "status", text: "Application des modifications…" });
-  const { plan, map, touched, usage: u } = await generatePlan({
+  const editSysPrompt = withSkills(isReact ? loadSkill("launch-edit") : SYSTEM_PROMPT, request, emit, isReact ? ["react-vite"] : ["html-css-js"], 2);
+  let { plan, map, touched, usage: u } = await generatePlan({
     prompt: editPrompt, modelId, baseMap,
-    systemPrompt: withNotionSkill(isReact ? loadSkill("launch-edit") : SYSTEM_PROMPT, request),
+    systemPrompt: editSysPrompt,
     onPath: (p) => emit?.({ type: "action", path: p }),
     onThinking: (delta) => emit?.({ type: "thinking", delta }),
-    allowEmptyActions: true   // une QUESTION peut être répondue sans code
+    // Actions vides autorisées UNIQUEMENT pour du pur conversationnel :
+    // toute demande substantielle DOIT produire des actions (sinon retry forcé).
+    allowEmptyActions:
+      /^(salut|bonjour|hello|coucou|yo|hey|merci|thanks|ok|d'accord|super|cool|parfait|top|👍|🙏|😊)[\s!,.?😊👍🙏]*$/i.test(request.trim())
+      || request.trim().length < 12
+      // vraie question courte (« c'est fait avec quoi ? ») — mais pas un ordre
+      || (/\?\s*$/.test(request.trim()) && request.trim().length < 60 && !/^(fais|fait|ajoute|mets|met|change|corrige|crée|cree|gère|gere|supprime|enlève|enleve|modifie)\b/i.test(request.trim())),
+    emit
   });
   u.tokensIn += pickUsage.tokensIn; u.tokensOut += pickUsage.tokensOut; u.costUsd += pickUsage.costUsd;
+
+  // ── Garde-fou DA : tout élément ajouté DOIT arriver stylé ──
+  // Détection statique des classes sans règle CSS → passe corrective forcée
+  // (le prompt seul ne suffit pas, le modèle « oublie » régulièrement).
+  const orphans = orphanClassNames(map, touched).slice(0, 12);
+  if (orphans.length) {
+    emit?.({ type: "status", text: `J'applique la DA du site aux nouveaux éléments (${orphans.length} classe(s) à styler)…` });
+    try {
+      const fix = await generatePlan({
+        prompt: `Tu viens d'appliquer une modification, mais ces classes utilisées dans le JSX/HTML n'ont AUCUNE règle CSS dans le projet : ${orphans.join(", ")}.\nAjoute leurs styles (edit_file sur le fichier CSS concerné) en respectant STRICTEMENT la DA existante du site : mêmes variables, couleurs, radius, espacements et typo que le reste. Si une classe est en réalité déjà couverte (sélecteur parent, style inline volontaire), ignore-la.${projectFilesBlock(map)}`,
+        modelId, baseMap: map, systemPrompt: editSysPrompt,
+        onPath: (p) => emit?.({ type: "action", path: p }),
+        onThinking: (delta) => emit?.({ type: "thinking", delta }),
+        allowEmptyActions: true, emit
+      });
+      map = fix.map;
+      touched = [...new Set([...(touched || []), ...(fix.touched || [])])];
+      u.tokensIn += fix.usage?.tokensIn || 0; u.tokensOut += fix.usage?.tokensOut || 0; u.costUsd += fix.usage?.costUsd || 0;
+    } catch { /* passe corrective best-effort */ }
+  }
+
   emitTouchedDiffs(touched, oldMap, map, emit);
+  emit?.({ type: "todo_state", id: "apply", status: "done" });
   const summary = String(plan.summary || "Projet modifié");
   await touchProject(userId, sessionId, { summary, run: plan.run });
   await materializeAiImages(sessionId, map, imageModel).catch(() => {});
@@ -975,10 +1291,12 @@ export async function editCodeSessionStream(userId, sessionId, prompt, modelId, 
 // (Notion, etc.) quand l'utilisateur le demande. Boucle tool_calls (max 6 tours).
 export async function planChat(userId, projectId, messages, modelId) {
   let context = "";
+  let projectMap = null;
   if (projectId && UUID_RE.test(String(projectId))) {
     try {
-      const map = await loadFilesMap(projectId);
-      if (map.size) context = `\n\nProjet en cours (fichiers) : ${[...map.keys()].join(", ")}`;
+      projectMap = await loadFilesMap(projectId);
+      if (projectMap.size) context = `\n\nProjet en cours (fichiers) : ${[...projectMap.keys()].join(", ")}\nTu disposes de l'outil launch_read_file : LIS toi-même les fichiers dont tu as besoin. Ne demande JAMAIS à l'utilisateur d'envoyer/coller un fichier ou un composant.`;
+      context += await notionContextBlock(userId, projectId);
     } catch { /* pas de projet */ }
   }
 
@@ -994,6 +1312,23 @@ export async function planChat(userId, projectId, messages, modelId) {
     tools = await getToolsForUser(userId);
   } catch { /* pas d'intégrations connectées */ }
   if (/^delt\/|gemma-/i.test(String(modelId || ""))) tools = []; // modèles sans function-calling
+
+  // Outil LOCAL : lecture des fichiers du projet par l'agent lui-même
+  // (sinon il demandait à l'utilisateur de coller src/App.jsx…).
+  if (projectMap?.size && !/^delt\/|gemma-/i.test(String(modelId || ""))) {
+    tools = [{
+      type: "function",
+      function: {
+        name: "launch_read_file",
+        description: "Lit le contenu d'un fichier du projet en cours. Utilise-le TOI-MÊME dès que tu as besoin de voir du code (JSX, CSS…). Ne demande jamais à l'utilisateur de coller un fichier.",
+        parameters: {
+          type: "object",
+          properties: { path: { type: "string", description: "Chemin exact, ex: src/App.jsx" } },
+          required: ["path"]
+        }
+      }
+    }, ...tools];
+  }
 
   const { chatWithTools } = await import("./openrouter.js");
   const { executeToolCall } = await import("./composio.js");
@@ -1021,6 +1356,18 @@ export async function planChat(userId, projectId, messages, modelId) {
       const name = tc.function?.name || tc.name;
       let args = {};
       try { args = JSON.parse(tc.function?.arguments || tc.arguments || "{}"); } catch { /* */ }
+      // Lecture locale d'un fichier du projet (pas un outil Composio)
+      if (name === "launch_read_file") {
+        const p = String(args.path || "").trim();
+        const content = projectMap?.get(p);
+        toolEvents.push({ name: `lecture ${p}`, ok: content != null, error: content == null ? "introuvable" : null });
+        return {
+          tool_call_id: tc.id, role: "tool", name,
+          content: content != null
+            ? String(content).slice(0, 8000)
+            : `Fichier introuvable. Fichiers disponibles : ${[...(projectMap?.keys() || [])].join(", ")}`
+        };
+      }
       const result = await executeToolCall({ userId, toolName: name, args });
       toolEvents.push({ name, ok: !result?.error, error: result?.error || null });
       return { tool_call_id: tc.id, role: "tool", name, content: JSON.stringify(result).slice(0, 8000) };

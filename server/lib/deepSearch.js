@@ -17,8 +17,8 @@ import { pageCache, searchCache } from "./pageCache.js";
 const MODEL_PLAN    = TIER_MODELS.MINI?.id    || "openai/gpt-5.4-mini";
 const MODEL_EXTRACT = TIER_MODELS.PICO?.id    || TIER_MODELS.NANO?.id || "google/gemini-2.5-flash-lite";
 // Synthèse : on évite les reasoning models (gpt-5.x) qui peuvent prendre plusieurs minutes.
-// Claude Sonnet 4.5 = même tier NORMAL, qualité équivalente, latence ~5-15s.
-const MODEL_SYNTH   = "anthropic/claude-sonnet-4-5";
+// Claude Sonnet 5 = même tier NORMAL, qualité équivalente, latence ~5-15s.
+const MODEL_SYNTH   = "anthropic/claude-sonnet-5";
 
 const PAGE_CHAR_LIMIT = 12000;
 const SCRAPE_CONCURRENCY = 8;

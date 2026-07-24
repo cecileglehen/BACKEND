@@ -118,7 +118,7 @@ export async function createAgent(userId, plan, data) {
       String(data.name || "Nouvel agent").slice(0, 80),
       data.description ? String(data.description).slice(0, 500) : null,
       data.color || "#6366f1",
-      data.icon || "🤖",
+      data.icon || "agent",
       data.instructions ? String(data.instructions).slice(0, 8000) : null,
       data.defaultModel || null,
       JSON.stringify(sanitizeTools(data.tools)),

@@ -5,7 +5,7 @@
 // une page/DB Notion cible par projet (launch_projects.notion_target). À chaque
 // commande payée (webhook Stripe) OU appel SDK depuis l'app, on crée une entrée.
 import { getDb } from "./db.js";
-import { getToolsForUser, executeToolCall } from "./composio.js";
+import { getToolsForUser, executeToolCall, getLiveConnectionStatus } from "./composio.js";
 
 // Découvre le nom exact de l'action « créer une page Notion » pour cet user
 // (les slugs Composio peuvent varier selon la version → on cherche par motif).
@@ -20,8 +20,11 @@ async function findNotionCreateTool(userId) {
       .filter(Boolean);
     const hit = names.find((n) => /CREATE.*PAGE/i.test(n)) || names.find((n) => /NOTION.*PAGE/i.test(n));
     if (hit) name = hit;
-  } catch { /* on garde le défaut */ }
-  _toolCache.set(userId, name);
+    // On ne met en cache QUE si la découverte a marché : si Notion n'était pas
+    // encore connecté au 1er appel, un défaut figé en cache aurait empêché de
+    // retrouver le vrai slug après connexion (bug : logs silencieusement perdus).
+    if (names.length > 0) _toolCache.set(userId, name);
+  } catch { /* on garde le défaut, sans le figer */ }
   return name;
 }
 
@@ -93,8 +96,11 @@ export async function runNotionAction({ creatorUserId, action, args, defaultTarg
   const toolName = NOTION_ACTIONS[action];
   if (!toolName) return { ok: false, error: `Action Notion non autorisée: ${action}` };
   const a = { ...(args || {}) };
-  // createPage : parent par défaut = la cible configurée du projet
+  // Cible par défaut = celle configurée sur le projet : l'app générée n'a
+  // JAMAIS besoin de connaître l'ID de la base (l'IA ne doit pas le demander).
   if (toolName === "NOTION_CREATE_NOTION_PAGE" && !a.parent_id && defaultTarget) a.parent_id = defaultTarget;
+  if (["NOTION_QUERY_DATABASE", "NOTION_INSERT_ROW_DATABASE", "NOTION_UPDATE_ROW_DATABASE", "NOTION_UPDATE_SCHEMA_DATABASE"].includes(toolName)
+      && !a.database_id && defaultTarget) a.database_id = defaultTarget;
   // Normalise tous les ids en UUID tiré (l'IA/app peut coller un id sans tirets)
   for (const k of ["parent_id", "database_id", "row_id", "page_id"]) if (a[k]) a[k] = notionParentId(a[k]);
   try {
@@ -145,7 +151,13 @@ function buildRowProperties(schema, order) {
   const fields = [
     { patterns: [/statut/i, /status/i, /état/i, /etat/i], raw: "Payé" },
     { patterns: [/montant/i, /amount/i, /prix/i, /price/i, /total/i], raw: order.amountNum },
-    { patterns: [/client/i, /e-?mail/i, /customer/i, /acheteur/i], raw: order.client },
+    { patterns: [/code\s*postal/i, /\bcp\b/i, /zip/i], raw: order.postal },
+    { patterns: [/t[ée]l[ée]phone/i, /phone/i, /\btel\b/i], raw: order.phone },
+    { patterns: [/adresse/i, /address/i, /livraison/i, /shipping/i], raw: order.address },
+    { patterns: [/ville/i, /city/i], raw: order.city },
+    { patterns: [/pays/i, /country/i], raw: order.country },
+    { patterns: [/\bnom\b/i, /\bname\b/i, /acheteur/i], raw: order.clientName },
+    { patterns: [/client/i, /e-?mail/i, /customer/i], raw: order.client },
     { patterns: [/produit/i, /product/i, /article/i, /offre/i, /item/i], raw: order.label },
     { patterns: [/date/i], raw: order.dateIso }
   ];
@@ -196,12 +208,20 @@ export async function createOrdersDatabase(creatorUserId, parentPageId, appName)
       args: {
         parent_id: notionParentId(parentPageId),
         title: `Commandes — ${String(appName || "App").slice(0, 40)}`,
+        // Toutes les infos client possibles : l'IA (et le créateur) choisissent
+        // celles qui servent — les colonnes vides ne gênent pas dans Notion.
         properties: [
-          { name: "Produit", type: "title" },
-          { name: "Statut",  type: "select" },
-          { name: "Montant", type: "number" },
-          { name: "Client",  type: "email" },
-          { name: "Date",    type: "date" }
+          { name: "Produit",     type: "title" },
+          { name: "Statut",      type: "select" },
+          { name: "Montant",     type: "number" },
+          { name: "Client",      type: "email" },
+          { name: "Nom",         type: "rich_text" },
+          { name: "Téléphone",   type: "phone_number" },
+          { name: "Adresse",     type: "rich_text" },
+          { name: "Ville",       type: "rich_text" },
+          { name: "Code postal", type: "rich_text" },
+          { name: "Pays",        type: "rich_text" },
+          { name: "Date",        type: "date" }
         ]
       }
     });
@@ -213,6 +233,29 @@ export async function createOrdersDatabase(creatorUserId, parentPageId, appName)
   } catch (e) {
     return { ok: false, error: e.message };
   }
+}
+
+// URL publique d'un objet Notion (page ou base) à partir de son id.
+export function notionUrl(id) {
+  return `https://www.notion.so/${String(id || "").replace(/-/g, "")}`;
+}
+
+// Provisioning 100 % automatique : trouve une page parente, crée la base
+// « Commandes » prête à l'emploi, la définit comme cible du projet et renvoie
+// son lien. L'utilisateur n'a RIEN à construire dans Notion (juste l'OAuth).
+export async function autoProvisionNotion(creatorUserId, projectId, appName) {
+  const status = await getLiveConnectionStatus(creatorUserId, "notion").catch(() => null);
+  if (status !== "ACTIVE") {
+    return { ok: false, notConnected: true, error: "Notion n'est pas connecté — bouton Notion de l'IDE pour lier ton compte." };
+  }
+  const pages = await searchNotionPages(creatorUserId);
+  if (!pages.length) {
+    return { ok: false, error: "Aucune page Notion accessible : dans Notion, partage au moins une page avec l'intégration DELT (menu ••• → Connexions)." };
+  }
+  const created = await createOrdersDatabase(creatorUserId, pages[0].id, appName);
+  if (!created.ok) return created;
+  await setProjectNotion(creatorUserId, projectId, created.databaseId);
+  return { ok: true, target: created.databaseId, url: notionUrl(created.databaseId), parentTitle: pages[0].title };
 }
 
 // Journalise une commande : ligne typée si c'est une BASE, sinon page markdown.
@@ -236,7 +279,7 @@ export async function notionInsertOrder({ creatorUserId, target, order }) {
 export async function onLaunchPaymentPaid(sessionId) {
   try {
     const { rows } = await getDb().query(
-      `SELECT pay.amount, pay.currency, pay.label, pay.created_at,
+      `SELECT pay.amount, pay.currency, pay.label, pay.created_at, pay.customer,
               au.email AS client_email,
               p.user_id AS creator_id, p.notion_target, p.summary AS app_name
          FROM launch_payments pay
@@ -249,9 +292,20 @@ export async function onLaunchPaymentPaid(sessionId) {
     if (!r || !r.notion_target) return; // Notion non configuré sur ce projet
     const created = new Date(r.created_at || Date.now());
     const amountStr = (Number(r.amount || 0) / 100).toFixed(2) + " " + String(r.currency || "eur").toUpperCase();
+    // Infos client collectées par Stripe Checkout (adresse de livraison
+    // prioritaire sur celle de facturation).
+    const cust = typeof r.customer === "string" ? JSON.parse(r.customer || "{}") : (r.customer || {});
+    const addr = cust.shipping || cust.address || {};
+    const addressLine = [addr.line1, addr.line2].filter(Boolean).join(", ") || null;
     const order = {
       amountNum: (Number(r.amount || 0) / 100).toFixed(2),     // pour colonne Number
-      client: r.client_email || "invité",
+      client: cust.email || r.client_email || "invité",
+      clientName: cust.name || null,
+      phone: cust.phone || null,
+      address: addressLine,
+      city: addr.city || null,
+      postal: addr.postal_code || null,
+      country: addr.country || null,
       label: r.label || "Produit",
       dateIso: created.toISOString(),                          // pour colonne Date
       // fallback page markdown si la cible n'est pas une base
@@ -260,10 +314,13 @@ export async function onLaunchPaymentPaid(sessionId) {
         `**Statut :** Payé`,
         `**Produit :** ${r.label || "—"}`,
         `**Montant :** ${amountStr}`,
-        `**Client :** ${r.client_email || "invité"}`,
+        `**Client :** ${cust.email || r.client_email || "invité"}`,
+        cust.name  ? `**Nom :** ${cust.name}` : null,
+        cust.phone ? `**Téléphone :** ${cust.phone}` : null,
+        addressLine ? `**Adresse :** ${addressLine}, ${[addr.postal_code, addr.city, addr.country].filter(Boolean).join(" ")}` : null,
         `**App :** ${r.app_name || "—"}`,
         `**Date :** ${created.toLocaleString("fr-FR")}`
-      ].join("\n")
+      ].filter(Boolean).join("\n")
     };
     await notionInsertOrder({ creatorUserId: r.creator_id, target: r.notion_target, order });
   } catch (e) {

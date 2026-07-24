@@ -6,7 +6,7 @@ import { CREATIVE } from "../config/models.js";
 // (on exclut Nano Banana Pro, GPT Image et GPT Image 2, trop chers pour un app-builder).
 export const LAUNCH_IMAGE_MODEL_IDS = [
   "fal-ai/fast-sdxl",
-  "fal-ai/flux-1/schnell",
+  "google/gemini-3.1-flash-lite-image",
   "google/gemini-2.5-flash-image",
   "openai/gpt-5-image-mini",
   "google/gemini-3.1-flash-image-preview"
@@ -19,9 +19,9 @@ export function launchImageModels() {
   return CREATIVE.IMAGE.models.filter((m) => LAUNCH_IMAGE_MODEL_IDS.includes(m.id));
 }
 
-// Renvoie le modèle d'image autorisé pour Launch (sinon FLUX Schnell par défaut).
+// Renvoie le modèle d'image autorisé pour Launch (sinon Gemini Flash Lite par défaut).
 export function resolveLaunchImageModel(modelId) {
-  const id = LAUNCH_IMAGE_MODEL_IDS.includes(String(modelId)) ? modelId : "fal-ai/flux-1/schnell";
+  const id = LAUNCH_IMAGE_MODEL_IDS.includes(String(modelId)) ? modelId : "google/gemini-3.1-flash-lite-image";
   return CREATIVE.IMAGE.models.find((m) => m.id === id) || CREATIVE.IMAGE.models[0];
 }
 

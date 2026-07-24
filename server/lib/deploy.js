@@ -4,7 +4,7 @@ import { getDb } from "./db.js";
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,39}$/;
 const MAX_FILES = 200;
-const MAX_TOTAL_BYTES = 8_000_000;
+const MAX_TOTAL_BYTES = 30_000_000; // builds avec images IA embarquées (base64)
 
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -136,19 +136,34 @@ export async function getDeployFile(slug, requestedPath) {
   if (path === "" || path.endsWith("/")) path += "index.html";
 
   const db = getDb();
-  let { rows } = await db.query(
+  const lookup = async (p) => (await db.query(
     `SELECT content, content_type, encoding FROM launch_deploy_files WHERE slug=$1 AND path=$2`,
-    [s, path]
-  );
-  // Fallback SPA : sert index.html si le fichier exact n'existe pas
-  if (!rows[0]) {
-    ({ rows } = await db.query(
-      `SELECT content, content_type, encoding FROM launch_deploy_files WHERE slug=$1 AND path='index.html'`,
-      [s]
-    ));
+    [s, p]
+  )).rows[0];
+
+  let row = await lookup(path);
+  const hasExt = /\.[a-z0-9]+$/i.test(path);
+
+  if (!row && hasExt) {
+    // Asset demandé sous une route imbriquée (ex: /about/assets/app.js) alors
+    // que le build Vite utilise base "./" (chemins relatifs) → on retire les
+    // segments de tête un à un jusqu'à trouver le vrai fichier (assets/app.js).
+    // Si rien ne matche, 404 franc : ne JAMAIS servir index.html à la place
+    // d'un .js/.css (ça casse le module loading en silence).
+    const segs = path.split("/");
+    for (let i = 1; i < segs.length && !row; i++) row = await lookup(segs.slice(i).join("/"));
+    if (!row) return null;
   }
-  if (!rows[0]) return null;
-  const r = rows[0];
+
+  if (!row) {
+    // Pas d'extension → page. Sites statiques multi-pages : /about → about.html
+    // ou about/index.html. Sinon fallback SPA (React Router gère la route).
+    row = await lookup(`${path}.html`)
+      || await lookup(`${path}/index.html`)
+      || await lookup("index.html");
+  }
+  if (!row) return null;
+  const r = row;
   return {
     content: r.encoding === "base64" ? Buffer.from(r.content, "base64") : r.content,
     contentType: r.content_type || "text/html; charset=utf-8"

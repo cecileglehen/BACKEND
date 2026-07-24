@@ -54,7 +54,7 @@ export async function getConnectStatus(userId) {
 }
 
 // ─── Paiement client (Checkout, destination charge + commission) ──────────────
-export async function createCheckout(projectId, { amount, label, currency, quantity, successUrl, cancelUrl }, appUserId) {
+export async function createCheckout(projectId, { amount, label, currency, quantity, successUrl, cancelUrl, shipping }, appUserId) {
   if (!UUID_RE.test(String(projectId))) throw new Error("Projet introuvable");
   // Le compte qui encaisse = celui du PROPRIÉTAIRE du projet (1 par user).
   const { rows } = await getDb().query(
@@ -86,6 +86,11 @@ export async function createCheckout(projectId, { amount, label, currency, quant
       application_fee_amount: fee,
       transfer_data: { destination: p.acct }
     },
+    // Infos client complètes (nom, email, téléphone, adresse) : Stripe les
+    // collecte, on les stocke, et elles partent dans la base Notion du créateur.
+    billing_address_collection: "required",
+    phone_number_collection: { enabled: true },
+    ...(shipping ? { shipping_address_collection: { allowed_countries: ["FR", "BE", "CH", "LU", "MC", "DE", "ES", "IT", "PT", "NL", "GB", "US", "CA"] } } : {}),
     success_url: successUrl || "https://deltai.fr",
     cancel_url: cancelUrl || successUrl || "https://deltai.fr"
   });
@@ -109,13 +114,55 @@ export async function handleWebhook(rawBody, sig) {
     event = typeof rawBody === "string" ? JSON.parse(rawBody) : JSON.parse(rawBody.toString("utf8"));
   }
   if (event.type === "checkout.session.completed") {
-    const sess = event.data.object;
-    await getDb().query(`UPDATE launch_payments SET status='paid' WHERE session_id=$1`, [sess.id]);
-    // Intégrations créateur (Notion…) : best-effort, ne bloque jamais le webhook.
-    try {
-      const { onLaunchPaymentPaid } = await import("./launchIntegrations.js");
-      await onLaunchPaymentPaid(sess.id);
-    } catch (e) { console.warn("[launchPay] integrations:", e.message); }
+    await markPaid(event.data.object);
   }
   return { received: true };
+}
+
+// Extrait les infos client d'une session Checkout (webhook OU réconciliation).
+function customerFromSession(sess) {
+  const cd = sess?.customer_details || {};
+  return {
+    name: cd.name || null,
+    email: cd.email || null,
+    phone: cd.phone || null,
+    address: cd.address || null,                       // facturation
+    shipping: sess?.shipping_details?.address || null  // livraison si collectée
+  };
+}
+
+async function markPaid(sess) {
+  const { rowCount } = await getDb().query(
+    `UPDATE launch_payments SET status='paid', customer=$2 WHERE session_id=$1 AND status <> 'paid'`,
+    [sess.id, JSON.stringify(customerFromSession(sess))]
+  );
+  if (!rowCount) return; // déjà traité (webhook + sweep ne doublonnent pas)
+  // Intégrations créateur (Notion…) : best-effort, ne bloque jamais le flux.
+  try {
+    const { onLaunchPaymentPaid } = await import("./launchIntegrations.js");
+    await onLaunchPaymentPaid(sess.id);
+  } catch (e) { console.warn("[launchPay] integrations:", e.message); }
+}
+
+// ─── Réconciliation : rattrape les paiements dont le webhook s'est perdu ──────
+// (webhook non configuré, down, ou dev local injoignable par Stripe). Interroge
+// Stripe pour chaque paiement pending < 24 h ; s'il est payé → markPaid → la
+// ligne Notion part quand même. Appelée toutes les 60 s depuis server.js.
+export async function sweepPendingPayments() {
+  if (!(process.env.STRIPE_SECRET_KEY || "").trim()) return;
+  try {
+    const { rows } = await getDb().query(
+      `SELECT session_id FROM launch_payments
+        WHERE status='pending' AND created_at > NOW() - INTERVAL '24 hours'
+        ORDER BY created_at DESC LIMIT 20`
+    );
+    if (!rows.length) return;
+    const s = stripe();
+    for (const r of rows) {
+      try {
+        const sess = await s.checkout.sessions.retrieve(r.session_id);
+        if (sess?.payment_status === "paid") await markPaid(sess);
+      } catch { /* session expirée/introuvable — ignorée */ }
+    }
+  } catch (e) { console.warn("[launchPay] sweep:", e.message); }
 }
