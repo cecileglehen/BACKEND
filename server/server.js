@@ -1347,6 +1347,51 @@ app.get("/api/studio/search", requireAuth, async (req, res) => {
   }
 });
 
+// ─── Vortex — mémoire personnelle chiffrée, cross-modèle (google/gemini-embedding-2) ──
+app.get("/api/vortex/items", requireAuth, async (req, res) => {
+  try {
+    const { listItems } = await import("./lib/vortex.js");
+    res.json({ items: await listItems(req.user.id) });
+  } catch (e) {
+    console.error("[vortex/items]", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/vortex/items", requireAuth, async (req, res) => {
+  try {
+    const { kind, name, text, imageUrl, mimeType } = req.body ?? {};
+    if (!["file", "image", "note"].includes(kind)) return res.status(400).json({ error: "kind invalide" });
+    if (!name) return res.status(400).json({ error: "name requis" });
+    if (kind === "image" && !imageUrl) return res.status(400).json({ error: "imageUrl requis" });
+    const { addItem } = await import("./lib/vortex.js");
+    const item = await addItem(req.user.id, { kind, name: String(name).slice(0, 200), text, imageUrl, mimeType });
+    res.json(item);
+  } catch (e) {
+    console.error("[vortex/items:add]", e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.delete("/api/vortex/items/:id", requireAuth, async (req, res) => {
+  try {
+    const { deleteItem } = await import("./lib/vortex.js");
+    res.json(await deleteItem(req.user.id, req.params.id));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.get("/api/vortex/cleanup", requireAuth, async (req, res) => {
+  try {
+    const { cleanupSuggestions } = await import("./lib/vortex.js");
+    res.json(await cleanupSuggestions(req.user.id));
+  } catch (e) {
+    console.error("[vortex/cleanup]", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Génération d'images Flux Schnell embeddable (sans token) pour les apps Launch.
 // <img src="…/api/launch/img?prompt=…"> → redirige vers l'image (CDN fal).
 // Cache par prompt (dédoublonne) + rate-limit par IP (anti-abus).
@@ -2059,6 +2104,35 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
       if (agentSystem) prepend.push(agentSystem);
       if (knowledgeMsg) prepend.push(knowledgeMsg);
       if (prepend.length) compressed = [...prepend, ...compressed];
+    }
+
+    // ─── Vortex (opt-in EXPLICITE par requête — req.body.useVortex) ─────────
+    // RAG uniquement : on n'envoie JAMAIS tout le Vortex au modèle choisi,
+    // seulement les 4 extraits les plus pertinents pour CETTE question, avec
+    // la source. C'est ce qui rend la confidentialité multi-fournisseurs
+    // tenable : le contenu ne "part" que par petits bouts, sur demande
+    // explicite, jamais en bloc et jamais silencieusement.
+    if (req.body?.useVortex) {
+      try {
+        const lastUser = [...messages].reverse().find((m) => m.role === "user");
+        const queryText = typeof lastUser?.content === "string"
+          ? lastUser.content
+          : (Array.isArray(lastUser?.content) ? lastUser.content.map((p) => p?.text || "").join(" ") : "");
+        if (queryText.trim()) {
+          const { searchRelevant } = await import("./lib/vortex.js");
+          const hits = await searchRelevant(req.user.id, queryText, { limit: 4 });
+          if (hits.length) {
+            const block = hits.map((h) => `[${h.tag}] ${h.name}${h.text ? ` — ${h.text.slice(0, 800)}` : " — (image, contenu non textuel)"}`).join("\n\n");
+            compressed = [{
+              role: "system",
+              content: `─── EXTRAITS PERTINENTS DE TON VORTEX (mémoire personnelle) ───\nCes extraits ont été sélectionnés automatiquement car proches de la question posée — ce n'est PAS tout le Vortex, seulement ce qui semble utile ici.\n\n${block}`
+            }, ...compressed];
+            // Transparence UX (le point que tu as insisté sur — jamais silencieux) :
+            // le front affiche exactement quels éléments sont partis vers CE modèle.
+            try { res.write(`data: ${JSON.stringify({ type: "vortex", items: hits.map((h) => ({ name: h.name, tag: h.tag, score: h.score })), model: modelInfo?.id })}\n\n`); } catch {}
+          }
+        }
+      } catch (e) { console.warn("[vortex-rag]", e.message); }
     }
 
     // ─── Skills système (commandes %% : write_file, generate_image) ────────

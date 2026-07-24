@@ -1,19 +1,22 @@
 // Vortex — dépose tout ce que tu veux (photos, docs, notes), ça orbite autour
-// du trou noir. Prochaine étape : indexation embeddings pour que chaque IA du
-// produit y ait accès (mémoire cross-modèle) — pour l'instant, l'UI + la
-// persistance locale (fondation prête à brancher sur un vrai stockage).
+// du trou noir. Stocké côté serveur, chiffré (AES-256-GCM), indexé en
+// embeddings multimodaux (google/gemini-embedding-2). Chaque IA n'accède
+// JAMAIS à tout le Vortex — uniquement aux extraits pertinents pour la
+// question posée, et seulement si tu actives l'option dans le chat.
+//
+// Anti fourre-tout : dédoublonnage automatique à l'ajout (une quasi-copie
+// n'est jamais re-stockée), auto-classification en catégories fixes, et un
+// panneau « Nettoyer » qui suggère les quasi-doublons restants + le contenu
+// jamais réutilisé depuis longtemps (jamais supprimé sans confirmation).
 import { useEffect, useRef, useState } from "react";
+import { api } from "../lib/api.js";
 
-const STORAGE_KEY = "delt-vortex-items";
-const MAX_ITEMS = 60;
-
-function loadItems() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; }
-}
-function saveItems(items) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }
-  catch { /* quota localStorage (data URLs volumineuses) — on garde en mémoire */ }
-}
+const MAX_ITEMS = 60; // rendu visuel — le backend stocke davantage
+const TAGS = ["Documents", "Photos", "Notes", "Travail", "Personnel", "Factures", "Contacts", "Autre"];
+const TAG_COLORS = {
+  Documents: "#2563eb", Photos: "#a855f7", Notes: "#f59e0b", Travail: "#059669",
+  Personnel: "#ec4899", Factures: "#ef4444", Contacts: "#0891b2", Autre: "#94a3b8"
+};
 
 const EXT_META = {
   pdf:  { color: "#ef4444", label: "PDF" },
@@ -142,7 +145,7 @@ function OrbitingItem({ item, index, total, onOpen, onRemove }) {
   const duration = 20 + ring * 8 + rand01(item.id, "d") * 14;
   const delay = -(rand01(item.id, "p") * duration); // déphasage aléatoire, pas synchronisé
   const dir = ring % 2 === 0 ? "normal" : "reverse";
-  const meta = metaFor(item.name, item.isNote);
+  const meta = metaFor(item.name, item.kind === "note");
   return (
     <div
       className="absolute top-1/2 left-1/2 pointer-events-none"
@@ -165,10 +168,16 @@ function OrbitingItem({ item, index, total, onOpen, onRemove }) {
               <button
                 onClick={() => onOpen(item)}
                 title={item.name}
-                className="rounded-xl bg-white/95 backdrop-blur border border-white/60 shadow-lg shadow-black/30 flex items-center gap-1.5 px-2 py-1.5 hover:scale-110 hover:z-10 transition-transform group"
+                className="relative rounded-xl bg-white/95 backdrop-blur border border-white/60 shadow-lg shadow-black/30 flex items-center gap-1.5 px-2 py-1.5 hover:scale-110 hover:z-10 transition-transform group"
               >
-                {item.dataUrl ? (
-                  <img src={item.dataUrl} alt="" className="w-8 h-8 rounded-md object-cover flex-shrink-0" />
+                {item.tag && (
+                  <span className="absolute -top-1 -left-1 w-2.5 h-2.5 rounded-full border-2 border-white" style={{ background: TAG_COLORS[item.tag] || "#94a3b8" }} title={item.tag} />
+                )}
+                {item.duplicateCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-amber-400 text-white text-[9px] font-bold flex items-center justify-center" title={`${item.duplicateCount} doublon(s) évité(s)`}>×{item.duplicateCount + 1}</span>
+                )}
+                {item.imageUrl ? (
+                  <img src={item.imageUrl} alt="" className="w-8 h-8 rounded-md object-cover flex-shrink-0" />
                 ) : (
                   <FileIcon label={meta.label} color={meta.color} />
                 )}
@@ -187,52 +196,76 @@ function OrbitingItem({ item, index, total, onOpen, onRemove }) {
 }
 
 export default function VortexPage() {
-  const [items, setItems] = useState(loadItems);
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [dragOver, setDragOver] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [preview, setPreview] = useState(null);
   const [sucking, setSucking] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [activeTag, setActiveTag] = useState(null);
+  const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [cleanup, setCleanup] = useState(null);
   const fileInputRef = useRef(null);
 
-  useEffect(() => saveItems(items), [items]);
+  const refresh = () => api.vortexList().then((r) => setItems(r.items || [])).catch(() => {}).finally(() => setLoading(false));
+  useEffect(() => { refresh(); }, []);
+
+  const flashToast = (text) => { setToast(text); setTimeout(() => setToast(null), 2600); };
 
   const addFiles = async (fileList) => {
-    const files = Array.from(fileList || []).slice(0, MAX_ITEMS - items.length);
+    const files = Array.from(fileList || []);
     if (!files.length) return;
     setSucking(true);
-    const next = [];
     for (const f of files) {
       const isImage = /image\//.test(f.type);
       const isText = /^text\//.test(f.type) || /\.(txt|md|csv|json|log|yml|yaml)$/i.test(f.name);
-      const dataUrl = isImage
-        ? await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => res(null); r.readAsDataURL(f); })
-        : null;
-      const textPreview = isText
-        ? await new Promise((res) => { const r = new FileReader(); r.onload = () => res(String(r.result || "").slice(0, 4000)); r.onerror = () => res(null); r.readAsText(f); })
-        : null;
-      next.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, name: f.name, size: f.size, addedAt: Date.now(), dataUrl, textPreview });
+      try {
+        if (isImage) {
+          const dataUrl = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => res(null); r.readAsDataURL(f); });
+          const result = await api.vortexAdd({ kind: "image", name: f.name, imageUrl: dataUrl, mimeType: f.type });
+          if (result.duplicate) flashToast(`« ${f.name} » ressemble déjà à quelque chose dans ton Vortex — pas ajouté en double.`);
+        } else {
+          const text = isText
+            ? await new Promise((res) => { const r = new FileReader(); r.onload = () => res(String(r.result || "").slice(0, 6000)); r.onerror = () => res(null); r.readAsText(f); })
+            : f.name; // binaire non-texte : indexé par nom (recherche par titre seulement)
+          const result = await api.vortexAdd({ kind: "file", name: f.name, text, mimeType: f.type });
+          if (result.duplicate) flashToast(`« ${f.name} » ressemble déjà à quelque chose dans ton Vortex — pas ajouté en double.`);
+        }
+      } catch (e) { flashToast(e.message); }
     }
-    setItems((prev) => [...prev, ...next].slice(-MAX_ITEMS));
+    await refresh();
     setTimeout(() => setSucking(false), 700);
   };
 
-  const addNote = () => {
+  const addNote = async () => {
     const text = noteText.trim();
     if (!text) return;
-    setItems((prev) => [...prev, {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      name: text.slice(0, 40) || "Note", isNote: true, note: text, addedAt: Date.now()
-    }].slice(-MAX_ITEMS));
     setNoteText(""); setNoteOpen(false);
+    try {
+      const result = await api.vortexAdd({ kind: "note", name: text.slice(0, 40) || "Note", text });
+      if (result.duplicate) flashToast("Une note très similaire existe déjà dans ton Vortex.");
+      await refresh();
+    } catch (e) { flashToast(e.message); }
   };
 
-  const removeItem = (id) => setItems((prev) => prev.filter((i) => i.id !== id));
+  const removeItem = async (id) => {
+    setItems((prev) => prev.filter((i) => i.id !== id));
+    try { await api.vortexDelete(id); } catch { refresh(); }
+  };
+
+  const openCleanup = async () => {
+    setCleanupOpen(true);
+    try { setCleanup(await api.vortexCleanup()); } catch { setCleanup({ nearDuplicates: [], stale: [] }); }
+  };
 
   const onDrop = (e) => {
     e.preventDefault(); setDragOver(false);
     if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files);
   };
+
+  const visibleItems = (activeTag ? items.filter((i) => i.tag === activeTag) : items).slice(0, MAX_ITEMS);
 
   return (
     <div
@@ -274,13 +307,25 @@ export default function VortexPage() {
           Vortex
         </h1>
         <p className="text-white/50 text-sm mt-1.5 max-w-md mx-auto">
-          Dépose ici ce que tu veux — photos, documents, notes — et laisse-le orbiter. Bientôt : chaque IA du produit y aura accès.
+          Dépose ici ce que tu veux — photos, documents, notes. Chiffré, dédoublonné automatiquement. Aucune IA n'y accède sans que tu l'actives dans le chat.
         </p>
+        {items.length > 0 && (
+          <div className="flex flex-wrap items-center justify-center gap-1.5 mt-4 pointer-events-auto">
+            {[...new Set(items.map((i) => i.tag).filter(Boolean))].map((tag) => (
+              <button key={tag} onClick={() => setActiveTag((t) => t === tag ? null : tag)}
+                className={`text-[10px] font-semibold px-2.5 py-1 rounded-full border transition-colors flex items-center gap-1.5 ${
+                  activeTag === tag ? "bg-white text-slate-900 border-white" : "text-white/70 border-white/20 hover:border-white/40"}`}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: TAG_COLORS[tag] }} />
+                {tag}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Fichiers en orbite */}
-      {items.map((item, i) => (
-        <OrbitingItem key={item.id} item={item} index={i} total={items.length} onOpen={setPreview} onRemove={removeItem} />
+      {visibleItems.map((item, i) => (
+        <OrbitingItem key={item.id} item={item} index={i} total={visibleItems.length} onOpen={setPreview} onRemove={removeItem} />
       ))}
 
       {/* Barre d'action bas de page */}
@@ -297,9 +342,29 @@ export default function VortexPage() {
           Ajouter une note
         </button>
         {items.length > 0 && (
-          <span className="text-white/40 text-xs font-medium">{items.length} élément{items.length > 1 ? "s" : ""}</span>
+          <>
+            <button onClick={openCleanup}
+              className="px-4 py-2.5 rounded-full text-sm font-bold text-white bg-white/10 hover:bg-white/20 border border-white/15 backdrop-blur transition-colors flex items-center gap-2">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              Nettoyer
+            </button>
+            <span className="text-white/40 text-xs font-medium">{items.length} élément{items.length > 1 ? "s" : ""}</span>
+          </>
         )}
       </div>
+
+      {/* Toast (doublon détecté, erreur…) */}
+      {toast && (
+        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 px-4 py-2 rounded-full bg-white text-slate-800 text-xs font-semibold shadow-lg max-w-sm text-center">
+          {toast}
+        </div>
+      )}
+
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+          <span className="text-white/30 text-sm">Ouverture du Vortex…</span>
+        </div>
+      )}
 
       {/* Modal note */}
       {noteOpen && (
@@ -321,20 +386,73 @@ export default function VortexPage() {
       {preview && (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/60 p-4" onClick={() => setPreview(null)}>
           <div className="w-full max-w-md rounded-2xl bg-white shadow-xl p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-bold text-slate-900 truncate pr-2">{preview.name}</div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-sm font-bold text-slate-900 truncate">{preview.name}</div>
+                {preview.tag && (
+                  <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold" style={{ color: TAG_COLORS[preview.tag] }}>
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: TAG_COLORS[preview.tag] }} />
+                    {preview.tag}
+                  </span>
+                )}
+              </div>
               <button onClick={() => setPreview(null)} className="text-slate-400 hover:text-slate-700 flex-shrink-0">✕</button>
             </div>
-            {preview.dataUrl && <img src={preview.dataUrl} alt="" className="w-full rounded-xl object-contain max-h-72" />}
-            {preview.isNote && <p className="text-sm text-slate-600 whitespace-pre-wrap">{preview.note}</p>}
-            {!preview.isNote && preview.textPreview && (
-              <pre className="text-xs text-slate-600 whitespace-pre-wrap font-mono bg-slate-50 rounded-xl p-3 max-h-72 overflow-y-auto">{preview.textPreview}{preview.textPreview.length >= 4000 ? "…" : ""}</pre>
+            {preview.imageUrl && <img src={preview.imageUrl} alt="" className="w-full rounded-xl object-contain max-h-72" />}
+            {preview.kind === "note" && <p className="text-sm text-slate-600 whitespace-pre-wrap">{preview.text}</p>}
+            {preview.kind === "file" && preview.text && (
+              <pre className="text-xs text-slate-600 whitespace-pre-wrap font-mono bg-slate-50 rounded-xl p-3 max-h-72 overflow-y-auto">{preview.text}</pre>
             )}
-            {!preview.dataUrl && !preview.isNote && !preview.textPreview && (
-              <p className="text-xs text-slate-400">{preview.size ? `${Math.round(preview.size / 1024)} Ko` : ""} — aperçu non disponible pour ce type de fichier.</p>
+            {!preview.imageUrl && !preview.text && (
+              <p className="text-xs text-slate-400">Aperçu non disponible pour ce type de fichier.</p>
             )}
             <button onClick={() => { removeItem(preview.id); setPreview(null); }}
               className="text-xs font-semibold text-red-500 hover:text-red-600">Retirer du Vortex</button>
+          </div>
+        </div>
+      )}
+
+      {/* Nettoyer — quasi-doublons + contenu jamais réutilisé. Rien n'est
+          supprimé automatiquement, tout passe par confirmation ici. */}
+      {cleanupOpen && (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/60 p-4" onClick={() => setCleanupOpen(false)}>
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl p-4 space-y-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-bold text-slate-900">Nettoyer le Vortex</div>
+              <button onClick={() => setCleanupOpen(false)} className="text-slate-400 hover:text-slate-700">✕</button>
+            </div>
+            {!cleanup ? (
+              <div className="text-center text-xs text-slate-400 py-6">Analyse…</div>
+            ) : (
+              <>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Quasi-doublons ({cleanup.nearDuplicates.length})</div>
+                  {cleanup.nearDuplicates.length === 0 ? (
+                    <p className="text-xs text-slate-400">Rien à signaler.</p>
+                  ) : cleanup.nearDuplicates.map((d, i) => (
+                    <div key={i} className="flex items-center gap-2 py-1.5 border-b border-slate-100 text-xs">
+                      <span className="flex-1 truncate text-slate-700">{d.a.name} <span className="text-slate-400">≈</span> {d.b.name}</span>
+                      <span className="text-slate-400 flex-shrink-0">{Math.round(d.similarity * 100)}%</span>
+                      <button onClick={async () => { await removeItem(d.b.id); setCleanup((c) => ({ ...c, nearDuplicates: c.nearDuplicates.filter((_, j) => j !== i) })); }}
+                        className="text-red-500 hover:text-red-600 font-semibold flex-shrink-0">Garder « {d.a.name} »</button>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Jamais réutilisé depuis longtemps ({cleanup.stale.length})</div>
+                  {cleanup.stale.length === 0 ? (
+                    <p className="text-xs text-slate-400">Rien à signaler.</p>
+                  ) : cleanup.stale.map((s) => (
+                    <div key={s.id} className="flex items-center gap-2 py-1.5 border-b border-slate-100 text-xs">
+                      <span className="flex-1 truncate text-slate-700">{s.name}</span>
+                      <span className="text-slate-400 flex-shrink-0">{s.tag}</span>
+                      <button onClick={async () => { await removeItem(s.id); setCleanup((c) => ({ ...c, stale: c.stale.filter((x) => x.id !== s.id) })); }}
+                        className="text-red-500 hover:text-red-600 font-semibold flex-shrink-0">Supprimer</button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

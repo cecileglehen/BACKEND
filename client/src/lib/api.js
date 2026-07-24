@@ -164,12 +164,12 @@ export const api = {
   },
 
   // Chat streaming SSE
-  chatStream: ({ messages, tier, modelId, manual, projectId, agentId, enabledTools, onDelta, onThinking, onMeta, onDone, onError, onWebsearch, onArtifact, onImage, onTool, onSkill }) => {
+  chatStream: ({ messages, tier, modelId, manual, projectId, agentId, enabledTools, useVortex, onDelta, onThinking, onMeta, onDone, onError, onWebsearch, onArtifact, onImage, onTool, onSkill, onVortex }) => {
     const ctrl = new AbortController();
     fetch(u("/api/chat/stream"), {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ messages, tier, modelId, manual, ...(projectId && { projectId }), ...(agentId && { agentId }), ...(enabledTools && { enabledTools }) }),
+      body: JSON.stringify({ messages, tier, modelId, manual, ...(projectId && { projectId }), ...(agentId && { agentId }), ...(enabledTools && { enabledTools }), ...(useVortex && { useVortex: true }) }),
       signal: ctrl.signal
     }).then(async (res) => {
       if (!res.ok) {
@@ -197,6 +197,7 @@ export const api = {
             else if (msg.type === "websearch") onWebsearch?.(msg);
             else if (msg.type === "artifact") onArtifact?.(msg);
             else if (msg.type === "skill") onSkill?.(msg);
+            else if (msg.type === "vortex") onVortex?.(msg);
             else if (msg.type === "image" || msg.type === "image_pending" || msg.type === "image_error") onImage?.(msg);
             else if (msg.type === "tool_call" || msg.type === "tool_result") onTool?.(msg);
             else if (msg.delta !== undefined) onDelta?.(msg.delta);
@@ -315,6 +316,11 @@ export const api = {
     fetch(u("/api/image"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ prompt, modelId, imageUrls, ...opts }) }).then(json),
   studioSearch: (q) =>
     fetch(u(`/api/studio/search?q=${encodeURIComponent(q)}`), { headers: authHeaders() }).then(json),
+
+  vortexList: () => fetch(u("/api/vortex/items"), { headers: authHeaders() }).then(json),
+  vortexAdd: (item) => fetch(u("/api/vortex/items"), { method: "POST", headers: authHeaders(), body: JSON.stringify(item) }).then(json),
+  vortexDelete: (id) => fetch(u(`/api/vortex/items/${id}`), { method: "DELETE", headers: authHeaders() }).then(json),
+  vortexCleanup: () => fetch(u("/api/vortex/cleanup"), { headers: authHeaders() }).then(json),
   video: (prompt, modelId) =>
     fetch(u("/api/video"), { method: "POST", headers: authHeaders(), body: JSON.stringify({ prompt, modelId }) }).then(json),
 
