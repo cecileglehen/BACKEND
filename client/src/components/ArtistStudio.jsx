@@ -87,7 +87,7 @@ function BrandModelPicker({ models, modelId, onChange }) {
             >
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-bold text-delt-text truncate">{m.display}</span>
-                <span className="text-[10px] font-bold text-delt-accent flex-shrink-0 ml-1">{m.cost} Cr</span>
+                {m.cost != null && <span className="text-[10px] font-bold text-delt-accent flex-shrink-0 ml-1">{m.cost} Cr</span>}
               </div>
               <div className="text-[10px] text-delt-muted truncate">{m.tagline}</div>
             </button>
@@ -344,6 +344,9 @@ function VoiceTab({ catalog, onCreditsUsed }) {
   const voiceModels = catalog?.creative?.VOICE?.models || [];
   const selectedModel = voiceModels.find((m) => m.id === modelId) || voiceModels[0];
   const voiceOptions = selectedModel?.voices || [];
+  // Facturation dynamique au caractère ($20/M chars) — pas de coût fixe par modèle.
+  const crPer1kChars = catalog?.creative?.VOICE?.crPer1kChars ?? 3.52;
+  const cost = Math.max(1, Math.ceil((text.length / 1000) * crPer1kChars));
 
   const changeModel = (id) => {
     setModelId(id);
@@ -418,7 +421,7 @@ function VoiceTab({ catalog, onCreditsUsed }) {
             Génération…
           </>
         ) : (
-          `Générer la voix · ${selectedModel?.cost || 8} Cr`
+          `Générer la voix · ${cost} Cr`
         )}
       </button>
 

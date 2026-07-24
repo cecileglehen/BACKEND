@@ -199,9 +199,9 @@ export const CREATIVE = {
       { id: "google/gemini-3-pro-image-preview",     brand: "Google", display: "Nano Banana Pro", provider: "openrouter", cost: 35,  tagline: "Rendu parfait" },
       { id: "openai/gpt-5-image",                    brand: "OpenAI", display: "GPT Image",       provider: "openrouter", cost: 50,  tagline: "OpenAI haut de gamme" },
       { id: "openai/gpt-5.4-image-2",                brand: "OpenAI", display: "GPT Image 2",     provider: "openrouter", cost: 120, tagline: "Texte parfait — rendu pro" },
-      { id: "krea/krea-2-medium-turbo",              brand: "Krea",   display: "Krea 2 Medium Turbo", provider: "fal",     cost: 6,   tagline: "Krea rapide — style photo réaliste" },
-      { id: "krea/krea-2-medium",                    brand: "Krea",   display: "Krea 2 Medium",   provider: "fal",        cost: 14,  tagline: "Équilibré — bon rendu, bon prix" },
-      { id: "krea/krea-2-large",                     brand: "Krea",   display: "Krea 2 Large",    provider: "fal",        cost: 30,  tagline: "Rendu Krea haut de gamme" }
+      { id: "krea/krea-2-medium-turbo",              brand: "Krea",   display: "Krea 2 Medium Turbo", provider: "openrouter", cost: 6,   tagline: "Krea rapide — style photo réaliste" },
+      { id: "krea/krea-2-medium",                    brand: "Krea",   display: "Krea 2 Medium",   provider: "openrouter", cost: 14,  tagline: "Équilibré — bon rendu, bon prix" },
+      { id: "krea/krea-2-large",                     brand: "Krea",   display: "Krea 2 Large",    provider: "openrouter", cost: 30,  tagline: "Rendu Krea haut de gamme" }
     ],
     get model() { return this.models[0]; },
     get cost() { return this.models[0].cost; }
@@ -246,29 +246,32 @@ export const CREATIVE = {
   },
   VOICE: {
     label: "Voix",
+    // Facturation dynamique au caractère (comme le fournisseur facture réellement
+    // la TTS) : $20 / 1M caractères → Cr/1000 = 20 / 1000 * CR_PER_USD (176).
+    crPer1kChars: (20 / 1000) * CR_PER_USD,
+    costForChars(n) {
+      return Math.max(1, Math.ceil((Math.max(0, n) / 1000) * this.crPer1kChars));
+    },
     models: [
       {
         id: "minimax/speech-2.8-turbo",
         brand: "MiniMax",
         display: "Speech 2.8 Turbo",
-        provider: "fal",
-        cost: 8,
+        provider: "openrouter",
         tagline: "Rapide & naturel — usage quotidien"
       },
       {
         id: "minimax/speech-2.8-hd",
         brand: "MiniMax",
         display: "Speech 2.8 HD",
-        provider: "fal",
-        cost: 18,
+        provider: "openrouter",
         tagline: "Qualité studio — rendu premium"
       },
       {
         id: "qwen/qwen-audio-3.0-tts-plus",
         brand: "Qwen",
         display: "Qwen Audio 3.0 TTS Plus",
-        provider: "fal",
-        cost: 10,
+        provider: "openrouter",
         tagline: "Multilingue — bon rapport qualité/prix",
         voices: [
           { id: "longanlingxin", label: "Femme" },
@@ -279,13 +282,11 @@ export const CREATIVE = {
         id: "microsoft/mai-voice-2-flash",
         brand: "Microsoft",
         display: "MAI Voice 2 Flash",
-        provider: "fal",
-        cost: 7,
+        provider: "openrouter",
         tagline: "Le plus rapide — voix courtes"
       }
     ],
-    get model() { return this.models[0]; },
-    get cost() { return this.models[0].cost; }
+    get model() { return this.models[0]; }
   }
 };
 

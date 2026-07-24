@@ -2878,14 +2878,16 @@ app.post("/api/music", requireAuth, async (req, res) => {
   }
 });
 
-// ─── Voix (MiniMax Speech 2.8, via fal.ai) ───────────────────────────────────
+// ─── Voix (MiniMax, Qwen Audio, MAI Voice — via OpenRouter) ──────────────────
+// Facturation dynamique au caractère ($20/M chars), pas de coût fixe : mêmes
+// window quota 3h + logUsage que Image/Vidéo/Musique.
 app.post("/api/voice", requireAuth, async (req, res) => {
   try {
     const text = String(req.body?.text || "").trim().slice(0, 5000);
     if (!text) return res.status(400).json({ error: "text requis" });
 
     const voiceModel = CREATIVE.VOICE.models.find((m) => m.id === req.body?.modelId) || CREATIVE.VOICE.models[0];
-    const cost = voiceModel.cost;
+    const cost = CREATIVE.VOICE.costForChars(text.length);
 
     const voxWindow = await getWindow(req.user.id, req.user.plan);
     if (voxWindow.remaining < cost) {
@@ -2895,18 +2897,41 @@ app.post("/api/voice", requireAuth, async (req, res) => {
       });
     }
 
-    const { falGenerateSpeech } = await import("./lib/fal.js");
-    const result = await falGenerateSpeech(voiceModel.id, text, {
-      voiceId: req.body?.voiceId,
-      speed: req.body?.speed
+    const key = (process.env.OPENROUTER_API_KEY || "").trim();
+    if (!key) return res.status(500).json({ error: "OPENROUTER_API_KEY manquante" });
+    const voiceId = String(req.body?.voiceId || voiceModel.voices?.[0]?.id || "").trim();
+    const orRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+        "HTTP-Referer": "https://delt.ai",
+        "X-Title": "DELT AI"
+      },
+      body: JSON.stringify({
+        model: voiceModel.id,
+        messages: [{ role: "user", content: text }],
+        modalities: ["text", "audio"],
+        audio: { format: "mp3", ...(voiceId && { voice: voiceId }) }
+      })
     });
+    if (!orRes.ok) {
+      const txt = await orRes.text().catch(() => "");
+      return res.status(orRes.status).json({ error: `OpenRouter ${orRes.status}: ${txt.slice(0, 300)}` });
+    }
+    const data = await orRes.json();
+    const audio = data?.choices?.[0]?.message?.audio;
+    const url = audio?.data
+      ? `data:audio/${audio.format || "mp3"};base64,${audio.data}`
+      : audio?.url ?? null;
+    if (!url) return res.status(502).json({ error: "Réponse provider invalide" });
 
     try {
       await consumeWindow(req.user.id, cost);
       logUsage({ userId: req.user.id, modelId: voiceModel.id, tier: "VOICE", tokensIn: 0, tokensOut: 0, costCr: cost, source: "voice" });
     } catch { /* ignore */ }
 
-    res.json({ provider: "fal", model: voiceModel, url: result.url, cost });
+    res.json({ provider: "openrouter", model: voiceModel, url, cost });
   } catch (e) {
     console.error("[voice]", e);
     res.status(500).json({ error: e.message });
