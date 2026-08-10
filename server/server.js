@@ -3173,7 +3173,18 @@ app.post("/api/voicechat", requireAuth, async (req, res) => {
     //  • grok      → chaîne xAI sans filtre (+18)
     //  • chatModel → le modèle DE LA CONVERSATION (un chat Gemini reste Gemini)
     //  • défaut    → GPT audio natif (mini / pro)
-    const chatModelId = String(req.body?.chatModelId || "").trim();
+    // Le client peut envoyer un ALIAS de marque/famille (« brand:Mistral »)
+    // quand l'utilisateur a choisi une marque sans modèle précis : il faut le
+    // résoudre en id réel, sinon OpenRouter répond « not a valid model ID ».
+    const rawChatModelId = String(req.body?.chatModelId || "").trim();
+    const chatModelId = rawChatModelId
+      ? (resolveRequestedModel(rawChatModelId, "NANO")?.model?.id || null)
+      : null;
+    if (rawChatModelId && !chatModelId) {
+      emit({ type: "error", error: `Modèle introuvable : ${rawChatModelId}` });
+      clearInterval(heartbeat);
+      return res.end();
+    }
     const usedModel = grokMode ? vc.GROK_TEXT_MODEL : (chatModelId || qual.id);
     if (grokMode) {
       await vc.streamGrokVoiceChat({ text, history, voice: req.body?.voice, emit });
