@@ -44,6 +44,7 @@ const curatedPicker = <CuratedBrand>[
   CuratedBrand('Google', 'Gemini', [
     CuratedModel('google/gemini-2.5-flash', 'Gemini 2.5 Flash', 'fast'),
     CuratedModel('google/gemini-3.6-flash', 'Gemini 3.6 Flash', 'chat'),
+    CuratedModel('google/gemini-3.1-pro-preview-customtools', 'Gemini 3.1 Pro', 'think'),
     CuratedModel('google/gemini-3.1-flash-lite-image', 'Nano Banana Flash Lite', 'image'),
     CuratedModel('google/gemini-3.1-flash-image-preview', 'Nano Banana 2', 'image'),
   ]),

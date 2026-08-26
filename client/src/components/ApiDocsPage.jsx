@@ -42,7 +42,7 @@ function CopyBtn({ text }) {
       onClick={() => navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200); })}
       className="absolute top-2 right-2 z-10 text-[10px] font-bold text-slate-400 hover:text-white bg-slate-800/80 hover:bg-slate-700 px-2 py-1 rounded transition-colors"
     >
-      {copied ? "✓ Copié" : "Copier"}
+      {copied ? "Copié" : "Copier"}
     </button>
   );
 }
@@ -149,7 +149,7 @@ export default function ApiDocsPage() {
       {/* Hero */}
       <div className="mb-10 flex items-center gap-4 flex-wrap">
         <div className="w-14 h-14 rounded-2xl shadow-md flex items-center justify-center"
-          style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)" }}>
+          style={{ background: "#0f172a" }}>
           <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
             <polyline points="14 2 14 8 20 8"/>
@@ -269,7 +269,7 @@ print(response.choices[0].message.content)`}</Code>
 
             <H3>{t("docs.security")}</H3>
             <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-xs space-y-2">
-              <div><strong className="text-amber-900">⚠ Ne mets jamais ta clé dans du code public.</strong> Stocke-la côté serveur ou dans un gestionnaire de secrets (env vars, AWS Secrets, etc.).</div>
+              <div><strong className="text-amber-900">Ne mets jamais ta clé dans du code public.</strong> Stocke-la côté serveur ou dans un gestionnaire de secrets (env vars, AWS Secrets, etc.).</div>
               <div>Une clé compromise peut être <strong>révoquée immédiatement</strong> depuis l'onglet API.</div>
               <div>Crée une clé distincte par environnement (dev, staging, prod) pour mieux tracer.</div>
             </div>
@@ -330,7 +330,7 @@ client := openai.NewClientWithConfig(config)`}</Code>
 
             <H3>{t("docs.params")}</H3>
             <div className="rounded-xl border border-delt-border bg-white p-4">
-              <Param name="model"        type="string"  required desc="ID exact du modèle (ex: openai/gpt-5.4, anthropic/claude-sonnet-4-5)" />
+              <Param name="model"        type="string"  required desc="ID exact du modèle (ex: openai/gpt-5.4, anthropic/claude-sonnet-5)" />
               <Param name="messages"     type="array"   required desc="Historique au format [{role, content}]. Roles : system, user, assistant" />
               <Param name="stream"       type="boolean" desc="Active le streaming SSE token par token (défaut : false)" />
               <Param name="temperature"  type="number"  desc="0 à 2. Plus haut = plus créatif (défaut : 1)" />
@@ -344,7 +344,7 @@ client := openai.NewClientWithConfig(config)`}</Code>
 
             <H3>{t("docs.example")}</H3>
             <Code lang="python">{`response = client.chat.completions.create(
-    model="anthropic/claude-sonnet-4-5",
+    model="anthropic/claude-sonnet-5",
     messages=[
         {"role": "system", "content": "Tu es un expert en biologie marine."},
         {"role": "user",   "content": "Quel est le plus grand mammifère ?"}
@@ -359,7 +359,7 @@ print(response.choices[0].message.content)`}</Code>
   "id": "chatcmpl-abc123",
   "object": "chat.completion",
   "created": 1730000000,
-  "model": "anthropic/claude-sonnet-4-5",
+  "model": "anthropic/claude-sonnet-5",
   "choices": [{
     "index": 0,
     "message": { "role": "assistant", "content": "La baleine bleue..." },
@@ -439,7 +439,7 @@ data: [DONE]`}</Code>
     }]
 )`}</Code>
             <P>
-              Modèles compatibles : <strong>GPT-5.4</strong>, <strong>GPT-5.5</strong>, <strong>Claude Sonnet 4.5/Opus 4.8</strong>, <strong>Gemini 2.5 Flash/Pro</strong>, <strong>Grok 4.20</strong>.
+              Modèles compatibles : <strong>GPT-5.4</strong>, <strong>GPT-5.5</strong>, <strong>Claude Sonnet 5/Opus 5</strong>, <strong>Gemini 2.5 Flash/Pro</strong>, <strong>Grok 4.20</strong>.
             </P>
           </section>
 

@@ -9,7 +9,7 @@ const SECTIONS = {
       id: "chat",
       icon: "💬",
       title: "Le Chat — 80+ modèles",
-      intro: "Le cœur de Delt AI. 80+ modèles répartis sur 18 providers : GPT-5.5/5.4/4.1/o3, Claude Opus 4.8/Sonnet 4.5/Haiku 4.5, Gemini 3.5/3.1/2.5, Grok 4.20/4.3, Mistral Small 4/Large/Medium/Mixtral 8x22B, Llama 4, Qwen 3.7/Coder, Kimi K2.6, Nova, DeepSeek V4, Perplexity Sonar + notre modèle DELT 33M.",
+      intro: "Le cœur de Delt AI. 80+ modèles répartis sur 18 providers : GPT-5.5/5.4/4.1/o3, Claude Opus 5/Sonnet 5/Haiku 4.5, Gemini 3.5/3.1/2.5, Grok 4.20/4.3, Mistral Small 4/Large/Medium/Mixtral 8x22B, Llama 4, Qwen 3.7/Coder, Kimi K2.6, Nova, DeepSeek V4, Perplexity Sonar + notre modèle DELT 33M.",
       items: [
         { label: "🇫🇷 Tokens gratuits Mistral (FR)", body: "Pour tester sans payer, on offre chaque mois sur le plan FREE : 50 000 tokens sur Mistral Small 4 (le sommet de l'IA française, open-weights, multimodal, 262K ctx), 15 000 tokens sur Mistral Large (le flagship), et 3 000 tokens sur Mixtral 8x22B Instruct (le MoE 141B). Soutiens l'IA souveraine européenne." },
         { label: "Routeur automatique", body: "L'étoile ⭐ = full auto. Delt analyse ta question et choisit le tier optimal (PICO pour les triviales, EXPERT pour les complexes). Tu peux aussi forcer une famille (GPT-5.4, Claude Sonnet…) via les pastilles." },
@@ -53,7 +53,7 @@ const SECTIONS = {
       intro: "L'IA peut écrire des fichiers téléchargeables, générer des images inline et créer de vraies présentations PowerPoint via du code pptxgenjs.",
       items: [
         { label: "Fichiers téléchargeables", body: "L'IA utilise %%write_file:script.py … %%end → tu vois une carte cliquable avec preview live (HTML iframe, Markdown rendu, CSV en tableau, JSON pretty, code coloré). Formats : .md .txt .csv .json .html .py .js .ts .dart .go .rs .java .cpp et 15+ autres." },
-        { label: "Génération d'image inline", body: "L'IA peut intégrer %%generate_image:prompt directement dans sa réponse → image vraiment générée via FLUX Schnell et affichée dans le chat. 5 Cr / image." },
+        { label: "Génération d'image inline", body: "L'IA peut intégrer %%generate_image:prompt directement dans sa réponse → image vraiment générée via Gemini Flash Lite et affichée dans le chat. 5 Cr / image." },
         { label: "Vrai PowerPoint (.pptx)", body: "L'IA écrit du code JavaScript pptxgenjs (centaines de lignes possibles) → exécuté côté navigateur → vrai fichier .pptx avec shapes, charts, tableaux, gradients, layouts custom. Pas une fake conversion." },
         { label: "Split view artifacts", body: "Click sur un fichier généré → l'écran se split [CHAT | ARTIFACT]. HTML preview live, code source à droite, bouton télécharger/copier." }
       ]
@@ -64,7 +64,7 @@ const SECTIONS = {
       title: "Studio créatif — Image, Vidéo, Musique",
       intro: "Génère des images, des vidéos HD et de la musique avec les meilleurs modèles créatifs du marché.",
       items: [
-        { label: "Images (7 modèles)", body: "FLUX Schnell (rapide, 5 Cr) · Nano Banana (qualité, 8 Cr) · GPT Image Mini (10 Cr) · Nano Banana 2 (20 Cr) · Nano Banana Pro (35 Cr) · GPT Image (50 Cr) · GPT Image 2 (120 Cr, texte parfait)." },
+        { label: "Images (7 modèles)", body: "Gemini Flash Lite (rapide, 5 Cr) · Nano Banana (qualité, 8 Cr) · GPT Image Mini (10 Cr) · Nano Banana 2 (20 Cr) · Nano Banana Pro (35 Cr) · GPT Image (50 Cr) · GPT Image 2 (120 Cr, texte parfait)." },
         { label: "Vidéo (2 modèles)", body: "Veo 3.1 Lite (Google, ~18 Cr/sec — le moins cher) · Seedance 2 (ByteDance, ~50 Cr/sec — qualité supérieure). Texte → vidéo 720p en quelques minutes." },
         { label: "Musique", body: "Suno V5.5 — 1-3 min de musique avec voix, 2 pistes générées par requête. 25 Cr par génération." },
         { label: "Prompt tips", body: "Sois précis : style (cinematic, anime, photoréaliste), sujet, composition, lumière, palette. Plus tu détailles, mieux c'est." }
@@ -180,7 +180,7 @@ const SECTIONS = {
       id: "chat",
       icon: "💬",
       title: "Chat — 80+ models",
-      intro: "The core of Delt AI. 80+ models across 18 providers: GPT-5.5/5.4/4.1/o3, Claude Opus 4.8/Sonnet 4.5/Haiku 4.5, Gemini 3.5/3.1/2.5, Grok 4.20/4.3, Mistral Small 4/Large/Medium/Mixtral 8x22B, Llama 4, Qwen 3.7/Coder, Kimi K2.6, Nova, DeepSeek V4, Perplexity Sonar + our DELT 33M model.",
+      intro: "The core of Delt AI. 80+ models across 18 providers: GPT-5.5/5.4/4.1/o3, Claude Opus 5/Sonnet 5/Haiku 4.5, Gemini 3.5/3.1/2.5, Grok 4.20/4.3, Mistral Small 4/Large/Medium/Mixtral 8x22B, Llama 4, Qwen 3.7/Coder, Kimi K2.6, Nova, DeepSeek V4, Perplexity Sonar + our DELT 33M model.",
       items: [
         { label: "🇫🇷 Free Mistral tokens (French AI)", body: "To let you test without paying, every month on the FREE plan we give you: 50,000 tokens on Mistral Small 4 (the pinnacle of French AI — open-weights, multimodal, 262K ctx), 15,000 tokens on Mistral Large (the flagship), and 3,000 tokens on Mixtral 8x22B Instruct (the 141B MoE). Support sovereign European AI." },
         { label: "Auto router", body: "The ⭐ star = full auto. Delt analyzes your question and picks the optimal tier (PICO for trivial, EXPERT for complex). You can also force a family (GPT-5.4, Claude Sonnet…) via the pills." },
@@ -224,7 +224,7 @@ const SECTIONS = {
       intro: "The AI can write downloadable files, generate inline images, and create real PowerPoint presentations via pptxgenjs code.",
       items: [
         { label: "Downloadable files", body: "The AI uses %%write_file:script.py … %%end → you get a clickable card with live preview (HTML iframe, rendered Markdown, CSV table, pretty JSON, syntax-highlighted code). Formats: .md .txt .csv .json .html .py .js .ts .dart .go .rs .java .cpp and 15+ more." },
-        { label: "Inline image generation", body: "The AI can embed %%generate_image:prompt directly in its response → really generated image via FLUX Schnell, displayed in chat. 5 Cr / image." },
+        { label: "Inline image generation", body: "The AI can embed %%generate_image:prompt directly in its response → really generated image via Gemini Flash Lite, displayed in chat. 5 Cr / image." },
         { label: "Real PowerPoint (.pptx)", body: "The AI writes pptxgenjs JavaScript code (hundreds of lines possible) → executed in your browser → real .pptx file with shapes, charts, tables, gradients, custom layouts. Not a fake conversion." },
         { label: "Split view artifacts", body: "Click on a generated file → the screen splits [CHAT | ARTIFACT]. Live HTML preview, source code on the right, download/copy buttons." }
       ]
@@ -235,7 +235,7 @@ const SECTIONS = {
       title: "Creative Studio — Image, Video, Music",
       intro: "Generate images, HD videos and music with the best creative models on the market.",
       items: [
-        { label: "Images (7 models)", body: "FLUX Schnell (fast, 5 Cr) · Nano Banana (quality, 8 Cr) · GPT Image Mini (10 Cr) · Nano Banana 2 (20 Cr) · Nano Banana Pro (35 Cr) · GPT Image (50 Cr) · GPT Image 2 (120 Cr, perfect text)." },
+        { label: "Images (7 models)", body: "Gemini Flash Lite (fast, 5 Cr) · Nano Banana (quality, 8 Cr) · GPT Image Mini (10 Cr) · Nano Banana 2 (20 Cr) · Nano Banana Pro (35 Cr) · GPT Image (50 Cr) · GPT Image 2 (120 Cr, perfect text)." },
         { label: "Video (2 models)", body: "Veo 3.1 Lite (Google, ~18 Cr/sec — cheapest) · Seedance 2 (ByteDance, ~50 Cr/sec — higher quality). Text → 720p video in minutes." },
         { label: "Music", body: "Suno V5.5 — 1-3 min of music with vocals, 2 tracks generated per request. 25 Cr per generation." },
         { label: "Prompt tips", body: "Be specific: style (cinematic, anime, photorealistic), subject, composition, lighting, palette. The more detailed, the better." }

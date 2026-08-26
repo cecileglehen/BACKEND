@@ -279,7 +279,7 @@ export async function streamChat({ modelId, messages, res, onDone }) {
         const json = JSON.parse(data);
         const choice = json.choices?.[0];
         // Reasoning unifié (OpenAI-like) OU blocs Anthropic (Claude Fable 5 /
-        // Opus 4.8+) livrés dans delta.reasoning_details[] — types
+        // Opus 5+) livrés dans delta.reasoning_details[] — types
         // reasoning.text / reasoning.summary (on ignore reasoning.encrypted).
         let reasoning = choice?.delta?.reasoning ?? choice?.delta?.reasoning_content ?? "";
         if (!reasoning && Array.isArray(choice?.delta?.reasoning_details)) {

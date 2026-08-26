@@ -25,6 +25,7 @@ export const PICKER = [
   { brand: "Google", label: "Gemini", models: [
     { id: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", kind: "fast"  },
     { id: "google/gemini-3.6-flash", label: "Gemini 3.6 Flash", kind: "chat"  },
+    { id: "google/gemini-3.1-pro-preview-customtools", label: "Gemini 3.1 Pro", kind: "think" },
     { id: "google/gemini-3.1-flash-lite-image", label: "Nano Banana Flash Lite", kind: "image" },
     { id: "google/gemini-3.1-flash-image-preview", label: "Nano Banana 2", kind: "image" }
   ]},

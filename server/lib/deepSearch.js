@@ -782,7 +782,7 @@ async function synthesize({ question, plan, sources, graph, language, signal, us
           "- Les pages qu'on te donne sont PLUS RÉCENTES que ton entraînement. Si elles décrivent un produit, une version ou un événement que tu ne connais pas, c'est qu'il est SORTI APRÈS ta coupure — pas qu'il est faux.",
           "- Il est FORMELLEMENT INTERDIT de déclarer qu'un produit/modèle/fait 'n'existe pas', est 'fictif', 'hypothétique' ou 'non attesté' au seul motif que TU ne le connais pas. Ton ignorance n'est PAS une preuve d'inexistence.",
           "- Une annonce sur le site OFFICIEL de l'éditeur (openai.com, anthropic.com, blog.google, mistral.ai, x.ai…) est une source PRIMAIRE de 1ʳᵉ main : elle CONFIRME l'existence et les specs du produit. Traite-la comme hautement fiable, jamais comme 'non vérifiée'.",
-          "- Réponds avec les sources fraîches comme vérité de terrain. N'oppose JAMAIS tes souvenirs périmés aux sources : si elles disent que GPT-5.5 / Opus 4.8 / Gemini 3 existent, ils existent.",
+          "- Réponds avec les sources fraîches comme vérité de terrain. N'oppose JAMAIS tes souvenirs périmés aux sources : si elles disent que GPT-5.5 / Opus 5 / Gemini 3 existent, ils existent.",
           "CALIBRATION DE FIABILITÉ (important) — ne sois PAS sceptique par réflexe :",
           "- Le site officiel d'un éditeur sur SON propre produit = fiabilité maximale (≈95%). Ne le qualifie jamais de 'non vérifié' ou 'blog non vérifié'.",
           "- Une grande rédaction (AFP, Reuters, Le Monde, TF1, France Info, BBC, Guardian, NYT…) qui rapporte un fait d'actualité est une source FIABLE (≈80-95%), pas douteuse. Ne sous-note jamais un média établi juste parce que c'est de la presse.",

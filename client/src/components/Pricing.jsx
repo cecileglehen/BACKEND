@@ -65,7 +65,7 @@ const CATEGORY_TABLE = [
   { cat: "NANO",       models: "Mistral Small 4 · GPT-4o Mini · GPT-5.4 Nano · Gemini 2.5 Flash",                              badge: "badge-eco" },
   { cat: "MINI",       models: "Mistral Large 3 · Mixtral 8x22B · GPT-5.4 Mini · Llama 4 Maverick · Gemini 3.1 Flash Lite · Claude Haiku 4.5 · Grok 4.20 · Grok 4.3", badge: "badge-mini" },
   { cat: "NORMAL",     models: "GPT-5.4 · Claude Sonnet 5 · Mistral Large · Sonar Web Search",                                            badge: "badge-normal" },
-  { cat: "EXPERT",     models: "GPT-5.5 · Claude Fable 5 (très cher) · Claude Opus 4.8 · Grok 4.20 Multi-Agent · Sonar Deep Research", badge: "badge-expert" },
+  { cat: "EXPERT",     models: "GPT-5.5 · Claude Fable 5 (très cher) · Claude Opus 5 · Grok 4.20 Multi-Agent · Sonar Deep Research", badge: "badge-expert" },
   { cat: "PRO",        models: "GPT-5.4 Pro · GPT-5.5 Pro",                                                                    badge: "badge-pro" },
 ];
 

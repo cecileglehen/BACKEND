@@ -120,6 +120,7 @@ export const CATEGORIES = {
       { id: "openai/gpt-5.3-codex", brand: "OpenAI", display: "GPT-5.3 Codex", price: { in: 1.75, out: 14.00 }, ctx: 400000 },
       { id: "openai/gpt-5.1-codex-max", brand: "OpenAI", display: "GPT-5.1 Codex Max", price: { in: 2.00, out: 16.00 }, ctx: 400000 },
       { id: "mistralai/mistral-large", brand: "Mistral", display: "Mistral Large", price: { in: 2.00, out: 6.00 }, ctx: 128000, vision: true },
+      { id: "google/gemini-3.1-pro-preview-customtools", brand: "Google", display: "Gemini 3.1 Pro", price: { in: 2.00, out: 12.00 }, ctx: 1048576, vision: true, tagline: "Raisonnement + outils · multimodal (audio/vidéo)" },
       { id: "anthropic/claude-sonnet-5", brand: "Anthropic", display: "Claude Sonnet 5", price: { in: 3.00, out: 15.00 }, ctx: 1000000, vision: true },
       { id: "perplexity/sonar", brand: "Perplexity", display: "Sonar Web Search", price: { in: 1.00, out: 1.00 }, ctx: 127072 }
     ]

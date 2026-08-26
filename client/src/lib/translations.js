@@ -111,7 +111,7 @@ export const TRANSLATIONS = {
   "pills.family_header":     { fr: "Familles",                           en: "Families" },
   "pills.family_hint":       { fr: "Choisis une famille — le router pick la version (nano/mini/full/pro) selon la difficulté de ta demande.", en: "Pick a family — the router selects the version (nano/mini/full/pro) based on request difficulty." },
   "pills.hint_title":        { fr: "👋 Bienvenue sur Delt AI",            en: "👋 Welcome to Delt AI" },
-  "pills.hint_body":         { fr: "Click sur ce bouton pour afficher les 80+ modèles : GPT-5.5, Claude Opus 4.8, Gemini 3.5, Grok 4.20… Tu peux choisir une marque précise, ou laisser ⭐ Auto pour que Delt pick le meilleur modèle selon ta question.", en: "Click this button to reveal the 80+ models: GPT-5.5, Claude Opus 4.8, Gemini 3.5, Grok 4.20… Pick a specific brand, or leave ⭐ Auto so Delt picks the best model for your question." },
+  "pills.hint_body":         { fr: "Click sur ce bouton pour afficher les 80+ modèles : GPT-5.5, Claude Opus 5, Gemini 3.5, Grok 4.20… Tu peux choisir une marque précise, ou laisser ⭐ Auto pour que Delt pick le meilleur modèle selon ta question.", en: "Click this button to reveal the 80+ models: GPT-5.5, Claude Opus 5, Gemini 3.5, Grok 4.20… Pick a specific brand, or leave ⭐ Auto so Delt picks the best model for your question." },
   "pills.hint_example":      { fr: "Exemple : pose \"écris-moi un poème\" → Auto choisit un petit modèle rapide. Pose \"démontre un théorème\" → Auto bascule sur GPT-5.5 ou Claude Opus.", en: "Example: ask \"write me a poem\" → Auto picks a small fast model. Ask \"prove a theorem\" → Auto switches to GPT-5.5 or Claude Opus." },
   "pills.hint_dismiss":      { fr: "Compris",                              en: "Got it" },
 
@@ -122,7 +122,7 @@ export const TRANSLATIONS = {
   "tour.finish":   { fr: "C'est parti !", en: "Let's go!" },
 
   "tour.welcome.title": { fr: "👋 Bienvenue sur Delt AI", en: "👋 Welcome to Delt AI" },
-  "tour.welcome.body":  { fr: "Delt c'est 80+ modèles d'IA (GPT-5.5, Claude Opus 4.8, Gemini 3.5, Grok 4.20…) + Deep Search v6 + intégrations Gmail/Drive/Notion + génération image/vidéo/musique. Ce mini-tour t'explique tout en 30 secondes.", en: "Delt = 80+ AI models (GPT-5.5, Claude Opus 4.8, Gemini 3.5, Grok 4.20…) + Deep Search v6 + Gmail/Drive/Notion integrations + image/video/music generation. This mini-tour walks you through it in 30 seconds." },
+  "tour.welcome.body":  { fr: "Delt c'est 80+ modèles d'IA (GPT-5.5, Claude Opus 5, Gemini 3.5, Grok 4.20…) + Deep Search v6 + intégrations Gmail/Drive/Notion + génération image/vidéo/musique. Ce mini-tour t'explique tout en 30 secondes.", en: "Delt = 80+ AI models (GPT-5.5, Claude Opus 5, Gemini 3.5, Grok 4.20…) + Deep Search v6 + Gmail/Drive/Notion integrations + image/video/music generation. This mini-tour walks you through it in 30 seconds." },
 
   "tour.composer.title": { fr: "Le composer", en: "The composer" },
   "tour.composer.body":  { fr: "Tape ta question ici. Entrée pour envoyer, Shift+Entrée pour aller à la ligne. Tu peux aussi dicter ta question (icône micro).", en: "Type your question here. Enter to send, Shift+Enter for a new line. You can also dictate with the mic icon." },
@@ -648,7 +648,7 @@ export const TRANSLATIONS = {
   "docs.streaming":          { fr: "Streaming SSE",                      en: "SSE Streaming" },
   "docs.chunks_format":      { fr: "Format des chunks",                  en: "Chunks format" },
   "docs.vision":             { fr: "Vision & multimodal",                en: "Vision & multimodal" },
-  "docs.vision_compat":      { fr: "Modèles compatibles : <strong>GPT-5.4</strong>, <strong>GPT-5.5</strong>, <strong>Claude Sonnet 5/Opus 4.8</strong>, <strong>Gemini 2.5 Flash/Pro</strong>, <strong>Grok 4.20</strong>.", en: "Compatible models: <strong>GPT-5.4</strong>, <strong>GPT-5.5</strong>, <strong>Claude Sonnet 5/Opus 4.8</strong>, <strong>Gemini 2.5 Flash/Pro</strong>, <strong>Grok 4.20</strong>." },
+  "docs.vision_compat":      { fr: "Modèles compatibles : <strong>GPT-5.4</strong>, <strong>GPT-5.5</strong>, <strong>Claude Sonnet 5/Opus 5</strong>, <strong>Gemini 2.5 Flash/Pro</strong>, <strong>Grok 4.20</strong>.", en: "Compatible models: <strong>GPT-5.4</strong>, <strong>GPT-5.5</strong>, <strong>Claude Sonnet 5/Opus 5</strong>, <strong>Gemini 2.5 Flash/Pro</strong>, <strong>Grok 4.20</strong>." },
   "docs.catalog":            { fr: "Catalogue de modèles",               en: "Models catalog" },
   "docs.catalog_intro":      { fr: "<strong>{{n}}</strong> modèles disponibles, organisés par tier. Les modèles <strong>FREE</strong> sont 100 % gratuits.", en: "<strong>{{n}}</strong> models available, organized by tier. <strong>FREE</strong> models are 100% free." },
   "docs.creative_cats":      { fr: "Catégories créatives",               en: "Creative categories" },
