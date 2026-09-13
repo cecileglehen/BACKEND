@@ -17,14 +17,14 @@ const LAUNCH_PROFILES = [
     models: ["openai/gpt-5.4-mini"] },
   { id: "design-pro",  name: "Design pro",  color: "#06b6d4", tagline: "UI soignée, haut de gamme",
     path: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z",
-    models: ["anthropic/claude-sonnet-5", "google/gemini-3.6-flash"] },
+    models: ["anthropic/claude-sonnet-5", "google/gemini-3.8-flash"] },
   { id: "builder",     name: "Builder",     color: "#6366f1", tagline: "Équilibré — le meilleur défaut",
     path: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z",
     // Choix explicite (jamais de fallback silencieux) : voir BUILDER_CHOICES.
     models: ["moonshotai/kimi-k3", "anthropic/claude-opus-5"] },
   { id: "production",  name: "Production",  color: "#f59e0b", tagline: "Qualité maximale",
     path: "M23 6l-9.5 9.5-5-5L1 18 M17 6h6v6",
-    models: ["openai/gpt-5.5", "anthropic/claude-opus-5", "anthropic/claude-fable-5", "openai/gpt-5.5-pro", "openai/gpt-5.4-pro"] }
+    models: ["openai/gpt-5.5", "anthropic/claude-opus-5", "anthropic/claude-fable-5.1", "openai/gpt-5.5-pro", "openai/gpt-5.4-pro"] }
 ];
 const DEFAULT_PROFILE = "builder";
 

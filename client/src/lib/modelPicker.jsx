@@ -8,6 +8,7 @@ export const PICKER = [
   { brand: "OpenAI", label: "GPT", models: [
     { id: "openai/gpt-5.6-luna",     label: "GPT Luna",     kind: "fast"  },
     { id: "openai/gpt-5.4",          label: "GPT-5.4",      kind: "chat"  },
+    { id: "openai/gpt-6-astra",      label: "GPT-6 Astra",  kind: "think", proId: "openai/gpt-6-astra-pro" },
     // Famille GPT-5.6 : entrée dépliable → Sol / Terra / Luna
     { label: "GPT-5.6", kind: "think", children: [
       { id: "openai/gpt-5.6-sol",   label: "GPT Sol",   kind: "think" },
@@ -20,11 +21,11 @@ export const PICKER = [
     { id: "anthropic/claude-haiku-4.5",  label: "Haiku 4.5",  kind: "fast"  },
     { id: "anthropic/claude-sonnet-5", label: "Sonnet 5", kind: "chat"  },
     { id: "anthropic/claude-opus-5",   label: "Opus 5",   kind: "think" },
-    { id: "anthropic/claude-fable-5",    label: "Fable 5",    kind: "think" }
+    { id: "anthropic/claude-fable-5.1",    label: "Fable 5.1",    kind: "think" }
   ]},
   { brand: "Google", label: "Gemini", models: [
     { id: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", kind: "fast"  },
-    { id: "google/gemini-3.6-flash", label: "Gemini 3.6 Flash", kind: "chat"  },
+    { id: "google/gemini-3.8-flash", label: "Gemini 3.8 Flash", kind: "chat"  },
     { id: "google/gemini-3.1-pro-preview-customtools", label: "Gemini 3.1 Pro", kind: "think" },
     { id: "google/gemini-3.1-flash-lite-image", label: "Nano Banana Flash Lite", kind: "image" },
     { id: "google/gemini-3.1-flash-image-preview", label: "Nano Banana 2", kind: "image" }

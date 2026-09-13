@@ -28,6 +28,7 @@ const curatedPicker = <CuratedBrand>[
   CuratedBrand('OpenAI', 'GPT', [
     CuratedModel('openai/gpt-5.6-luna', 'GPT Luna', 'fast'),
     CuratedModel('openai/gpt-5.4', 'GPT-5.4', 'chat'),
+    CuratedModel('openai/gpt-6-astra', 'GPT-6 Astra', 'think'),
     CuratedModel('family:gpt-5.6', 'GPT-5.6', 'think', children: [
       CuratedModel('openai/gpt-5.6-sol', 'GPT Sol', 'think'),
       CuratedModel('openai/gpt-5.6-terra', 'GPT Terra', 'chat'),
@@ -39,11 +40,11 @@ const curatedPicker = <CuratedBrand>[
     CuratedModel('anthropic/claude-haiku-4.5', 'Haiku 4.5', 'fast'),
     CuratedModel('anthropic/claude-sonnet-5', 'Sonnet 5', 'chat'),
     CuratedModel('anthropic/claude-opus-5', 'Opus 5', 'think'),
-    CuratedModel('anthropic/claude-fable-5', 'Fable 5', 'think'),
+    CuratedModel('anthropic/claude-fable-5.1', 'Fable 5.1', 'think'),
   ]),
   CuratedBrand('Google', 'Gemini', [
     CuratedModel('google/gemini-2.5-flash', 'Gemini 2.5 Flash', 'fast'),
-    CuratedModel('google/gemini-3.6-flash', 'Gemini 3.6 Flash', 'chat'),
+    CuratedModel('google/gemini-3.8-flash', 'Gemini 3.8 Flash', 'chat'),
     CuratedModel('google/gemini-3.1-pro-preview-customtools', 'Gemini 3.1 Pro', 'think'),
     CuratedModel('google/gemini-3.1-flash-lite-image', 'Nano Banana Flash Lite', 'image'),
     CuratedModel('google/gemini-3.1-flash-image-preview', 'Nano Banana 2', 'image'),

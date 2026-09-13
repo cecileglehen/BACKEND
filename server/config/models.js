@@ -92,7 +92,7 @@ export const CATEGORIES = {
       { id: "mistralai/mistral-medium-3-5", brand: "Mistral", display: "Mistral Medium 3.5", price: { in: 0.40, out: 2.00 }, ctx: 131072, vision: true },
       { id: "mistralai/mixtral-8x22b-instruct", brand: "Mistral", display: "Mixtral 8x22B Instruct", price: { in: 0.90, out: 0.90 }, ctx: 65536, tagline: "MoE 141B (39B actifs)", featuredLabel: { fr: "🇫🇷 3K tokens offerts", en: "🇫🇷 3K free tokens" }, freeMonthlyTokens: 3000 },
       { id: "meta-llama/llama-4-maverick", brand: "Meta", display: "Llama 4 Maverick", price: { in: 0.15, out: 0.60 }, ctx: 1048576, vision: true },
-      { id: "google/gemini-3.6-flash", brand: "Google", display: "Gemini 3.6 Flash", price: { in: 0.30, out: 2.50 }, ctx: 1048576, vision: true },
+      { id: "google/gemini-3.8-flash", brand: "Google", display: "Gemini 3.8 Flash", price: { in: 0.75, out: 3.75 }, ctx: 1048576, vision: true, tagline: "Multimodal complet (audio/vidéo)" },
       { id: "anthropic/claude-haiku-4.5", brand: "Anthropic", display: "Claude Haiku 4.5", price: { in: 1.00, out: 5.00 }, ctx: 200000, vision: true },
       { id: "anthropic/claude-haiku-latest", brand: "Anthropic", display: "Claude Haiku (latest)", price: { in: 1.00, out: 5.00 }, ctx: 200000, vision: true },
       { id: "x-ai/grok-4.5", brand: "xAI", display: "Grok 4.5", price: { in: 1.25, out: 2.50 }, ctx: 2000000, vision: true },
@@ -131,8 +131,10 @@ export const CATEGORIES = {
     levelRange: [9, 10],
     models: [
       { id: "openai/gpt-5.5", brand: "OpenAI", display: "GPT-5.5", price: { in: 5.00, out: 30.00 }, ctx: 400000, vision: true },
+      { id: "openai/gpt-6-astra", brand: "OpenAI", display: "GPT-6 Astra", price: { in: 10.00, out: 50.00 }, ctx: 1050000, vision: true, tagline: "Le nouveau pionnier — état de l'art" },
+      { id: "openai/gpt-6-astra-pro", brand: "OpenAI", display: "GPT-6 Astra Pro", price: { in: 10.00, out: 50.00 }, ctx: 1050000, vision: true, tagline: "Mode Pro — consomme beaucoup plus vite", proOf: "openai/gpt-6-astra" },
       { id: "openai/gpt-5.6-sol", brand: "OpenAI", display: "GPT Sol", price: { in: 6.00, out: 32.00 }, ctx: 400000, vision: true, tagline: "Le sommet GPT-5.6" },
-      { id: "anthropic/claude-fable-5", brand: "Anthropic", display: "Claude Fable 5", price: { in: 10.00, out: 50.00 }, ctx: 1000000, vision: true, tagline: "Le plus intelligent d'Anthropic — très cher (2× Opus)" },
+      { id: "anthropic/claude-fable-5.1", brand: "Anthropic", display: "Claude Fable 5.1", price: { in: 10.00, out: 50.00 }, ctx: 1000000, vision: true, tagline: "Le plus intelligent d'Anthropic — très cher (2× Opus)" },
       { id: "qwen/qwen3-max-thinking",         brand: "Qwen", display: "Qwen3 Max Thinking", price: { in: 3.00, out: 15.00 }, ctx: 1000000, tagline: "Raisonnement profond" },
       { id: "qwen/qwen3-vl-235b-a22b-thinking",brand: "Qwen", display: "Qwen3 VL 235B Thinking", price: { in: 2.50, out: 12.00 }, ctx: 256000, vision: true, tagline: "Vision + raisonnement, MoE 235B" },
       { id: "anthropic/claude-opus-5", brand: "Anthropic", display: "Claude Opus 5", price: { in: 5.00, out: 25.00 }, ctx: 1000000, vision: true },
@@ -201,6 +203,9 @@ export const CREATIVE = {
       { id: "google/gemini-3-pro-image-preview",     brand: "Google", display: "Nano Banana Pro", provider: "openrouter", cost: 35,  tagline: "Rendu parfait" },
       { id: "openai/gpt-5-image",                    brand: "OpenAI", display: "GPT Image",       provider: "openrouter", cost: 50,  tagline: "OpenAI haut de gamme" },
       { id: "openai/gpt-5.4-image-2",                brand: "OpenAI", display: "GPT Image 2",     provider: "openrouter", cost: 120, tagline: "Texte parfait — rendu pro" },
+      // API distincte : /v1/images/generations (refusés par /chat/completions).
+      { id: "openai/gpt-image-2.5-sunburst", brand: "OpenAI", display: "GPT Image 2.5 Sunburst", provider: "openrouter", api: "images", cost: 12, tagline: "Nouvelle génération — rendu éclatant" },
+      { id: "openai/gpt-image-2.5-flare",    brand: "OpenAI", display: "GPT Image 2.5 Flare",    provider: "openrouter", api: "images", cost: 15, tagline: "Nouvelle génération — contrastes marqués" },
       { id: "krea/krea-2-medium-turbo",              brand: "Krea",   display: "Krea 2 Medium Turbo", provider: "openrouter", cost: 6,   tagline: "Krea rapide — style photo réaliste" },
       { id: "krea/krea-2-medium",                    brand: "Krea",   display: "Krea 2 Medium",   provider: "openrouter", cost: 14,  tagline: "Équilibré — bon rendu, bon prix" },
       { id: "krea/krea-2-large",                     brand: "Krea",   display: "Krea 2 Large",    provider: "openrouter", cost: 30,  tagline: "Rendu Krea haut de gamme" }

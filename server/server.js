@@ -2761,6 +2761,30 @@ app.post("/api/image", requireAuth, async (req, res) => {
       const { falGenerateImage } = await import("./lib/fal.js");
       const result = await falGenerateImage(chosenModel.id, prompt, { imageUrls });
       url = result.url;
+    } else if (chosenModel.api === "images") {
+      // Modèles à API image dédiée (/v1/images/generations) : /chat/completions
+      // les refuse explicitement (« is an image generation model »).
+      const key = (process.env.OPENROUTER_API_KEY || "").trim();
+      if (!key) return res.status(500).json({ error: "OPENROUTER_API_KEY manquante" });
+      const imgRes = await fetch("https://openrouter.ai/api/v1/images/generations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${key}`,
+          "HTTP-Referer": "https://delt.ai",
+          "X-Title": "DELT AI"
+        },
+        body: JSON.stringify({ model: chosenModel.id, prompt })
+      });
+      if (!imgRes.ok) {
+        const txt = await imgRes.text().catch(() => "");
+        return res.status(imgRes.status).json({ error: `OpenRouter ${imgRes.status}: ${txt.slice(0, 300)}` });
+      }
+      const data = await imgRes.json();
+      const first = data?.data?.[0];
+      url = first?.b64_json
+        ? `data:${first.media_type || "image/png"};base64,${first.b64_json}`
+        : first?.url ?? null;
     } else {
       // OpenRouter (Gemini, etc.)
       const key = (process.env.OPENROUTER_API_KEY || "").trim();
