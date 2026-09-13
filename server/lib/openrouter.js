@@ -156,7 +156,7 @@ export async function chatWithFallback({ modelId, messages, signal, manual = fal
 }
 
 // Streaming SSE — pipe OpenRouter (ou DELT 33M) → Express response
-export async function streamChat({ modelId, messages, res, onDone }) {
+export async function streamChat({ modelId, messages, res, onDone, tools }) {
   const isDelt = isDeltModel(modelId);
   const isPerplexity = /perplexity\/sonar/i.test(modelId);
 
@@ -202,6 +202,10 @@ export async function streamChat({ modelId, messages, res, onDone }) {
           stream: true,
           stream_options: { include_usage: true },
           usage: { include: true },
+          // Tools EN STREAMING : les tool_calls arrivent en deltas, ce qui garde
+          // le texte et le reasoning visibles au fil de l'eau, au lieu de
+          // basculer sur un appel bloquant qui casse tout le streaming.
+          ...(Array.isArray(tools) && tools.length ? { tools, tool_choice: "auto" } : {}),
           include_reasoning: true,
           reasoning: { effort: "medium" },
           // Claude Fable 5 (et Anthropic 4.6+) : reasoning TOUJOURS actif en
@@ -230,6 +234,10 @@ export async function streamChat({ modelId, messages, res, onDone }) {
           max_tokens: afford,
           stream_options: { include_usage: true },
           usage: { include: true },
+          // Tools EN STREAMING : les tool_calls arrivent en deltas, ce qui garde
+          // le texte et le reasoning visibles au fil de l'eau, au lieu de
+          // basculer sur un appel bloquant qui casse tout le streaming.
+          ...(Array.isArray(tools) && tools.length ? { tools, tool_choice: "auto" } : {}),
           include_reasoning: true,
           reasoning: { effort: "medium" },
           ...(/anthropic\/claude-(fable|opus-4\.[89]|sonnet-5)/i.test(modelId) ? { verbosity: "medium" } : {})
@@ -257,6 +265,7 @@ export async function streamChat({ modelId, messages, res, onDone }) {
   let citations = [];
   let searchResults = [];
   let buf = "";
+  const toolAcc = new Map(); // index → tool_call recollé depuis ses fragments
 
   try {
   while (true) {
@@ -316,6 +325,20 @@ export async function streamChat({ modelId, messages, res, onDone }) {
             res.write(`data: ${JSON.stringify({ delta: visibleDelta })}\n\n`);
           }
         }
+        // Un tool_call arrive fragmenté : même index, nom puis arguments
+        // livrés par morceaux qu'il faut concaténer.
+        const tcs = choice?.delta?.tool_calls;
+        if (Array.isArray(tcs)) {
+          for (const tc of tcs) {
+            const i = tc.index ?? 0;
+            const cur = toolAcc.get(i) || { id: "", type: "function", function: { name: "", arguments: "" } };
+            if (tc.id) cur.id = tc.id;
+            if (tc.type) cur.type = tc.type;
+            if (tc.function?.name) cur.function.name = tc.function.name;
+            if (tc.function?.arguments) cur.function.arguments += tc.function.arguments;
+            toolAcc.set(i, cur);
+          }
+        }
         if (json.usage) usage = json.usage;
       } catch { /* ignore malformed chunks */ }
     }
@@ -336,9 +359,13 @@ export async function streamChat({ modelId, messages, res, onDone }) {
     // depuis tokensIn/Out pour quand même facturer.
     const costUsd = Number(usage?.cost) || 0;
 
+    const toolCalls = [...toolAcc.entries()].sort((a, b) => a[0] - b[0])
+      .map(([, v]) => v).filter((t) => t.function?.name);
+
     onDone({
       content: fullContent,
       reasoning: fullReasoning,
+      toolCalls: toolCalls.length ? toolCalls : null,
       tokensIn,
       tokensOut,
       thinkingTokens,

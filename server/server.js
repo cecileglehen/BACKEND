@@ -2335,24 +2335,59 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
     }
 
     let directAnswerFromToolLoop = null; // { content, usage } si le modèle a répondu sans tool
-    if (composioTools.length > 0) {
+    let firstStream = null;              // résultat du round 0 streamé (si aucun tool appelé)
+
+    // write_memory est ajouté à TOUS les modèles tool-capables : s'il suffisait
+    // à déclencher la boucle, plus aucune réponse ne serait streamée (ni texte
+    // ni reasoning). On ne bascule en mode bloquant que pour les outils qui
+    // produisent vraiment une réponse (Composio, recherche web) ; write_memory
+    // seul reste en streaming et son appel est exécuté après coup.
+    const MEMORY_ONLY = composioTools.length > 0
+      && composioTools.every((t) => t?.function?.name === "write_memory");
+    if (composioTools.length > 0 && !MEMORY_ONLY) {
       const MAX_TOOL_ROUNDS = 5;
       let round = 0;
       while (round < MAX_TOOL_ROUNDS) {
-        // Notifie l'UI : l'IA réfléchit (round non-streamé jusqu'à 15s)
-        res.write(`data: ${JSON.stringify({ type: "tool_thinking", round: round + 1 })}\n\n`);
         let toolResp;
-        try {
-          toolResp = await chatWithTools({
-            modelId: modelInfo.id,
-            messages: compressed,
-            tools: composioTools,
-            signal: req.signal ?? undefined
-          });
-        } catch (e) {
-          console.warn("[composio] chatWithTools fail:", e.message);
-          res.write(`data: ${JSON.stringify({ type: "tool_error", error: e.message })}\n\n`);
-          break;
+        // ── Round 0 EN STREAMING ──────────────────────────────────────────
+        // web_search et write_memory étant proposés d'office, un appel bloquant
+        // ici supprimait le streaming (texte ET reasoning) pour absolument
+        // toutes les réponses. On streame donc le premier tour avec les tools :
+        // si le modèle n'en appelle aucun — le cas courant — la réponse est
+        // déjà entièrement diffusée. Sinon on bascule sur la boucle classique.
+        if (round === 0) {
+          try {
+            await streamChat({
+              modelId: modelInfo.id,
+              messages: compressed,
+              res,
+              tools: composioTools,
+              onDone: (r) => { firstStream = r; }
+            });
+          } catch (e) {
+            console.warn("[tools] stream round 0 fail:", e.message);
+            res.write(`data: ${JSON.stringify({ type: "tool_error", error: e.message })}\n\n`);
+            break;
+          }
+          if (!firstStream?.toolCalls?.length) break;   // rien à exécuter : déjà streamé
+          // Des outils sont demandés : on repart sur le chemin bloquant, en
+          // repartant du message assistant produit pendant le stream.
+          toolResp = { message: { content: firstStream.content, tool_calls: firstStream.toolCalls } };
+          firstStream = null; // sa réponse sera produite par la boucle
+        } else {
+          res.write(`data: ${JSON.stringify({ type: "tool_thinking", round: round + 1 })}\n\n`);
+          try {
+            toolResp = await chatWithTools({
+              modelId: modelInfo.id,
+              messages: compressed,
+              tools: composioTools,
+              signal: req.signal ?? undefined
+            });
+          } catch (e) {
+            console.warn("[composio] chatWithTools fail:", e.message);
+            res.write(`data: ${JSON.stringify({ type: "tool_error", error: e.message })}\n\n`);
+            break;
+          }
         }
         const msg = toolResp?.message;
         let toolCalls = msg?.tool_calls;
@@ -2547,14 +2582,33 @@ app.post("/api/chat/stream", requireAuth, async (req, res) => {
         ]).catch((e) => console.error("[chat/stream] DB background:", e));
       };
 
-    if (emitSynthetic) {
+    if (firstStream) {
+      // Round 0 déjà diffusé intégralement : on ne relance pas d'appel, on
+      // finalise (facturation, artifacts) avec ce qui a été streamé.
+      await streamOnDone(firstStream);
+    } else if (emitSynthetic) {
       await emitSynthetic();
     } else {
       await streamChat({
         modelId: modelInfo.id,
         messages: compressed,
         res,
-        onDone: streamOnDone
+        tools: MEMORY_ONLY ? composioTools : undefined,
+        onDone: async (r) => {
+          // write_memory demandé pendant le stream : effet de bord, exécuté
+          // une fois la réponse délivrée (il ne produit aucun texte).
+          const memCall = (r.toolCalls || []).find((t) => t.function?.name === "write_memory");
+          if (memCall) {
+            try {
+              const args = JSON.parse(memCall.function.arguments || "{}");
+              if (args.fact) {
+                const { appendMemoryFact } = await import("./lib/memory.js");
+                await appendMemoryFact(req.user.id, args.fact);
+              }
+            } catch (e) { console.warn("[write_memory]", e.message); }
+          }
+          return streamOnDone(r);
+        }
       });
     }
   } catch (e) {
